@@ -56,10 +56,11 @@ async function initDB() {
 }
 
 // --- HELPER: GENERADOR DE IDs (ROBUST) ---
-async function generateNextId(table, column, prefix) {
+// Updated to accept an optional 'client' parameter for transaction visibility
+async function generateNextId(table, column, prefix, client = pool) {
   try {
     const query = `SELECT ${column} as id FROM ${table} WHERE ${column} LIKE '${prefix}-%'`;
-    const result = await pool.query(query);
+    const result = await client.query(query);
     
     let maxNum = 0;
     
@@ -150,9 +151,10 @@ app.get('/api/clientes', authenticateToken, async (req, res) => {
 app.post('/api/clientes', authenticateToken, async (req, res) => {
   try {
     const { identidad, nombre, apellido, direccion, telefono, correo } = req.body;
+    // Updated to include NOW() for fechaCreacion to prevent null errors
     await pool.query(
-      `INSERT INTO clientes (identidad, nombre, apellido, direccion, telefono, correo) 
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO clientes (identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion) 
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
       [identidad, nombre, apellido, direccion, telefono, correo]
     );
     res.status(201).json({ message: 'Cliente registrado' });
@@ -234,8 +236,8 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 1. Crear Venta Header
-    const codVenta = await generateNextId('ventas', 'codVenta', 'FACT');
+    // 1. Crear Venta Header - Pass 'client' to ID generator
+    const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
     const fecha = new Date();
     
     await client.query(
@@ -246,7 +248,8 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
 
     // 2. Procesar Detalles y Actualizar Stock
     for (const item of detalles) {
-      const codDetalle = await generateNextId('detalle_venta', 'codDetalleVenta', 'DET'); 
+      // Pass 'client' to ID generator so it sees previous IDs created in this transaction loop
+      const codDetalle = await generateNextId('detalle_venta', 'codDetalleVenta', 'DET', client); 
       
       await client.query(
         `INSERT INTO detalle_venta (codDetalleVenta, idVenta, idTelefono, idInventario, cantidad, precioVenta)
