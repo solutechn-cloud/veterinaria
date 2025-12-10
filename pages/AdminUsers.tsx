@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Usuario, Empleado, Rol, Caja, EstadoGeneral } from '../types';
+import { Usuario, Empleado, Rol, Caja, EstadoGeneral, Permiso } from '../types';
 import { AdminService } from '../services/api';
-import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2, CheckCircle, AlertCircle, CheckSquare, Square } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 type Tab = 'USERS' | 'EMPLOYEES' | 'ROLES' | 'CAJAS';
@@ -18,6 +18,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
   const [cajas, setCajas] = useState<Caja[]>([]);
+  const [permisos, setPermisos] = useState<Permiso[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
@@ -27,6 +28,9 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   // Forms State
   const [userForm, setUserForm] = useState({ usuario: '', password: '', identidad: '', idrol: '', idCaja: '', estado: 'Activo' });
   const [empForm, setEmpForm] = useState({ identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo' });
+  // Expanded Rol Form
+  const [rolForm, setRolForm] = useState<{nombre: string, estado: string, permisos: string[]}>({ nombre: '', estado: 'Activo', permisos: [] });
+  // Simple Form for Caja
   const [simpleForm, setSimpleForm] = useState({ nombre: '', estado: 'Activo' });
 
   // Sync activeTab when initialView prop changes (User navigation)
@@ -43,7 +47,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     setLoading(true);
     try {
       if (activeTab === 'USERS') {
-         // Load dependencies for Users form as well
          const [u, e, r, c] = await Promise.all([
             AdminService.getUsers(),
             AdminService.getEmpleados(),
@@ -58,8 +61,12 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
          const data = await AdminService.getEmpleados();
          setEmpleados(data || []);
       } else if (activeTab === 'ROLES') {
-         const data = await AdminService.getRoles();
-         setRoles(data || []);
+         const [r, p] = await Promise.all([
+             AdminService.getRoles(),
+             AdminService.getPermisos()
+         ]);
+         setRoles(r || []);
+         setPermisos(p || []);
       } else if (activeTab === 'CAJAS') {
          const data = await AdminService.getCajas();
          setCajas(data || []);
@@ -104,11 +111,29 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
         telefono: data.telefono || '',
         estado: data.estado || 'Activo'
       } : { identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo' });
+    } else if (activeTab === 'ROLES') {
+        setRolForm(data ? {
+            nombre: data.nombre || '',
+            estado: data.estado || 'Activo',
+            permisos: data.permisos || []
+        } : { nombre: '', estado: 'Activo', permisos: [] });
     } else {
       setSimpleForm(data ? { nombre: data.nombre || '', estado: data.estado || 'Activo' } : { nombre: '', estado: 'Activo' });
     }
     
     setShowModal(true);
+  };
+
+  const togglePermiso = (idPermiso: string) => {
+      setRolForm(prev => {
+          const exists = prev.permisos.includes(idPermiso);
+          return {
+              ...prev,
+              permisos: exists 
+                 ? prev.permisos.filter(p => p !== idPermiso)
+                 : [...prev.permisos, idPermiso]
+          };
+      });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,9 +150,9 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
         if (isEditing) await AdminService.updateEmpleado(currentId!, empPayload);
         else await AdminService.createEmpleado({ ...empPayload, estado: 'Activo' });
       } else if (activeTab === 'ROLES') {
-        const rolPayload = { ...simpleForm, estado: simpleForm.estado as EstadoGeneral };
+        const rolPayload = { ...rolForm, estado: rolForm.estado as EstadoGeneral };
         if (isEditing) await AdminService.updateRol(currentId!, rolPayload);
-        else await AdminService.createRol(simpleForm.nombre);
+        else await AdminService.createRol(rolPayload);
       } else if (activeTab === 'CAJAS') {
         const cajaPayload = { ...simpleForm, estado: simpleForm.estado as Caja['estado'] };
         if (isEditing) await AdminService.updateCaja(currentId!, cajaPayload);
@@ -177,6 +202,13 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
         }
     }
   };
+
+  // Agrupar permisos por modulo
+  const groupedPermisos = permisos.reduce((acc, curr) => {
+      if(!acc[curr.modulo]) acc[curr.modulo] = [];
+      acc[curr.modulo].push(curr);
+      return acc;
+  }, {} as Record<string, Permiso[]>);
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -231,6 +263,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                         <th className="p-4">ID</th>
                         <th className="p-4">Nombre</th>
                         <th className="p-4">Estado</th>
+                        {activeTab === 'ROLES' && <th className="p-4">Permisos</th>}
                         <th className="p-4 text-right">Acciones</th>
                        </>
                     )}
@@ -276,20 +309,19 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                         <td className="p-4 text-xs font-mono text-slate-500">{item.idrol || item.idCaja}</td>
                         <td className="p-4 font-bold text-slate-800">{item.nombre}</td>
                         <td className="p-4"><span className={`text-xs font-bold px-2 py-1 rounded-full ${item.estado === 'Activo' || item.estado === 'Activa' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{item.estado}</span></td>
+                        {activeTab === 'ROLES' && (
+                            <td className="p-4">
+                                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                                    {(item.permisos?.length || 0)} accesos
+                                </span>
+                            </td>
+                        )}
                         <td className="p-4 text-right">
                            <button onClick={() => openModal(item)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
                            <button onClick={() => handleDelete(item.idrol || item.idCaja)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors ml-2"><Trash2 size={16}/></button>
                         </td>
                     </tr>
                 ))}
-
-                {/* Fallback for empty */}
-                {(!loading && (
-                    (activeTab === 'USERS' && users.length === 0) || 
-                    (activeTab === 'EMPLOYEES' && empleados.length === 0) ||
-                    (activeTab === 'ROLES' && roles.length === 0) ||
-                    (activeTab === 'CAJAS' && cajas.length === 0)
-                 )) && <tr><td colSpan={4} className="p-8 text-center text-slate-400">No hay registros encontrados</td></tr>}
               </tbody>
             </table>
           </div>
@@ -297,10 +329,10 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
 
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
              <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <h3 className="text-xl font-bold text-slate-800">
-                    {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'USERS' ? 'Usuario' : activeTab === 'EMPLOYEES' ? 'Empleado' : activeTab === 'ROLES' ? 'Rol' : 'Caja'}
+                    {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'USERS' ? 'Usuario' : activeTab === 'EMPLOYEES' ? 'Empleado' : activeTab === 'ROLES' ? 'Rol y Permisos' : 'Caja'}
                 </h3>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={24}/></button>
              </div>
@@ -392,8 +424,57 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                     </>
                 )}
 
-                {/* --- FORMULARIO ROLES Y CAJAS --- */}
-                {(activeTab === 'ROLES' || activeTab === 'CAJAS') && (
+                {/* --- FORMULARIO ROLES (AVANZADO) --- */}
+                {activeTab === 'ROLES' && (
+                    <>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Nombre del Rol</label>
+                                <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1" 
+                                    value={rolForm.nombre} onChange={e => setRolForm({...rolForm, nombre: e.target.value})} placeholder="Ej: Vendedor" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Estado</label>
+                                <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1" 
+                                    value={rolForm.estado} onChange={e => setRolForm({...rolForm, estado: e.target.value})}>
+                                    <option value="Activo">Activo</option>
+                                    <option value="Inactivo">Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-4">
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-3">Asignar Permisos</label>
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 max-h-[300px] overflow-y-auto">
+                                {Object.entries(groupedPermisos).map(([modulo, perms]) => (
+                                    <div key={modulo} className="mb-4 last:mb-0">
+                                        <h4 className="text-xs font-bold text-indigo-600 uppercase mb-2 border-b border-indigo-100 pb-1">{modulo}</h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {perms.map(p => {
+                                                const isSelected = rolForm.permisos.includes(p.idPermiso);
+                                                return (
+                                                    <div 
+                                                        key={p.idPermiso} 
+                                                        onClick={() => togglePermiso(p.idPermiso)}
+                                                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-white shadow-sm border border-indigo-200' : 'hover:bg-slate-100'}`}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                            {isSelected && <CheckSquare size={14} className="text-white"/>}
+                                                        </div>
+                                                        <span className={`text-sm ${isSelected ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{p.nombre}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* --- FORMULARIO CAJAS --- */}
+                {activeTab === 'CAJAS' && (
                     <>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Nombre / Descripción</label>

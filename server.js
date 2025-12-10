@@ -63,41 +63,188 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- AUTH ---
+// --- AUTH (CORREGIDO) ---
 app.post('/api/auth/login', async (req, res) => {
   const { usuario, password } = req.body;
   try {
     const query = `
-      SELECT u.*, r.nombre as rol_nombre, e.nombre as emp_nombre, e.apellido as emp_apellido
+      SELECT 
+        u.codUsuario as "codUsuario",
+        u.usuario,
+        u.password,
+        u.identidad,
+        u.idCaja as "idCaja",
+        u.idrol,
+        u.estado,
+        r.nombre as "rol_nombre",
+        e.nombre as "emp_nombre",
+        e.apellido as "emp_apellido"
       FROM usuarios u
-      JOIN roles r ON u.idrol = r.idrol
-      JOIN empleado e ON u.identidad = e.identidad
+      LEFT JOIN roles r ON u.idrol = r.idrol
+      LEFT JOIN empleado e ON u.identidad = e.identidad
       WHERE u.usuario = $1
     `;
     const result = await pool.query(query, [usuario]);
     const userRaw = result.rows[0];
 
-    if (!userRaw || userRaw.estado !== 'Activo') return res.status(401).json({ error: 'Usuario no válido' });
-    
-    // Simple password check
-    if (userRaw.password !== password) return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!userRaw) {
+      return res.status(401).json({ error: 'Usuario no encontrado' });
+    }
 
-    // Mapeo manual porque userRaw viene en minúsculas desde PG
+    if (userRaw.estado && userRaw.estado.toLowerCase() !== 'activo') {
+      return res.status(401).json({ error: 'El usuario está inactivo' });
+    }
+    
+    const dbPass = userRaw.password ? userRaw.password.trim() : '';
+    const inputPass = password ? password.trim() : '';
+
+    if (dbPass !== inputPass) {
+      return res.status(401).json({ error: 'Contraseña incorrecta' });
+    }
+
+    // Obtener Permisos del Rol
+    const permQuery = `SELECT idPermiso FROM rol_permisos WHERE idRol = $1`;
+    const permResult = await pool.query(permQuery, [userRaw.idrol]);
+    const permisos = permResult.rows.map(r => r.idpermiso); // PG returns lowercase keys
+
     const userData = { 
-      codUsuario: userRaw.codusuario,
+      codUsuario: userRaw.codUsuario, 
       usuario: userRaw.usuario, 
-      rol: userRaw.rol_nombre, 
-      idCaja: userRaw.idcaja,
-      nombreEmpleado: `${userRaw.emp_nombre} ${userRaw.emp_apellido}` 
+      rol: userRaw.rol_nombre || 'Sin Rol', 
+      idCaja: userRaw.idCaja || 'Sin Caja',
+      nombreEmpleado: userRaw.emp_nombre ? `${userRaw.emp_nombre} ${userRaw.emp_apellido}` : 'Empleado Desconocido',
+      permisos: permisos
     };
+
     const token = jwt.sign(userData, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, user: userData });
-  } catch (err) { handleDbError(res, err); }
+
+  } catch (err) { 
+    console.error("Login Error Catch:", err);
+    res.status(500).json({ error: 'Error interno en login' }); 
+  }
 });
 
 // ==========================================
-// COSTOS (Nuevo Módulo)
+// ROLES Y PERMISOS (ACTUALIZADO)
 // ==========================================
+
+app.get('/api/permisos', authenticateToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT idPermiso as "idPermiso", nombre, modulo FROM permisos ORDER BY modulo, nombre');
+    res.json(r.rows);
+  } catch(e) { handleDbError(res, e); }
+});
+
+app.get('/api/roles', authenticateToken, async (req, res) => { 
+  try { 
+    // Obtener roles
+    const rolesResult = await pool.query('SELECT idrol, nombre, estado FROM roles ORDER BY idrol');
+    const roles = rolesResult.rows;
+
+    // Obtener permisos para cada rol
+    for (let rol of roles) {
+        const pResult = await pool.query('SELECT idPermiso FROM rol_permisos WHERE idRol = $1', [rol.idrol]);
+        rol.permisos = pResult.rows.map(r => r.idpermiso); // idPermiso en minúsculas por PG
+    }
+
+    res.json(roles); 
+  } catch(e){ handleDbError(res,e) } 
+});
+
+app.post('/api/roles', authenticateToken, async (req, res) => { 
+  const client = await pool.connect();
+  try {
+    const { nombre, permisos } = req.body; // permisos is array of strings
+    await client.query('BEGIN');
+    
+    const idrol = await generateNextId('roles', 'idrol', 'ROL', client);
+    await client.query('INSERT INTO roles (idrol, nombre, estado) VALUES ($1, $2, $3)', [idrol, nombre, 'Activo']);
+
+    if (permisos && Array.isArray(permisos)) {
+        for (const p of permisos) {
+            await client.query('INSERT INTO rol_permisos (idRol, idPermiso) VALUES ($1, $2)', [idrol, p]);
+        }
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Rol Creado', idrol });
+  } catch(e) { 
+    await client.query('ROLLBACK');
+    handleDbError(res,e) 
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/roles/:id', authenticateToken, async (req, res) => { 
+    const client = await pool.connect();
+    try {
+        const { nombre, estado, permisos } = req.body;
+        const idRol = req.params.id;
+        
+        await client.query('BEGIN');
+        
+        await client.query('UPDATE roles SET nombre=$1, estado=$2 WHERE idrol=$3', [nombre, estado, idRol]);
+        
+        // Actualizar permisos: Borrar todos y re-insertar
+        await client.query('DELETE FROM rol_permisos WHERE idRol=$1', [idRol]);
+        
+        if (permisos && Array.isArray(permisos)) {
+            for (const p of permisos) {
+                await client.query('INSERT INTO rol_permisos (idRol, idPermiso) VALUES ($1, $2)', [idRol, p]);
+            }
+        }
+        
+        await client.query('COMMIT');
+        res.json({ message: 'Rol Actualizado' }); 
+    } catch(e) { 
+        await client.query('ROLLBACK');
+        handleDbError(res,e) 
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/api/roles/:id', authenticateToken, async (req, res) => { 
+    try { 
+        // ON DELETE CASCADE en la DB se encarga de rol_permisos
+        await pool.query('DELETE FROM roles WHERE idrol=$1', [req.params.id]); 
+        res.json({ message: 'Rol eliminado' }); 
+    } catch(e){ handleDbError(res,e) } 
+});
+
+// ==========================================
+// CAJAS, CLIENTES, PROVEEDORES, EMPLEADOS
+// ==========================================
+app.get('/api/users', authenticateToken, async (req, res) => { 
+    try { 
+        const r = await pool.query(`
+            SELECT u.codUsuario as "codUsuario", u.usuario, u.identidad, u.idCaja as "idCaja", u.idrol, u.estado,
+                   e.nombre || ' ' || e.apellido as "nombreEmpleado", 
+                   r.nombre as "nombreRol", 
+                   c.nombre as "nombreCaja" 
+            FROM usuarios u 
+            LEFT JOIN empleado e ON u.identidad = e.identidad 
+            LEFT JOIN roles r ON u.idrol = r.idrol 
+            LEFT JOIN caja c ON u.idCaja = c.idCaja
+        `); 
+        res.json(r.rows); 
+    } catch(e){handleDbError(res,e)} 
+});
+
+app.get('/api/empleados', authenticateToken, async (req, res) => { 
+    try { 
+        const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, estado FROM empleado'); 
+        res.json(r.rows); 
+    } catch(e){handleDbError(res,e)} 
+});
+
+app.get('/api/cajas', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idCaja as "idCaja", nombre, estado FROM caja'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/clientes', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion as "fechaCreacion" FROM clientes'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/proveedores', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codProveedor as "codProveedor", nombre, telefono, direccion FROM proveedores'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+
+// COSTOS
 app.get('/api/costos', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -139,11 +286,7 @@ app.delete('/api/costos/:id', authenticateToken, async (req, res) => {
   } catch(e) { handleDbError(res,e); }
 });
 
-// ==========================================
-// CAJA, ARQUEO Y RECARGAS
-// ==========================================
-
-// Obtener Arqueo Activo
+// CAJA Y ARQUEO
 app.get('/api/arqueo/active', authenticateToken, async (req, res) => {
   try {
     const { idCaja } = req.user;
@@ -164,7 +307,6 @@ app.get('/api/arqueo/active', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Obtener saldos del día (Tigo/Claro)
 app.get('/api/saldos/today', authenticateToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -177,20 +319,16 @@ app.get('/api/saldos/today', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Abrir Caja (Crea Arqueo y Saldos si no existen)
 app.post('/api/arqueo/open', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { montoInicial, saldoTigoInicial, saldoClaroInicial } = req.body;
     const { codUsuario, idCaja } = req.user;
     
-    // Check active
     const check = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
     if (check.rows.length > 0) return res.status(400).json({ error: 'Caja ya abierta.' });
 
     await client.query('BEGIN');
-
-    // 1. Crear Arqueo
     const idArqueo = await generateNextId('arqueo', 'idArqueo', 'ARQ', client);
     await client.query(
       `INSERT INTO arqueo (idArqueo, idCaja, idUsuario, fechaApertura, montoInicial, estado)
@@ -198,7 +336,6 @@ app.post('/api/arqueo/open', authenticateToken, async (req, res) => {
       [idArqueo, idCaja, codUsuario, montoInicial]
     );
 
-    // 2. Registrar Saldos Iniciales (Si no existen hoy)
     const today = new Date().toISOString().split('T')[0];
     const checkSaldos = await client.query('SELECT * FROM saldos WHERE fecha = $1', [today]);
     
@@ -227,7 +364,6 @@ app.post('/api/arqueo/open', authenticateToken, async (req, res) => {
   }
 });
 
-// Cerrar Caja
 app.post('/api/arqueo/close', authenticateToken, async (req, res) => {
   try {
      const { idArqueo } = req.body;
@@ -236,7 +372,6 @@ app.post('/api/arqueo/close', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Ingresos CRUD
 app.get('/api/ingresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
@@ -264,7 +399,6 @@ app.post('/api/ingresos', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Egresos CRUD
 app.get('/api/egresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
@@ -292,7 +426,6 @@ app.post('/api/egresos', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Registrar Recarga
 app.post('/api/recargas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -301,7 +434,6 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 1. Ingreso de Caja
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) 
@@ -309,7 +441,6 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
       [idIngreso, idCaja, `RECARGA ${red}: ${descripcion}`, precioCobrado, precioPagado]
     );
 
-    // 2. Registro Tabla Recargas
     const idRecargas = await generateNextId('recargas', 'idRecargas', 'REC', client);
     await client.query(
       `INSERT INTO recargas (idRecargas, red, tipo, descripcion, precioCobrado, precioPagado, estado)
@@ -317,7 +448,6 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
       [idRecargas, red, tipo, descripcion, precioCobrado, precioPagado]
     );
 
-    // 3. Descontar Saldo
     const today = new Date().toISOString().split('T')[0];
     await client.query(`
       UPDATE saldos 
@@ -335,11 +465,7 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
   }
 });
 
-
-// ==========================================
 // INVENTARIO
-// ==========================================
-
 app.get('/api/productos/unificados', authenticateToken, async (req, res) => {
   try {
       const r = await pool.query(`
@@ -355,7 +481,6 @@ app.get('/api/productos/unificados', authenticateToken, async (req, res) => {
   } catch(e) { handleDbError(res,e) }
 });
 
-// Accessories Master
 app.get('/api/inventory/accesorios-master', authenticateToken, async (req, res) => {
   try {
     const r = await pool.query(`
@@ -375,7 +500,6 @@ app.post('/api/inventory/accesorios-master', authenticateToken, async (req, res)
   } catch(e){handleDbError(res,e)} 
 });
 
-// Stock Inventory
 app.get('/api/inventory/stock', authenticateToken, async (req, res) => {
   try {
     const r = await pool.query(`
@@ -400,7 +524,6 @@ app.post('/api/inventory/stock', authenticateToken, async (req, res) => {
   } catch(e){handleDbError(res,e)} 
 });
 
-// Telefonos
 app.get('/api/inventory/telefonos', authenticateToken, async (req,res) => { 
   try{
     const r=await pool.query(`
@@ -426,23 +549,18 @@ app.post('/api/inventory/telefonos', authenticateToken, async (req, res) => {
   } catch(e){handleDbError(res,e)}
 });
 
-// Categories & Locations
 app.get('/api/inventory/categorias', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codCategoria as "codCategoria", tipo FROM categoria'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
 app.post('/api/inventory/categorias', authenticateToken, async (req, res) => { try { const id = await generateNextId('categoria','codCategoria','CAT'); await pool.query('INSERT INTO categoria VALUES($1,$2)',[id,req.body.tipo]); res.json({}); } catch(e){handleDbError(res,e)} });
 
 app.get('/api/inventory/ubicaciones', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idUbicacion as "idUbicacion", nombre, descripcion, estante, nivel, estado FROM ubicacion'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
 app.post('/api/inventory/ubicaciones', authenticateToken, async (req, res) => { try { const id = await generateNextId('ubicacion','idUbicacion','UBI'); const {nombre,descripcion,estante,nivel,estado}=req.body; await pool.query('INSERT INTO ubicacion VALUES($1,$2,$3,$4,$5,$6)',[id,nombre,descripcion,estante,nivel,estado]); res.json({}); } catch(e){handleDbError(res,e)} });
 
-// ==========================================
-// VENTAS
-// ==========================================
 app.post('/api/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { identidadCliente, total, detalles } = req.body;
     const { codUsuario } = req.user;
     
-    // Check Box
     const openBox = await client.query(`SELECT * FROM arqueo WHERE idUsuario = $1 AND estado = 'Activo'`, [codUsuario]);
     if(openBox.rows.length === 0) throw new Error("No tienes una caja abierta.");
 
@@ -504,37 +622,35 @@ app.get('/api/ventas/historial', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Admin Users, Empleados, Roles, Cajas, Proveedores, Clientes
-app.get('/api/users', authenticateToken, async (req, res) => { 
-    try { 
-        const r = await pool.query(`
-            SELECT u.codUsuario as "codUsuario", u.usuario, u.identidad, u.idCaja as "idCaja", u.idrol, u.estado,
-                   e.nombre || ' ' || e.apellido as "nombreEmpleado", 
-                   r.nombre as "nombreRol", 
-                   c.nombre as "nombreCaja" 
-            FROM usuarios u 
-            JOIN empleado e ON u.identidad = e.identidad 
-            JOIN roles r ON u.idrol = r.idrol 
-            JOIN caja c ON u.idCaja = c.idCaja
-        `); 
-        res.json(r.rows); 
-    } catch(e){handleDbError(res,e)} 
+// Admin Ops for Boxes and Roles
+app.post('/api/roles', authenticateToken, async (req, res) => { 
+  // Handled above in transaction
 });
 
-app.get('/api/empleados', authenticateToken, async (req, res) => { 
+app.post('/api/cajas', authenticateToken, async (req, res) => { 
     try { 
-        // Empleado keys are simple (lowercase names in DB usually match simple keys, but 'fechaCreacion' needs alias)
-        const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, estado FROM empleado'); 
-        res.json(r.rows); 
+        const id = await generateNextId('caja','idCaja','CAJA'); 
+        await pool.query('INSERT INTO caja (idCaja, nombre, estado) VALUES ($1,$2,$3)', [id, req.body.nombre, 'Activa']); 
+        res.json({ message: 'Caja Creada' }); 
     } catch(e){handleDbError(res,e)} 
 });
+app.put('/api/cajas/:id', authenticateToken, async (req, res) => { try { const {nombre,estado}=req.body; await pool.query('UPDATE caja SET nombre=$1, estado=$2 WHERE idCaja=$3',[nombre,estado,req.params.id]); res.json({message:'Caja Actualizada'}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/cajas/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM caja WHERE idCaja=$1',[req.params.id]); res.json({message:'Caja Eliminada'}); } catch(e){handleDbError(res,e)} });
 
-app.get('/api/roles', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idrol, nombre, estado FROM roles'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/cajas', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idCaja as "idCaja", nombre, estado FROM caja'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/clientes', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion as "fechaCreacion" FROM clientes'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/proveedores', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codProveedor as "codProveedor", nombre, telefono, direccion FROM proveedores'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.post('/api/empleados', authenticateToken, async (req, res) => { 
+    try { 
+        const {identidad,nombre,apellido,direccion,telefono,estado}=req.body; 
+        await pool.query('INSERT INTO empleado VALUES($1,$2,$3,$4,$5,$6,NOW())',[identidad,nombre,apellido,direccion,telefono,estado]); 
+        res.json({message:'Creado'}); 
+    } catch(e){handleDbError(res,e)} 
+});
+app.put('/api/empleados/:id', authenticateToken, async (req, res) => { try { const {nombre,apellido,direccion,telefono,estado}=req.body; await pool.query('UPDATE empleado SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, estado=$5 WHERE identidad=$6',[nombre,apellido,direccion,telefono,estado,req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/empleados/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM empleado WHERE identidad=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
 
-// Serve Frontend
+app.post('/api/users', authenticateToken, async (req, res) => { try { const {usuario,password,identidad,idrol,idCaja,estado}=req.body; const id=await generateNextId('usuarios','codUsuario','US'); await pool.query('INSERT INTO usuarios VALUES($1,$2,$3,$4,$5,$6,NULL,NOW(),NULL,$7)',[id,usuario,password,identidad,idCaja,idrol,estado]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.put('/api/users/:id', authenticateToken, async (req, res) => { try { const {usuario,password,identidad,idrol,idCaja,estado}=req.body; if(password){ await pool.query('UPDATE usuarios SET usuario=$1, password=$2, identidad=$3, idrol=$4, idCaja=$5, estado=$6 WHERE codUsuario=$7',[usuario,password,identidad,idrol,idCaja,estado,req.params.id]); } else { await pool.query('UPDATE usuarios SET usuario=$1, identidad=$2, idrol=$3, idCaja=$4, estado=$5 WHERE codUsuario=$6',[usuario,identidad,idrol,idCaja,estado,req.params.id]); } res.json({}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/users/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM usuarios WHERE codUsuario=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+
 app.use(express.static(path.join(__dirname, 'build')));
 app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'build', 'index.html')); });
 

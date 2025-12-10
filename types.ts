@@ -34,11 +34,19 @@ export interface Empleado {
   fechaModificacion?: string;
 }
 
+// Tabla: permisos
+export interface Permiso {
+  idPermiso: string;
+  nombre: string;
+  modulo: string;
+}
+
 // Tabla: roles
 export interface Rol {
   idrol: string; // PK
   nombre: string;
   estado: EstadoGeneral;
+  permisos?: string[]; // Lista de IDs de permisos asignados
 }
 
 // Tabla: caja
@@ -234,6 +242,7 @@ export interface UserSession {
   rol: string;
   nombreEmpleado: string;
   idCaja: string;
+  permisos?: string[]; // IDs de permisos
 }
 
 export interface AuthResponse {
@@ -259,7 +268,7 @@ export interface ProductoUnified {
 
 export interface VentaPayload {
   identidadCliente: string;
-  tipoCompra: 'Contado' | 'Credito'; // Although DB doesn't have tipoCompra in provided schema, logic requires it or we map to config
+  tipoCompra: 'Contado' | 'Credito'; 
   total: number;
   isv?: number;
   descuento?: number;

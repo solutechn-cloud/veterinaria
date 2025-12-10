@@ -17,7 +17,8 @@ import {
   Ubicacion,
   Proveedor,
   Costo,
-  Saldo
+  Saldo,
+  Permiso
 } from '../types';
 
 const API_URL = '/api';
@@ -33,9 +34,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   try {
     const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
     
-    // Si es error de autenticación (401/403) PERO no es el login, redirigir.
-    // Si es login, dejamos pasar el error para que el formulario muestre "Contraseña incorrecta".
-    if ((response.status === 401 || response.status === 403) && !endpoint.includes('/auth/login')) {
+    // Lógica para interceptar 401/403 SOLO si NO es el endpoint de login
+    const isLoginEndpoint = endpoint.includes('/auth/login');
+
+    if ((response.status === 401 || response.status === 403) && !isLoginEndpoint) {
       localStorage.removeItem('smartcloud_token');
       localStorage.removeItem('smartcloud_user');
       window.location.href = '#/login';
@@ -43,8 +45,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
 
     if (!response.ok) {
+        // Intentar parsear el JSON de error
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${response.status}`);
+        throw new Error(errData.error || `Error del servidor (${response.status})`);
     }
     
     return await response.json();
@@ -120,18 +123,24 @@ export const AdminService = {
   createUser: (data: any) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: 'DELETE' }),
+  
   getEmpleados: () => request<Empleado[]>('/empleados').then(res => Array.isArray(res) ? res : []),
   createEmpleado: (data: Empleado) => request('/empleados', { method: 'POST', body: JSON.stringify(data) }),
   updateEmpleado: (id: string, data: Partial<Empleado>) => request(`/empleados/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteEmpleado: (id: string) => request(`/empleados/${id}`, { method: 'DELETE' }),
+  
   getRoles: () => request<Rol[]>('/roles').then(res => Array.isArray(res) ? res : []),
-  createRol: (nombre: string) => request('/roles', { method: 'POST', body: JSON.stringify({ nombre }) }),
+  createRol: (data: {nombre: string, permisos: string[]}) => request('/roles', { method: 'POST', body: JSON.stringify(data) }),
   updateRol: (id: string, data: Partial<Rol>) => request(`/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRol: (id: string) => request(`/roles/${id}`, { method: 'DELETE' }),
+  getPermisos: () => request<Permiso[]>('/permisos').then(res => Array.isArray(res) ? res : []),
+
   getCajas: () => request<Caja[]>('/cajas').then(res => Array.isArray(res) ? res : []),
   createCaja: (nombre: string) => request('/cajas', { method: 'POST', body: JSON.stringify({ nombre }) }),
   updateCaja: (id: string, data: Partial<Caja>) => request(`/cajas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCaja: (id: string) => request(`/cajas/${id}`, { method: 'DELETE' }),
+  
+  getRecargas: (idRecargas: string) => request<any>(`/recargas/${idRecargas}`),
 };
 
 export const ClientService = {
