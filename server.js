@@ -68,6 +68,17 @@ async function initDB() {
     await pool.query("INSERT INTO proveedores (codProveedor, nombre, telefono, direccion, fechaCreacion) VALUES ('PROV-GEN', 'General', '0000', 'Ciudad', NOW()) ON CONFLICT DO NOTHING");
     await pool.query("INSERT INTO ubicacion (idUbicacion, nombre, descripcion, estante, nivel, estado) VALUES ('UBIC-0001', 'Vitrina Principal', 'Entrada', '1', '1', 'Activo') ON CONFLICT DO NOTHING");
     
+    // Default Admin User seeds if empty
+    const rolesCheck = await pool.query("SELECT * FROM roles");
+    if(rolesCheck.rowCount === 0) {
+        await pool.query("INSERT INTO roles (idrol, nombre, estado) VALUES ('ROL-ADMIN', 'Administrador', 'Activo')");
+        await pool.query("INSERT INTO roles (idrol, nombre, estado) VALUES ('ROL-VEND', 'Vendedor', 'Activo')");
+        await pool.query("INSERT INTO caja (idCaja, nombre, estado) VALUES ('CAJA-01', 'Caja Principal', 'Activa')");
+        await pool.query("INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono, estado) VALUES ('0801199000000', 'Admin', 'Sistema', 'Tegucigalpa', '00000000', 'Activo')");
+        // Pass: admin123
+        await pool.query("INSERT INTO usuarios (codUsuario, usuario, password, identidad, idCaja, idrol, estado) VALUES ('USR-001', 'admin', 'admin123', '0801199000000', 'CAJA-01', 'ROL-ADMIN', 'Activo')");
+    }
+
     console.log('✅ Base de datos inicializada correctamente');
   } catch (err) {
     console.error('❌ Error inicializando BD (No fatal):', err.message);
@@ -77,8 +88,6 @@ async function initDB() {
 // --- HELPER: GENERADOR DE IDs (ROBUST SCAN) ---
 async function generateNextId(table, column, prefix, client = pool) {
   try {
-    // Get top 50 IDs to analyze pattern, ignore malformed ones
-    // Use quotes for table/column to handle case sensitivity if necessary, but standard pg driver handles unquoted as lowercase
     const query = `
       SELECT ${column} as id 
       FROM ${table} 
@@ -102,7 +111,6 @@ async function generateNextId(table, column, prefix, client = pool) {
       }
     }
     
-    // If no valid ID found (or table empty), start at 1
     const nextNum = maxNum + 1;
     return `${prefix}-${nextNum.toString().padStart(4, '0')}`;
   } catch (err) {
@@ -170,6 +178,179 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ token, user: userData });
   } catch (err) { handleDbError(res, err); }
 });
+
+// ==========================================
+// ADMIN MODULES (NEWLY ADDED)
+// ==========================================
+
+// 1. USUARIOS
+app.get('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.codUsuario, u.usuario, u.identidad, u.idrol, u.idCaja, u.estado,
+             e.nombre || ' ' || e.apellido as "nombreEmpleado",
+             r.nombre as "nombreRol", c.nombre as "nombreCaja"
+      FROM usuarios u
+      LEFT JOIN empleado e ON u.identidad = e.identidad
+      LEFT JOIN roles r ON u.idrol = r.idrol
+      LEFT JOIN caja c ON u.idCaja = c.idCaja
+    `);
+    res.json(result.rows);
+  } catch (err) { handleDbError(res, err); }
+});
+
+app.post('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const { usuario, password, identidad, idrol, idCaja, estado } = req.body;
+    const codUsuario = await generateNextId('usuarios', 'codUsuario', 'USR');
+    // In production, hash password here
+    await pool.query(
+      `INSERT INTO usuarios (codUsuario, usuario, password, identidad, idrol, idCaja, estado, fechaCreacion) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [codUsuario, usuario, password, identidad, idrol, idCaja, estado]
+    );
+    res.status(201).json({ message: 'Usuario creado', id: codUsuario });
+  } catch (err) { handleDbError(res, err); }
+});
+
+app.put('/api/users/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { usuario, password, identidad, idrol, idCaja, estado } = req.body;
+    
+    // Only update password if provided and not empty
+    if (password && password.trim() !== '') {
+         await pool.query(
+            `UPDATE usuarios SET usuario=$1, password=$2, identidad=$3, idrol=$4, idCaja=$5, estado=$6, fechaModificacion=NOW() WHERE codUsuario=$7`,
+            [usuario, password, identidad, idrol, idCaja, estado, id]
+         );
+    } else {
+         await pool.query(
+            `UPDATE usuarios SET usuario=$1, identidad=$2, idrol=$3, idCaja=$4, estado=$5, fechaModificacion=NOW() WHERE codUsuario=$6`,
+            [usuario, identidad, idrol, idCaja, estado, id]
+         );
+    }
+    res.json({ message: 'Usuario actualizado' });
+  } catch (err) { handleDbError(res, err); }
+});
+
+app.delete('/api/users/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM usuarios WHERE codUsuario=$1', [id]);
+        res.json({ message: 'Usuario eliminado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+// 2. EMPLEADOS
+app.get('/api/empleados', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM empleado ORDER BY nombre ASC');
+        res.json(result.rows);
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.post('/api/empleados', authenticateToken, async (req, res) => {
+    try {
+        const { identidad, nombre, apellido, direccion, telefono, estado } = req.body;
+        // Identidad is manual PK
+        await pool.query(
+            `INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono, estado, fechaCreacion) 
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [identidad, nombre, apellido, direccion, telefono, estado]
+        );
+        res.status(201).json({ message: 'Empleado creado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.put('/api/empleados/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, apellido, direccion, telefono, estado } = req.body;
+        await pool.query(
+            `UPDATE empleado SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, estado=$5, fechaModificacion=NOW() WHERE identidad=$6`,
+            [nombre, apellido, direccion, telefono, estado, id]
+        );
+        res.json({ message: 'Empleado actualizado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.delete('/api/empleados/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM empleado WHERE identidad=$1', [id]);
+        res.json({ message: 'Empleado eliminado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+// 3. ROLES
+app.get('/api/roles', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM roles ORDER BY nombre ASC');
+        res.json(result.rows);
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.post('/api/roles', authenticateToken, async (req, res) => {
+    try {
+        const { nombre } = req.body;
+        const idrol = await generateNextId('roles', 'idrol', 'ROL');
+        await pool.query(`INSERT INTO roles (idrol, nombre, estado) VALUES ($1, $2, 'Activo')`, [idrol, nombre]);
+        res.status(201).json({ message: 'Rol creado', id: idrol });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.put('/api/roles/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, estado } = req.body;
+        await pool.query(`UPDATE roles SET nombre=$1, estado=$2 WHERE idrol=$3`, [nombre, estado, id]);
+        res.json({ message: 'Rol actualizado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.delete('/api/roles/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM roles WHERE idrol=$1', [id]);
+        res.json({ message: 'Rol eliminado' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+// 4. CAJAS
+app.get('/api/cajas', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM caja ORDER BY nombre ASC');
+        res.json(result.rows);
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.post('/api/cajas', authenticateToken, async (req, res) => {
+    try {
+        const { nombre } = req.body;
+        const idCaja = await generateNextId('caja', 'idCaja', 'CAJA');
+        await pool.query(`INSERT INTO caja (idCaja, nombre, estado) VALUES ($1, $2, 'Activa')`, [idCaja, nombre]);
+        res.status(201).json({ message: 'Caja creada', id: idCaja });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.put('/api/cajas/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, estado } = req.body;
+        await pool.query(`UPDATE caja SET nombre=$1, estado=$2 WHERE idCaja=$3`, [nombre, estado, id]);
+        res.json({ message: 'Caja actualizada' });
+    } catch (err) { handleDbError(res, err); }
+});
+
+app.delete('/api/cajas/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM caja WHERE idCaja=$1', [id]);
+        res.json({ message: 'Caja eliminada' });
+    } catch (err) { handleDbError(res, err); }
+});
+
 
 // ==========================================
 // CLIENTES

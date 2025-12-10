@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario, Empleado, Rol, Caja, EstadoGeneral } from '../types';
 import { AdminService } from '../services/api';
-import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2 } from 'lucide-react';
+import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 type Tab = 'USERS' | 'EMPLOYEES' | 'ROLES' | 'CAJAS';
@@ -12,7 +12,6 @@ interface AdminUsersProps {
 }
 
 const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
-  // El activeTab ahora se controla principalmente por la prop, aunque se mantiene el estado local
   const [activeTab, setActiveTab] = useState<Tab>(initialView);
   
   const [users, setUsers] = useState<Usuario[]>([]);
@@ -22,7 +21,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const [loading, setLoading] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<Tab>(initialView);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
 
@@ -31,25 +29,41 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const [empForm, setEmpForm] = useState({ identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo' });
   const [simpleForm, setSimpleForm] = useState({ nombre: '', estado: 'Activo' });
 
+  // Sync activeTab when initialView prop changes (User navigation)
   useEffect(() => {
     setActiveTab(initialView);
-    loadAllData();
   }, [initialView]);
 
-  const loadAllData = async () => {
+  // Load data whenever tab changes
+  useEffect(() => {
+    loadData();
+  }, [activeTab]);
+
+  const loadData = async () => {
     setLoading(true);
     try {
-      // Cargamos todo para tener los selectores disponibles (e.g. Roles para crear Usuarios)
-      const [u, e, r, c] = await Promise.all([
-        AdminService.getUsers().catch(() => []),
-        AdminService.getEmpleados().catch(() => []),
-        AdminService.getRoles().catch(() => []),
-        AdminService.getCajas().catch(() => [])
-      ]);
-      setUsers(u || []);
-      setEmpleados(e || []);
-      setRoles(r || []);
-      setCajas(c || []);
+      if (activeTab === 'USERS') {
+         // Load dependencies for Users form as well
+         const [u, e, r, c] = await Promise.all([
+            AdminService.getUsers(),
+            AdminService.getEmpleados(),
+            AdminService.getRoles(),
+            AdminService.getCajas()
+         ]);
+         setUsers(u || []);
+         setEmpleados(e || []);
+         setRoles(r || []);
+         setCajas(c || []);
+      } else if (activeTab === 'EMPLOYEES') {
+         const data = await AdminService.getEmpleados();
+         setEmpleados(data || []);
+      } else if (activeTab === 'ROLES') {
+         const data = await AdminService.getRoles();
+         setRoles(data || []);
+      } else if (activeTab === 'CAJAS') {
+         const data = await AdminService.getCajas();
+         setCajas(data || []);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -67,31 +81,31 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     }
   };
 
-  const openModal = (type: Tab, data?: any) => {
-    setModalType(type);
+  const openModal = (data?: any) => {
     setIsEditing(!!data);
     setCurrentId(data ? (data.codUsuario || data.identidad || data.idrol || data.idCaja) : null);
 
-    if (type === 'USERS') {
+    // Reset Forms based on current tab
+    if (activeTab === 'USERS') {
       setUserForm(data ? { 
-        usuario: data.usuario, 
-        password: '', // Password no se llena al editar por seguridad
-        identidad: data.identidad, 
-        idrol: data.idrol, 
-        idCaja: data.idCaja,
-        estado: data.estado 
+        usuario: data.usuario || '', 
+        password: '', // Never fill password
+        identidad: data.identidad || '', 
+        idrol: data.idrol || '', 
+        idCaja: data.idCaja || '',
+        estado: data.estado || 'Activo'
       } : { usuario: '', password: '', identidad: '', idrol: '', idCaja: '', estado: 'Activo' });
-    } else if (type === 'EMPLOYEES') {
+    } else if (activeTab === 'EMPLOYEES') {
       setEmpForm(data ? { 
-        identidad: data.identidad, 
-        nombre: data.nombre, 
-        apellido: data.apellido, 
-        direccion: data.direccion, 
-        telefono: data.telefono,
-        estado: data.estado
+        identidad: data.identidad || '', 
+        nombre: data.nombre || '', 
+        apellido: data.apellido || '', 
+        direccion: data.direccion || '', 
+        telefono: data.telefono || '',
+        estado: data.estado || 'Activo'
       } : { identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo' });
     } else {
-      setSimpleForm(data ? { nombre: data.nombre, estado: data.estado } : { nombre: '', estado: 'Activo' });
+      setSimpleForm(data ? { nombre: data.nombre || '', estado: data.estado || 'Activo' } : { nombre: '', estado: 'Activo' });
     }
     
     setShowModal(true);
@@ -100,22 +114,21 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (modalType === 'USERS') {
-        // Validación básica
+      if (activeTab === 'USERS') {
         if (!userForm.identidad || !userForm.idrol || !userForm.idCaja) {
            return Swal.fire('Error', 'Seleccione Empleado, Rol y Caja', 'warning');
         }
         if(isEditing) await AdminService.updateUser(currentId!, userForm);
         else await AdminService.createUser(userForm);
-      } else if (modalType === 'EMPLOYEES') {
+      } else if (activeTab === 'EMPLOYEES') {
         const empPayload = { ...empForm, estado: empForm.estado as EstadoGeneral };
         if (isEditing) await AdminService.updateEmpleado(currentId!, empPayload);
         else await AdminService.createEmpleado({ ...empPayload, estado: 'Activo' });
-      } else if (modalType === 'ROLES') {
+      } else if (activeTab === 'ROLES') {
         const rolPayload = { ...simpleForm, estado: simpleForm.estado as EstadoGeneral };
         if (isEditing) await AdminService.updateRol(currentId!, rolPayload);
         else await AdminService.createRol(simpleForm.nombre);
-      } else if (modalType === 'CAJAS') {
+      } else if (activeTab === 'CAJAS') {
         const cajaPayload = { ...simpleForm, estado: simpleForm.estado as Caja['estado'] };
         if (isEditing) await AdminService.updateCaja(currentId!, cajaPayload);
         else await AdminService.createCaja(simpleForm.nombre);
@@ -129,7 +142,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
       });
 
       setShowModal(false);
-      loadAllData();
+      loadData();
     } catch (error: any) {
       Swal.fire({
         icon: 'error',
@@ -139,26 +152,60 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    const result = await Swal.fire({
+      title: '¿Estás seguro?',
+      text: "No podrás revertir esto.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            if (activeTab === 'USERS') await AdminService.deleteUser(id);
+            else if (activeTab === 'EMPLOYEES') await AdminService.deleteEmpleado(id);
+            else if (activeTab === 'ROLES') await AdminService.deleteRol(id);
+            else if (activeTab === 'CAJAS') await AdminService.deleteCaja(id);
+            
+            Swal.fire('Eliminado', 'Registro eliminado.', 'success');
+            loadData();
+        } catch (error: any) {
+            Swal.fire('Error', error.message, 'error');
+        }
+    }
+  };
+
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">{getTitle()}</h2>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            {activeTab === 'USERS' && <Users className="text-indigo-500"/>}
+            {activeTab === 'EMPLOYEES' && <Briefcase className="text-indigo-500"/>}
+            {(activeTab === 'ROLES' || activeTab === 'CAJAS') && <Shield className="text-indigo-500"/>}
+            {getTitle()}
+          </h2>
           <p className="text-slate-500 mt-1 text-sm">Administración del sistema</p>
         </div>
         <button 
-            onClick={() => openModal(activeTab)}
+            onClick={() => openModal()}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all w-full md:w-auto justify-center"
           >
-            <PlusCircle size={18} /> Nuevo
+            <PlusCircle size={18} /> Nuevo Registro
           </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-1 flex flex-col">
-        {loading ? (
-          <div className="p-10 text-center text-slate-500">Cargando datos...</div>
-        ) : (
-          <div className="overflow-x-auto w-full flex-1">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-1 flex flex-col relative">
+        {loading && (
+             <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center">
+                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+             </div>
+        )}
+        
+        <div className="overflow-x-auto w-full flex-1">
             <table className="w-full text-left min-w-[600px]">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold sticky top-0">
                  <tr>
@@ -202,7 +249,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                      </td>
                      <td className="p-4"><span className={`text-xs font-bold px-2 py-1 rounded-full ${u.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.estado}</span></td>
                      <td className="p-4 text-right">
-                        <button onClick={() => openModal('USERS', u)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                        <button onClick={() => openModal(u)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                        <button onClick={() => handleDelete(u.codUsuario)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors ml-2"><Trash2 size={16}/></button>
                      </td>
                   </tr>
                 ))}
@@ -217,7 +265,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                       <td className="p-4 text-xs font-mono">{e.telefono}</td>
                       <td className="p-4"><span className={`text-xs font-bold px-2 py-1 rounded-full ${e.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{e.estado}</span></td>
                       <td className="p-4 text-right">
-                         <button onClick={() => openModal('EMPLOYEES', e)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                         <button onClick={() => openModal(e)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                         <button onClick={() => handleDelete(e.identidad)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors ml-2"><Trash2 size={16}/></button>
                       </td>
                    </tr>
                 ))}
@@ -228,21 +277,22 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                         <td className="p-4 font-bold text-slate-800">{item.nombre}</td>
                         <td className="p-4"><span className={`text-xs font-bold px-2 py-1 rounded-full ${item.estado === 'Activo' || item.estado === 'Activa' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{item.estado}</span></td>
                         <td className="p-4 text-right">
-                           <button onClick={() => openModal(activeTab, item)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                           <button onClick={() => openModal(item)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                           <button onClick={() => handleDelete(item.idrol || item.idCaja)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors ml-2"><Trash2 size={16}/></button>
                         </td>
                     </tr>
                 ))}
 
                 {/* Fallback for empty */}
-                {(
+                {(!loading && (
                     (activeTab === 'USERS' && users.length === 0) || 
                     (activeTab === 'EMPLOYEES' && empleados.length === 0) ||
-                    (activeTab === 'ROLES' && roles.length === 0)
-                 ) && <tr><td colSpan={4} className="p-8 text-center text-slate-400">No hay registros encontrados</td></tr>}
+                    (activeTab === 'ROLES' && roles.length === 0) ||
+                    (activeTab === 'CAJAS' && cajas.length === 0)
+                 )) && <tr><td colSpan={4} className="p-8 text-center text-slate-400">No hay registros encontrados</td></tr>}
               </tbody>
             </table>
           </div>
-        )}
       </div>
 
       {showModal && (
@@ -250,7 +300,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
              <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <h3 className="text-xl font-bold text-slate-800">
-                    {isEditing ? 'Editar' : 'Nuevo'} {modalType === 'USERS' ? 'Usuario' : modalType === 'EMPLOYEES' ? 'Empleado' : modalType === 'ROLES' ? 'Rol' : 'Caja'}
+                    {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'USERS' ? 'Usuario' : activeTab === 'EMPLOYEES' ? 'Empleado' : activeTab === 'ROLES' ? 'Rol' : 'Caja'}
                 </h3>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={24}/></button>
              </div>
@@ -258,7 +308,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
              <form onSubmit={handleSubmit} className="space-y-4">
                 
                 {/* --- FORMULARIO USUARIOS --- */}
-                {modalType === 'USERS' && (
+                {activeTab === 'USERS' && (
                     <>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Usuario</label>
@@ -310,7 +360,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                 )}
 
                 {/* --- FORMULARIO EMPLEADOS --- */}
-                {modalType === 'EMPLOYEES' && (
+                {activeTab === 'EMPLOYEES' && (
                     <>
                          <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Número Identidad</label>
@@ -343,7 +393,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                 )}
 
                 {/* --- FORMULARIO ROLES Y CAJAS --- */}
-                {(modalType === 'ROLES' || modalType === 'CAJAS') && (
+                {(activeTab === 'ROLES' || activeTab === 'CAJAS') && (
                     <>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Nombre / Descripción</label>
