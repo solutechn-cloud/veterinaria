@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   BarChart, 
@@ -50,7 +51,9 @@ const StatCard: React.FC<{
 );
 
 const Dashboard: React.FC = () => {
-  const totalSales = MOCK_SALES.reduce((acc, curr) => acc + curr.total, 0);
+  const safeSales = Array.isArray(MOCK_SALES) ? MOCK_SALES : [];
+  const totalSales = safeSales.reduce((acc, curr) => acc + (curr.total || 0), 0);
+  const safeChartData = Array.isArray(dataSales) ? dataSales : [];
 
   return (
     <div className="space-y-8">
@@ -61,13 +64,13 @@ const Dashboard: React.FC = () => {
           <p className="text-slate-500 mt-1">Resumen general de SmartCloud ERP</p>
         </div>
         <div className="flex gap-3">
-          <select className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm">
+          <select className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm w-full md:w-auto">
             <option>Esta Semana</option>
             <option>Este Mes</option>
             <option>Este Año</option>
           </select>
-          <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-indigo-600/20 transition-all">
-            Descargar Reporte
+          <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-indigo-600/20 transition-all whitespace-nowrap">
+            Descargar
           </button>
         </div>
       </div>
@@ -85,7 +88,7 @@ const Dashboard: React.FC = () => {
         />
         <StatCard 
           title="Transacciones" 
-          value={MOCK_SALES.length.toString()} 
+          value={safeSales.length.toString()} 
           icon={<ShoppingBag size={22} />} 
           trend="+5.2%"
           isPositive={true}
@@ -114,65 +117,66 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Sales Chart */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Resumen de Ingresos</h3>
               <p className="text-sm text-slate-500">Comportamiento de ventas últimos 7 días</p>
             </div>
-            <button className="text-indigo-600 text-sm font-bold hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
-              Ver detalles
-            </button>
           </div>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataSales} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#64748b', fontSize: 12}} 
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#64748b', fontSize: 12}} 
-                />
-                <Tooltip 
-                  cursor={{fill: '#f8fafc'}} 
-                  contentStyle={{
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    padding: '12px 16px'
-                  }} 
-                />
-                <Bar 
-                  dataKey="venta" 
-                  fill="url(#colorVenta)" 
-                  radius={[6, 6, 0, 0]} 
-                  barSize={40} 
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-80 w-full">
+            {safeChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={safeChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fill: '#64748b', fontSize: 12}} 
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fill: '#64748b', fontSize: 12}} 
+                  />
+                  <Tooltip 
+                    cursor={{fill: '#f8fafc'}} 
+                    contentStyle={{
+                      borderRadius: '12px', 
+                      border: 'none', 
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      padding: '12px 16px'
+                    }} 
+                  />
+                  <Bar 
+                    dataKey="venta" 
+                    fill="url(#colorVenta)" 
+                    radius={[6, 6, 0, 0]} 
+                    barSize={40} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-400">Sin datos para mostrar</div>
+            )}
           </div>
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white p-8 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
+        <div className="bg-white p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col">
           <h3 className="font-bold text-slate-800 text-lg mb-6">Actividad Reciente</h3>
-          <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-            {MOCK_SALES.slice(0, 4).map((sale) => (
+          <div className="space-y-6 flex-1 overflow-y-auto pr-2 max-h-[400px]">
+            {safeSales.slice(0, 4).map((sale) => (
               <div key={sale.id} className="flex items-center gap-4 group cursor-pointer">
-                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-all">
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-all shrink-0">
                   <DollarSign size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -180,23 +184,10 @@ const Dashboard: React.FC = () => {
                     <p className="font-semibold text-slate-800 text-sm truncate">Venta #{sale.id}</p>
                     <span className="text-xs font-bold text-slate-800">L. {sale.total}</span>
                   </div>
-                  <p className="text-xs text-slate-500">{new Date(sale.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • {sale.clientName}</p>
+                  <p className="text-xs text-slate-500 truncate">{new Date(sale.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • {sale.clientName}</p>
                 </div>
               </div>
             ))}
-            
-            <div className="flex items-center gap-4 group cursor-pointer">
-              <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-teal-50 group-hover:text-teal-600 group-hover:border-teal-100 transition-all">
-                <TrendingUp size={20} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-1">
-                  <p className="font-semibold text-slate-800 text-sm">Cierre de Caja</p>
-                  <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">OK</span>
-                </div>
-                <p className="text-xs text-slate-500">Ayer 18:00 • Sistema</p>
-              </div>
-            </div>
           </div>
           
           <button className="mt-6 w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all border border-slate-200 border-dashed hover:border-indigo-200 hover:border-solid">

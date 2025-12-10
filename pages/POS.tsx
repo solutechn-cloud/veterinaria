@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { InventoryService, ClientService, SalesService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente } from '../types';
-import { Search, ShoppingCart, Trash2, UserPlus, CreditCard, Smartphone, Headphones, Zap, RefreshCw, Printer } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, RefreshCw } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
@@ -30,8 +31,8 @@ const POS: React.FC = () => {
       InventoryService.getUnifiedProducts(),
       ClientService.getAll()
     ]).then(([prodData, clientData]) => {
-      setProducts(prodData);
-      setClients(clientData);
+      setProducts(prodData || []);
+      setClients(clientData || []);
     }).catch(err => console.error(err))
       .finally(() => setIsLoading(false));
   };
@@ -78,14 +79,9 @@ const POS: React.FC = () => {
     setCart(prev => prev.filter(item => item.codDetalleVenta !== tempId));
   };
 
-  // --- UPDATED CALCULATION LOGIC ---
-  // Matches Legacy: Impuesto = total * 0.15; Subtotal = total - Impuesto;
   const calculateTotal = () => {
     const grossTotal = cart.reduce((acc, item) => acc + (item.cantidad * item.precioVenta), 0);
-    const totalBeforeDiscount = grossTotal;
-    const finalTotal = totalBeforeDiscount - discount;
-    
-    // ISV Calculation based on final total (Inclusive)
+    const finalTotal = grossTotal - discount;
     const isv = finalTotal * 0.15;
     const subtotal = finalTotal - isv;
 
@@ -104,28 +100,20 @@ const POS: React.FC = () => {
       const doc = new jsPDF();
       const client = getClientDetails();
 
-      // Config
-      const pageWidth = doc.internal.pageSize.getWidth();
       doc.setFont("helvetica", "normal");
       
-      // Header Box
       doc.setDrawColor(0);
-      doc.rect(10, 10, 90, 30); // Left Box (Company)
-      doc.rect(110, 10, 90, 30); // Right Box (Invoice Info)
+      doc.rect(10, 10, 90, 30);
+      doc.rect(110, 10, 90, 30);
 
-      // Company Info
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.text("SMARTCLOUD", 55, 18, { align: "center" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.text("Mercado Nuevo-Avenida Valle", 55, 23, { align: "center" });
-      doc.text("Frente a Tiendas Me lo Llevo", 55, 27, { align: "center" });
-      doc.setFont("helvetica", "bold");
-      doc.text("Venta de Telefonos y Accesorios", 55, 32, { align: "center" });
-      doc.text("Telefono:+504-96676374", 55, 36, { align: "center" });
+      doc.text("Telefono:+504-96676374", 55, 27, { align: "center" });
 
-      // Invoice Info (Right)
       doc.setFontSize(12);
       doc.text("FACTURA", 155, 18, { align: "center" });
       doc.setFontSize(10);
@@ -133,77 +121,34 @@ const POS: React.FC = () => {
       
       doc.setFontSize(8);
       doc.text(`FECHA: ${date.toLocaleDateString()}`, 115, 30);
-      doc.text(`R.T.N:`, 115, 35);
       
-      // Client Info Row
       doc.rect(10, 45, 190, 20);
-      doc.line(10, 55, 200, 55); // Horizontal divider
-      doc.line(110, 45, 110, 65); // Vertical divider
-
-      doc.setFont("helvetica", "bold");
-      doc.text("FECHA EMISION:", 12, 50);
-      doc.setFont("helvetica", "normal");
-      doc.text(date.toLocaleDateString(), 40, 50);
-
-      doc.setFont("helvetica", "bold");
-      doc.text("CONDICIONES:", 112, 50);
-      doc.setFont("helvetica", "normal");
-      doc.text(paymentType.toUpperCase(), 140, 50);
+      doc.line(10, 55, 200, 55); 
+      doc.line(110, 45, 110, 65); 
 
       doc.setFont("helvetica", "bold");
       doc.text("CLIENTE:", 12, 60);
       doc.setFont("helvetica", "normal");
       doc.text(client ? `${client.nombre} ${client.apellido}`.toUpperCase() : "CONSUMIDOR FINAL", 40, 60);
 
-      doc.setFont("helvetica", "bold");
-      doc.text("VENDEDOR:", 112, 60);
-      doc.setFont("helvetica", "normal");
-      doc.text(user?.nombreEmpleado || "ADMIN", 140, 60);
-
-      // Table Header
       let y = 70;
       doc.setFillColor(240, 240, 240);
       doc.rect(10, y, 190, 8, 'F');
-      doc.rect(10, y, 190, 8, 'S'); // Stroke
       
       doc.setFont("helvetica", "bold");
       doc.text("DESCRIPCION", 15, y+5);
-      doc.text("CANT", 130, y+5, { align: "center" });
-      doc.text("PREC.", 160, y+5, { align: "center" });
       doc.text("TOTAL", 190, y+5, { align: "center" });
 
-      // Table Content
       y += 8;
       doc.setFont("helvetica", "normal");
       cart.forEach(item => {
         const itemTotal = item.cantidad * item.precioVenta;
         doc.text(item.descripcionProducto?.substring(0, 40) || "", 15, y+5);
-        doc.text(item.cantidad.toString(), 130, y+5, { align: "center" });
-        doc.text(item.precioVenta.toFixed(2), 160, y+5, { align: "center" });
         doc.text(itemTotal.toFixed(2), 190, y+5, { align: "center" });
         y += 6;
       });
 
-      // Totals Box
-      const totalY = 160; // Fixed position for totals at bottom
-      doc.rect(120, totalY, 80, 30);
-      
-      doc.text("Sub-Total", 125, totalY + 6);
-      doc.text(subtotal.toFixed(2), 195, totalY + 6, { align: "right" });
-      
-      doc.text("Descuento", 125, totalY + 12);
-      doc.text(discount.toFixed(2), 195, totalY + 12, { align: "right" });
-      
-      doc.text("ISV (15%)", 125, totalY + 18);
-      doc.text(tax.toFixed(2), 195, totalY + 18, { align: "right" });
-      
-      doc.setFont("helvetica", "bold");
-      doc.text("TOTAL", 125, totalY + 26);
-      doc.text(total.toFixed(2), 195, totalY + 26, { align: "right" });
-
-      doc.setFontSize(7);
-      doc.text("LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", 105, 280, { align: "center" });
-
+      doc.text(`TOTAL: ${total.toFixed(2)}`, 190, y + 10, { align: "right" });
       doc.save(`Factura_${codVenta}.pdf`);
     } catch (err) {
       console.error(err);
@@ -217,7 +162,7 @@ const POS: React.FC = () => {
 
     const result = await Swal.fire({
       title: '¿Procesar Venta?',
-      text: `Total a cobrar: L. ${total.toFixed(2)} (${paymentType})`,
+      text: `Total: L. ${total.toFixed(2)}`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Sí, Facturar',
@@ -237,10 +182,10 @@ const POS: React.FC = () => {
         
         Swal.fire({
           title: 'Éxito',
-          text: 'Venta registrada correctamente',
+          text: 'Venta registrada',
           icon: 'success',
           showCancelButton: true,
-          confirmButtonText: 'Imprimir Factura',
+          confirmButtonText: 'Imprimir',
           cancelButtonText: 'Cerrar'
         }).then((res) => {
           if (res.isConfirmed) {
@@ -250,9 +195,8 @@ const POS: React.FC = () => {
 
         setCart([]);
         setDiscount(0);
-        setPaymentType('Contado');
         setSelectedClientId('');
-        loadInitialData(); // Refresh stock
+        loadInitialData();
       } catch (error: any) {
         Swal.fire('Error', error.message, 'error');
       }
@@ -273,18 +217,17 @@ const POS: React.FC = () => {
     <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] gap-6">
       
       {/* LEFT: Product Selector */}
-      <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-full">
         <div className="p-4 border-b border-slate-100 flex flex-col gap-4">
           <div className="flex gap-3">
              <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               <input 
                 type="text" 
-                placeholder="Buscar por Nombre, Código o IMEI..." 
+                placeholder="Buscar (Nombre, Código, IMEI)..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all text-base font-medium placeholder:text-slate-400"
-                autoFocus
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all text-sm md:text-base font-medium placeholder:text-slate-400"
               />
             </div>
             <button onClick={loadInitialData} className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-3 rounded-xl transition-colors">
@@ -292,10 +235,10 @@ const POS: React.FC = () => {
             </button>
           </div>
           
-          <div className="flex gap-2 overflow-x-auto pb-1">
-             <button onClick={() => setSelectedCategory('ALL')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase ${selectedCategory === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>Todos</button>
-             <button onClick={() => setSelectedCategory('TELEFONO')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex gap-2 ${selectedCategory === 'TELEFONO' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Smartphone size={14}/> Teléfonos</button>
-             <button onClick={() => setSelectedCategory('ACCESORIO')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex gap-2 ${selectedCategory === 'ACCESORIO' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Headphones size={14}/> Accesorios</button>
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+             <button onClick={() => setSelectedCategory('ALL')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap ${selectedCategory === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>Todos</button>
+             <button onClick={() => setSelectedCategory('TELEFONO')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap flex gap-2 ${selectedCategory === 'TELEFONO' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Smartphone size={14}/> Teléfonos</button>
+             <button onClick={() => setSelectedCategory('ACCESORIO')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap flex gap-2 ${selectedCategory === 'ACCESORIO' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Headphones size={14}/> Accesorios</button>
           </div>
         </div>
 
@@ -303,7 +246,7 @@ const POS: React.FC = () => {
           {isLoading ? (
             <div className="flex items-center justify-center h-full text-slate-400">Cargando inventario...</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredProducts.map(product => (
                 <button 
                   key={product.id}
@@ -312,7 +255,7 @@ const POS: React.FC = () => {
                   className={`flex flex-col items-start p-4 bg-white rounded-xl border transition-all text-left relative overflow-hidden group
                     ${product.stock === 0 ? 'opacity-60 border-slate-100 grayscale' : 'border-slate-200/60 hover:border-indigo-500 hover:shadow-lg'}`}
                 >
-                  <div className="w-full flex justify-between items-start mb-3">
+                  <div className="w-full flex justify-between items-start mb-2">
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-500 tracking-wider uppercase`}>
                       {product.tipo.substring(0,3)}
                     </span>
@@ -323,7 +266,7 @@ const POS: React.FC = () => {
                   <h4 className="font-bold text-slate-800 text-sm line-clamp-2 mb-auto leading-snug">{product.nombre}</h4>
                   <div className="mt-4 w-full pt-3 border-t border-slate-50">
                     <span className="block text-lg font-bold text-indigo-600">L. {Number(product.precioVenta).toFixed(2)}</span>
-                    <span className="text-[10px] text-slate-400 block mt-1">Ubic: {product.ubicacion}</span>
+                    <span className="text-[10px] text-slate-400 block mt-1 truncate">Ubic: {product.ubicacion}</span>
                   </div>
                 </button>
               ))}
@@ -333,74 +276,66 @@ const POS: React.FC = () => {
       </div>
 
       {/* RIGHT: Cart & Checkout */}
-      <div className="w-full lg:w-[420px] flex flex-col bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 h-full">
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 h-auto lg:h-full min-h-[500px]">
         
         {/* Header: Sales Config */}
-        <div className="p-5 border-b border-slate-100 bg-slate-50/50 space-y-4">
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
-             <Zap className="text-yellow-500 fill-yellow-500" size={18} /> REGISTRO VENTAS
+             <Zap className="text-yellow-500 fill-yellow-500" size={18} /> VENTA
           </h3>
 
-          <div className="flex gap-4 items-center bg-white p-1 rounded-lg border border-slate-200">
+          <div className="flex gap-2">
              <button 
                onClick={() => setPaymentType('Contado')}
-               className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${paymentType === 'Contado' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}
+               className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${paymentType === 'Contado' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-white border text-slate-500'}`}
              >
-               ◉ Contado
+               Contado
              </button>
              <button 
                onClick={() => setPaymentType('Credito')}
-               className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${paymentType === 'Credito' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}
+               className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${paymentType === 'Credito' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-white border text-slate-500'}`}
              >
-               ○ Crédito
+               Crédito
              </button>
           </div>
 
-          <div>
-             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Seleccionar Cliente</label>
-             <select 
+          <select 
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
               className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">-- Seleccione Cliente --</option>
+              <option value="">-- Cliente --</option>
               {clients.map(c => (
-                <option key={c.identidad} value={c.identidad}>{c.identidad} - {c.nombre} {c.apellido}</option>
+                <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>
               ))}
-            </select>
-          </div>
+          </select>
 
-          {/* Auto-filled Info */}
-          <div className="grid grid-cols-1 gap-2 p-3 bg-slate-100 rounded-lg text-xs">
-             <div className="flex justify-between">
-                <span className="text-slate-500">Nombre:</span>
-                <span className="font-bold text-slate-700">{clientInfo ? `${clientInfo.nombre} ${clientInfo.apellido}` : '-'}</span>
-             </div>
-             <div className="flex justify-between">
-                <span className="text-slate-500">Dirección:</span>
-                <span className="font-bold text-slate-700 truncate max-w-[200px]">{clientInfo?.direccion || '-'}</span>
-             </div>
-          </div>
+          {clientInfo && (
+            <div className="p-2 bg-indigo-50 rounded border border-indigo-100 text-xs">
+               <p className="font-bold text-indigo-900">{clientInfo.nombre} {clientInfo.apellido}</p>
+               <p className="text-indigo-600 truncate">{clientInfo.direccion}</p>
+            </div>
+          )}
         </div>
 
         {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-slate-50/30">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar bg-slate-50/30 min-h-[200px]">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-              <ShoppingCart size={32} className="opacity-30 mb-4" />
-              <p className="font-medium">Carrito vacío</p>
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10">
+              <ShoppingCart size={32} className="opacity-30 mb-2" />
+              <p className="font-medium text-sm">Carrito vacío</p>
             </div>
           ) : (
             cart.map((item) => (
-              <div key={item.codDetalleVenta} className="flex gap-4 items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <div key={item.codDetalleVenta} className="flex gap-3 items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                 <div className="flex-1 min-w-0">
-                  <h5 className="text-sm font-bold text-slate-800 truncate">{item.descripcionProducto}</h5>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-xs text-slate-500 font-medium">{item.cantidad} x L. {Number(item.precioVenta).toFixed(2)}</span>
+                  <h5 className="text-xs font-bold text-slate-800 truncate">{item.descripcionProducto}</h5>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-slate-500 font-medium">{item.cantidad} x L. {Number(item.precioVenta).toFixed(2)}</span>
                   </div>
                 </div>
                 <div className="flex flex-col items-end min-w-[60px]">
-                  <span className="font-bold text-slate-800 text-sm">L. {(item.cantidad * item.precioVenta).toFixed(2)}</span>
+                  <span className="font-bold text-slate-800 text-xs">L. {(item.cantidad * item.precioVenta).toFixed(2)}</span>
                   <button 
                     onClick={() => removeFromCart(item.codDetalleVenta!)}
                     className="text-red-400 hover:text-red-600 mt-1"
@@ -414,33 +349,33 @@ const POS: React.FC = () => {
         </div>
 
         {/* Totals & Action */}
-        <div className="p-6 bg-white border-t border-slate-200">
-          <div className="space-y-2 mb-6">
-            <div className="flex justify-between text-slate-600 text-sm">
-              <span className="font-medium">Subtotal</span>
-              <span className="font-mono">L. {subtotal.toFixed(2)}</span>
+        <div className="p-5 bg-white border-t border-slate-200">
+          <div className="space-y-1 mb-4">
+            <div className="flex justify-between text-slate-500 text-xs">
+              <span>Subtotal</span>
+              <span>L. {subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-600 text-sm">
-              <span className="font-medium">ISV (15%)</span>
-              <span className="font-mono">L. {tax.toFixed(2)}</span>
+            <div className="flex justify-between text-slate-500 text-xs">
+              <span>ISV (15%)</span>
+              <span>L. {tax.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between items-center text-slate-600 text-sm">
-              <span className="font-medium">Descuento</span>
+            <div className="flex justify-between items-center text-slate-500 text-xs py-1">
+              <span>Desc.</span>
               <input 
                  type="number" 
                  value={discount} 
                  onChange={(e) => setDiscount(Number(e.target.value))}
-                 className="w-24 text-right p-1 border rounded bg-slate-50 font-mono text-sm focus:outline-indigo-500"
+                 className="w-16 text-right p-0.5 border rounded bg-slate-50 text-xs"
               />
             </div>
-            <div className="flex justify-between items-end pt-3 border-t border-slate-200 mt-2">
-              <span className="font-bold text-lg text-slate-800">Total</span>
-              <span className="font-bold text-2xl text-indigo-600 font-mono">L. {total.toFixed(2)}</span>
+            <div className="flex justify-between items-end pt-2 border-t border-slate-100 mt-1">
+              <span className="font-bold text-base text-slate-800">Total</span>
+              <span className="font-bold text-xl text-indigo-600 font-mono">L. {total.toFixed(2)}</span>
             </div>
           </div>
 
           <button 
-            className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             disabled={cart.length === 0 || !selectedClientId}
             onClick={handleProcessSale}
           >

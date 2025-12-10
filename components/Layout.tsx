@@ -4,7 +4,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, 
-  Smartphone, 
   ShoppingCart, 
   Users, 
   DollarSign, 
@@ -16,15 +15,28 @@ import {
   Bell,
   CloudLightning,
   ShieldCheck,
-  Truck
+  Truck,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  Briefcase
 } from 'lucide-react';
 
 interface LayoutProps {
   children?: React.ReactNode;
 }
 
+interface NavItem {
+  name: string;
+  path?: string;
+  icon: React.ReactNode;
+  roles: string[];
+  subItems?: NavItem[];
+}
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Comercial', 'Logística']); // Default expanded
   const { user, logout, hasPermission } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,69 +46,162 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
-  // Definir menú y qué roles pueden ver cada ítem
-  const allNavItems = [
-    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['ALL'] },
-    { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={20} />, roles: ['Administrador', 'Vendedor'] },
-    { name: 'Inventario', path: '/inventory', icon: <Smartphone size={20} />, roles: ['Administrador', 'Inventario'] },
-    { name: 'Clientes', path: '/clients', icon: <Users size={20} />, roles: ['Administrador', 'Vendedor'] },
-    { name: 'Proveedores', path: '/providers', icon: <Truck size={20} />, roles: ['Administrador', 'Inventario'] },
-    { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={20} />, roles: ['Administrador', 'Cajero'] },
-    { name: 'Reportes', path: '/reports', icon: <FileText size={20} />, roles: ['Administrador'] },
-    { name: 'Usuarios & Roles', path: '/admin/users', icon: <ShieldCheck size={20} />, roles: ['Administrador'] },
+  const toggleMenu = (name: string) => {
+    setExpandedMenus(prev => 
+      prev.includes(name) ? prev.filter(item => item !== name) : [...prev, name]
+    );
+  };
+
+  // Estructura de Menú con Submenús
+  const navigationStructure: NavItem[] = [
+    { 
+      name: 'Dashboard', 
+      path: '/', 
+      icon: <LayoutDashboard size={20} />, 
+      roles: ['ALL'] 
+    },
+    {
+      name: 'Comercial',
+      icon: <ShoppingCart size={20} />,
+      roles: ['Administrador', 'Vendedor'],
+      subItems: [
+        { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, roles: ['Administrador', 'Vendedor'] },
+        { name: 'Clientes', path: '/clients', icon: <Users size={18} />, roles: ['Administrador', 'Vendedor'] },
+      ]
+    },
+    {
+      name: 'Logística',
+      icon: <Package size={20} />,
+      roles: ['Administrador', 'Inventario'],
+      subItems: [
+        { name: 'Inventario General', path: '/inventory', icon: <Package size={18} />, roles: ['Administrador', 'Inventario'] },
+        { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, roles: ['Administrador', 'Inventario'] },
+      ]
+    },
+    {
+      name: 'Finanzas',
+      icon: <DollarSign size={20} />,
+      roles: ['Administrador', 'Cajero'],
+      subItems: [
+        { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={18} />, roles: ['Administrador', 'Cajero'] },
+      ]
+    },
+    {
+      name: 'Administración',
+      icon: <ShieldCheck size={20} />,
+      roles: ['Administrador'],
+      subItems: [
+        { name: 'Usuarios y Roles', path: '/admin/users', icon: <ShieldCheck size={18} />, roles: ['Administrador'] },
+        { name: 'Reportes', path: '/reports', icon: <FileText size={18} />, roles: ['Administrador'] },
+      ]
+    }
   ];
 
-  // Filtrar ítems según rol
-  const navItems = allNavItems.filter(item => hasPermission(item.roles));
-
   const getPageTitle = () => {
-    const item = navItems.find(i => i.path === location.pathname);
+    // Flatten logic just to find title
+    const allItems = navigationStructure.flatMap(i => i.subItems ? i.subItems : [i]);
+    const item = allItems.find(i => i.path === location.pathname);
     return item ? item.name : 'SmartCloud ERP';
+  };
+
+  const renderNavItems = (items: NavItem[], isMobile = false) => {
+    return items.map((item) => {
+      // Verificar permisos
+      if (!hasPermission(item.roles)) return null;
+
+      // Si tiene subitems, renderizar como grupo desplegable
+      if (item.subItems) {
+        const isExpanded = expandedMenus.includes(item.name);
+        const hasActiveChild = item.subItems.some(sub => sub.path === location.pathname);
+        
+        return (
+          <div key={item.name} className="mb-2">
+            <button
+              onClick={() => toggleMenu(item.name)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group ${
+                hasActiveChild ? 'bg-slate-800/40 text-white' : 'text-slate-400 hover:bg-slate-800/30 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={hasActiveChild ? 'text-indigo-400' : 'group-hover:text-indigo-400'}>{item.icon}</span>
+                <span className="font-medium text-sm">{item.name}</span>
+              </div>
+              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            
+            {/* Submenu List */}
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+              <ul className="pl-4 space-y-1 border-l-2 border-slate-800 ml-6 my-1">
+                {item.subItems.map(subItem => {
+                   const isActive = location.pathname === subItem.path;
+                   return (
+                     <li key={subItem.path}>
+                       <Link
+                         to={subItem.path!}
+                         onClick={() => isMobile && setIsMobileMenuOpen(false)}
+                         className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all ${
+                           isActive 
+                             ? 'text-white font-medium bg-indigo-600/20 border border-indigo-500/30' 
+                             : 'text-slate-500 hover:text-slate-300'
+                         }`}
+                       >
+                         {subItem.name}
+                       </Link>
+                     </li>
+                   );
+                })}
+              </ul>
+            </div>
+          </div>
+        );
+      }
+
+      // Item normal sin hijos
+      const isActive = location.pathname === item.path;
+      return (
+        <li key={item.path} className="mb-2">
+          <Link
+            to={item.path!}
+            onClick={() => isMobile && setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+              isActive 
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' 
+                : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+            }`}
+          >
+            <span className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}>
+              {item.icon}
+            </span>
+            <span className="font-medium text-sm">{item.name}</span>
+          </Link>
+        </li>
+      );
+    });
   };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* Sidebar - Desktop */}
-      <aside className="hidden md:flex flex-col w-72 bg-[#0f172a] text-white shadow-2xl z-30 transition-all duration-300">
-        <div className="h-20 flex items-center gap-3 px-8 border-b border-slate-800/50 bg-gradient-to-r from-slate-900 to-slate-800">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <CloudLightning className="text-white" size={22} strokeWidth={2.5} />
+      <aside className="hidden md:flex flex-col w-64 bg-[#0f172a] text-white shadow-2xl z-30 transition-all duration-300 shrink-0">
+        <div className="h-20 flex items-center gap-3 px-6 border-b border-slate-800/50 bg-gradient-to-r from-slate-900 to-slate-800">
+          <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
+            <CloudLightning className="text-white" size={20} strokeWidth={2.5} />
           </div>
           <div>
-            <h1 className="font-bold text-lg tracking-tight leading-none text-white">SmartCloud</h1>
-            <p className="text-[10px] text-slate-400 font-medium tracking-wider mt-1 uppercase">Enterprise ERP</p>
+            <h1 className="font-bold text-base tracking-tight leading-none text-white">SmartCloud</h1>
+            <p className="text-[10px] text-slate-400 font-medium tracking-wider mt-1 uppercase">ERP System</p>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-8 px-4">
-          <div className="mb-4 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Menú Principal</div>
+        <nav className="flex-1 overflow-y-auto py-6 px-3 custom-scrollbar">
           <ul className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <li key={item.path}>
-                  <Link
-                    to={item.path}
-                    className={`flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group ${
-                      isActive 
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 translate-x-1' 
-                        : 'text-slate-400 hover:bg-slate-800/50 hover:text-white hover:translate-x-1'
-                    }`}
-                  >
-                    <span className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}>
-                      {item.icon}
-                    </span>
-                    <span className="font-medium text-sm">{item.name}</span>
-                  </Link>
-                </li>
-              );
-            })}
+            {renderNavItems(navigationStructure)}
           </ul>
         </nav>
 
         <div className="p-4 border-t border-slate-800 bg-slate-900/50">
           <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shadow-md shrink-0">
               {user?.usuario.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="flex-1 min-w-0">
@@ -106,9 +211,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-slate-300 hover:text-white hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors text-sm font-medium border border-transparent hover:border-red-500/20"
+            className="flex items-center justify-center gap-2 w-full px-4 py-2 text-slate-300 hover:text-white hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors text-xs font-medium border border-transparent hover:border-red-500/20"
           >
-            <LogOut size={18} />
+            <LogOut size={16} />
             <span>Cerrar Sesión</span>
           </button>
         </div>
@@ -116,36 +221,37 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#f8fafc]">
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-20 flex items-center justify-between px-8 sticky top-0 z-20">
+        {/* Header Responsivo */}
+        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 md:h-20 flex items-center justify-between px-4 md:px-8 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button 
-              className="md:hidden text-slate-500 hover:text-slate-800 p-2 rounded-lg hover:bg-slate-100"
+              className="md:hidden text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100"
               onClick={() => setIsMobileMenuOpen(true)}
             >
               <Menu size={24} />
             </button>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{getPageTitle()}</h1>
+            <h1 className="text-lg md:text-2xl font-bold text-slate-800 tracking-tight truncate">{getPageTitle()}</h1>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center bg-slate-100/80 rounded-xl px-4 py-2.5 border border-slate-200/50 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all w-80">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="hidden md:flex items-center bg-slate-100/80 rounded-xl px-4 py-2.5 border border-slate-200/50 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all w-64 lg:w-80">
               <Search size={18} className="text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Buscar (Ctrl + K)" 
+                placeholder="Buscar..." 
                 className="bg-transparent border-none focus:outline-none text-sm ml-3 w-full text-slate-700 placeholder:text-slate-400"
               />
             </div>
             
-            <button className="relative p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all">
+            <button className="relative p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all">
               <Bell size={20} />
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-8 scroll-smooth">
-          <div className="max-w-7xl mx-auto animate-fade-in">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
+          <div className="max-w-7xl mx-auto animate-fade-in pb-20 md:pb-0">
              {children}
           </div>
         </main>
@@ -158,7 +264,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="relative w-72 bg-[#0f172a] h-full shadow-2xl flex flex-col transform transition-transform">
+          <div className="relative w-80 bg-[#0f172a] h-full shadow-2xl flex flex-col transform transition-transform duration-300">
             <div className="p-6 flex justify-between items-center border-b border-slate-800">
               <div className="flex items-center gap-3">
                  <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -171,28 +277,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </button>
             </div>
             <nav className="flex-1 py-6 px-4 overflow-y-auto">
-              <ul className="space-y-2">
-                {navItems.map((item) => {
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <li key={item.path}>
-                      <Link
-                        to={item.path}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${
-                          isActive 
-                            ? 'bg-indigo-600 text-white shadow-lg' 
-                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                        }`}
-                      >
-                        {item.icon}
-                        <span>{item.name}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
+              <ul className="space-y-1">
+                {renderNavItems(navigationStructure, true)}
               </ul>
             </nav>
+            <div className="p-4 border-t border-slate-800">
+                <div className="flex items-center gap-3 text-slate-300 mb-4 px-2">
+                    <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-xs">
+                        {user?.usuario.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-white">{user?.usuario}</p>
+                        <p className="text-xs">{user?.rol}</p>
+                    </div>
+                </div>
+                <button onClick={handleLogout} className="w-full py-3 bg-red-600/10 text-red-400 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+                    <LogOut size={16}/> Salir
+                </button>
+            </div>
           </div>
         </div>
       )}
