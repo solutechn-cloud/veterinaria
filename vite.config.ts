@@ -21,7 +21,7 @@ export default defineConfig({
         output: {
             manualChunks: {
                 vendor: ['react', 'react-dom', 'react-router-dom'],
-                utils: ['jspdf', 'jsbarcode', 'sweetalert2', 'lucide-react', 'recharts']
+                utils: ['jspdf', 'jspdf-autotable', 'jsbarcode', 'sweetalert2', 'lucide-react', 'recharts']
             }
         }
     }
