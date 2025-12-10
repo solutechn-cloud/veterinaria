@@ -98,11 +98,12 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// --- INGRESOS / EGRESOS / SALDOS ---
+// --- INGRESOS ---
 router.get('/ingresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
-    const result = await pool.query(`SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado FROM ingresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
+    // Increased limit to ensure correct calculations in frontend if paging is not implemented yet
+    const result = await pool.query(`SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado FROM ingresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 500`, [idCaja]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -118,10 +119,26 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
+router.put('/ingresos/:id', authenticateToken, async (req, res) => {
+    try {
+        const { descripcion, monto, costo } = req.body;
+        await pool.query('UPDATE ingresos SET descripcion=$1, monto=$2, costo=$3 WHERE idIngreso=$4', [descripcion, monto, costo, req.params.id]);
+        res.json({ message: 'Ingreso actualizado' });
+    } catch(err) { handleDbError(res, err); }
+});
+
+router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM ingresos WHERE idIngreso=$1', [req.params.id]);
+        res.json({ message: 'Ingreso eliminado' });
+    } catch(err) { handleDbError(res, err); }
+});
+
+// --- EGRESOS ---
 router.get('/egresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
-    const result = await pool.query(`SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado FROM egresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
+    const result = await pool.query(`SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado FROM egresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 500`, [idCaja]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -137,6 +154,22 @@ router.post('/egresos', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
+router.put('/egresos/:id', authenticateToken, async (req, res) => {
+    try {
+        const { descripcion, monto } = req.body;
+        await pool.query('UPDATE egresos SET descripcion=$1, monto=$2 WHERE idegresos=$3', [descripcion, monto, req.params.id]);
+        res.json({ message: 'Egreso actualizado' });
+    } catch(err) { handleDbError(res, err); }
+});
+
+router.delete('/egresos/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM egresos WHERE idegresos=$1', [req.params.id]);
+        res.json({ message: 'Egreso eliminado' });
+    } catch(err) { handleDbError(res, err); }
+});
+
+// --- SALDOS ---
 router.get('/saldos/today', authenticateToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];

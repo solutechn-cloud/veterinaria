@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, PackagesService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete } from '../types';
 import { 
-  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet 
+  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X 
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
@@ -23,7 +23,7 @@ const CashRegister: React.FC = () => {
   const [paquetes, setPaquetes] = useState<Paquete[]>([]);
 
   const [showOpenModal, setShowOpenModal] = useState(false);
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
 
   // Forms
@@ -31,16 +31,19 @@ const CashRegister: React.FC = () => {
   
   // Modals Control
   const [showIngresoModal, setShowIngresoModal] = useState(false);
-  const [ingresoForm, setIngresoForm] = useState({ descripcion: '', monto: '', irAPos: true });
+  const [ingresoForm, setIngresoForm] = useState({ id: '', descripcion: '', monto: '', costo: '', irAPos: true });
+  const [isEditingIngreso, setIsEditingIngreso] = useState(false);
   
   const [showEgresoModal, setShowEgresoModal] = useState(false);
-  const [egresoForm, setEgresoForm] = useState({ descripcion: '', monto: '' });
+  const [egresoForm, setEgresoForm] = useState({ id: '', descripcion: '', monto: '' });
+  const [isEditingEgreso, setIsEditingEgreso] = useState(false);
 
   const [showSaldoModal, setShowSaldoModal] = useState(false);
   const [saldoForm, setSaldoForm] = useState({ red: 'TIGO', montoPagado: '', montoRecibido: '' });
 
   const [showRecargaModal, setShowRecargaModal] = useState<{red: 'TIGO' | 'CLARO', tipo: 'RECARGA' | 'PAQUETE'} | null>(null);
-  const [recargaForm, setRecargaForm] = useState({ tipo: 'RECARGA', monto: '', paqueteId: '' });
+  // Para Recarga Normal: precio (cobrado) y costo (enviado). Paquete ya trae esto.
+  const [recargaForm, setRecargaForm] = useState({ tipo: 'RECARGA', monto: '', precio: '', paqueteId: '' });
 
   useEffect(() => {
     loadData();
@@ -106,8 +109,6 @@ const CashRegister: React.FC = () => {
      if(result.isConfirmed) {
        try {
          const response = await CashService.closeCaja(arqueo.idArqueo);
-         
-         // Mostrar Resumen Final
          const { resumen } = response;
          await Swal.fire({
              title: 'Cierre Exitoso',
@@ -123,51 +124,105 @@ const CashRegister: React.FC = () => {
              `,
              icon: 'success'
          });
-         
          loadData(); 
        } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
      }
   };
 
-  const handleCreateIngreso = async () => {
-     // Si selecciona "Ir a POS", redirigimos
-     if (ingresoForm.irAPos) {
-         navigate('/pos', { 
-             state: { 
-                 customItem: {
-                     descripcion: ingresoForm.descripcion,
-                     precio: Number(ingresoForm.monto)
-                 }
-             } 
-         });
-         return;
+  const handleIngresoAction = async () => {
+     if (isEditingIngreso) {
+         try {
+             await CashService.updateIngreso(ingresoForm.id, {
+                 descripcion: ingresoForm.descripcion,
+                 monto: Number(ingresoForm.monto),
+                 costo: Number(ingresoForm.costo)
+             });
+             setShowIngresoModal(false);
+             loadData();
+             Swal.fire('Actualizado', 'Ingreso modificado', 'success');
+         } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
+     } else {
+         if (ingresoForm.irAPos) {
+             navigate('/pos', { 
+                 state: { 
+                     customItem: {
+                         descripcion: ingresoForm.descripcion,
+                         precio: Number(ingresoForm.monto)
+                     }
+                 } 
+             });
+             return;
+         }
+         try {
+             await CashService.createIngreso({
+                 descripcion: ingresoForm.descripcion,
+                 monto: Number(ingresoForm.monto),
+                 costo: Number(ingresoForm.costo)
+             });
+             setShowIngresoModal(false);
+             setIngresoForm({ id: '', descripcion: '', monto: '', costo: '', irAPos: true });
+             loadData();
+             Swal.fire('Guardado', 'Ingreso registrado', 'success');
+         } catch(err: any) { Swal.fire('Error', err.message, 'error'); }
      }
+  };
 
-     // Si no, guardamos como ingreso simple (legacy behavior)
+  const handleEgresoAction = async () => {
      try {
-         await CashService.createIngreso({
-             descripcion: ingresoForm.descripcion,
-             monto: Number(ingresoForm.monto),
-             costo: 0 // Ingreso manual sin costo especificado
-         });
-         setShowIngresoModal(false);
-         setIngresoForm({ descripcion: '', monto: '', irAPos: true });
+         if(isEditingEgreso) {
+             await CashService.updateEgreso(egresoForm.id, {
+                 descripcion: egresoForm.descripcion,
+                 monto: Number(egresoForm.monto)
+             });
+             Swal.fire('Actualizado', 'Gasto modificado', 'success');
+         } else {
+             await CashService.createEgreso({
+                 descripcion: egresoForm.descripcion,
+                 monto: Number(egresoForm.monto)
+             });
+             Swal.fire('Guardado', 'Gasto registrado', 'success');
+         }
+         setShowEgresoModal(false);
+         setEgresoForm({ id: '', descripcion: '', monto: '' });
          loadData();
-         Swal.fire('Guardado', 'Ingreso registrado', 'success');
      } catch(err: any) { Swal.fire('Error', err.message, 'error'); }
   };
 
-  const handleCreateEgreso = async () => {
-     try {
-         await CashService.createEgreso({
-             descripcion: egresoForm.descripcion,
-             monto: Number(egresoForm.monto)
-         });
-         setShowEgresoModal(false);
-         setEgresoForm({ descripcion: '', monto: '' });
-         loadData();
-         Swal.fire('Guardado', 'Gasto registrado', 'success');
-     } catch(err: any) { Swal.fire('Error', err.message, 'error'); }
+  const handleDeleteItem = async (id: string, type: 'INGRESO' | 'EGRESO') => {
+      const result = await Swal.fire({
+          title: '¿Eliminar Registro?',
+          text: 'Se revertirá el monto de la caja.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Sí, eliminar'
+      });
+      if(result.isConfirmed) {
+          try {
+              if(type === 'INGRESO') await CashService.deleteIngreso(id);
+              else await CashService.deleteEgreso(id);
+              loadData();
+              Swal.fire('Eliminado', 'Registro eliminado', 'success');
+          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
+      }
+  };
+
+  const handleAnularVenta = async (idVenta: string) => {
+      const result = await Swal.fire({
+          title: `¿Anular Venta #${idVenta}?`,
+          text: 'Se devolverán los productos al inventario y se descontará el dinero de la caja (creando un Egreso).',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Sí, Anular Venta'
+      });
+      if(result.isConfirmed) {
+          try {
+              await SalesService.anularVenta(idVenta);
+              loadData();
+              Swal.fire('Anulada', 'Venta anulada correctamente', 'success');
+          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
+      }
   };
 
   const handleBuySaldo = async () => {
@@ -188,7 +243,7 @@ const CashRegister: React.FC = () => {
     if (!arqueo || !showRecargaModal) return;
     
     let montoCobrado = 0;
-    let montoPagado = 0; // Costo (Saldo a descontar)
+    let montoPagado = 0; 
     let desc = '';
     
     if (showRecargaModal.tipo === 'PAQUETE') {
@@ -199,10 +254,10 @@ const CashRegister: React.FC = () => {
        montoPagado = Number(pq.costo);
        desc = pq.nombre;
     } else {
-       if(!recargaForm.monto) return Swal.fire('Error', 'Ingrese monto', 'error');
-       montoCobrado = Number(recargaForm.monto);
-       montoPagado = montoCobrado; // En recargas normales, costo es igual al saldo enviado usualmente
-       desc = `SALDO ${montoCobrado}`;
+       if(!recargaForm.monto || !recargaForm.precio) return Swal.fire('Error', 'Ingrese montos', 'error');
+       montoCobrado = Number(recargaForm.precio); // Precio Venta
+       montoPagado = Number(recargaForm.monto);   // Costo (Saldo enviado)
+       desc = `SALDO ${montoPagado}`;
     }
 
     try {
@@ -215,20 +270,14 @@ const CashRegister: React.FC = () => {
       });
       
       setShowRecargaModal(null);
-      setRecargaForm({ tipo: 'RECARGA', monto: '', paqueteId: '' });
+      setRecargaForm({ tipo: 'RECARGA', monto: '', precio: '', paqueteId: '' });
       loadData();
       Swal.fire('Éxito', 'Recarga procesada', 'success');
     } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
   };
 
-  // Calculations
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
   const totalEgresos = egresos.reduce((a,b) => a + Number(b.monto), 0);
-  const totalVentas = ventas.filter(v => v.estado !== 'Anulada').reduce((a,b) => a + Number(b.total), 0);
-  // Nota: Ventas ya está incluido en Ingresos si el backend lo registra automáticamente. 
-  // Para evitar doble conteo visual:
-  // Si backend hace: Venta POS -> Insert Ingreso. Entonces totalIngresos YA TIENE las ventas.
-  // Saldo Caja = Inicial + Ingresos - Egresos.
   const saldoCaja = (arqueo?.montoInicial || 0) + totalIngresos - totalEgresos;
 
   const getSaldoRed = (red: string) => {
@@ -237,6 +286,18 @@ const CashRegister: React.FC = () => {
   };
 
   const paquetesFiltrados = showRecargaModal ? paquetes.filter(p => p.red === showRecargaModal.red && p.estado === 'Activo') : [];
+
+  const openEditIngreso = (item: Ingreso) => {
+      setIngresoForm({ id: item.idIngreso, descripcion: item.descripcion, monto: String(item.monto), costo: String(item.costo), irAPos: false });
+      setIsEditingIngreso(true);
+      setShowIngresoModal(true);
+  };
+
+  const openEditEgreso = (item: Egreso) => {
+      setEgresoForm({ id: item.idegresos, descripcion: item.descripcion, monto: String(item.monto) });
+      setIsEditingEgreso(true);
+      setShowEgresoModal(true);
+  };
 
   return (
     <div className="space-y-6 min-h-[80vh] flex flex-col pb-10">
@@ -258,7 +319,6 @@ const CashRegister: React.FC = () => {
              </div>
          </div>
 
-         {/* STATS */}
          {arqueo && (
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
@@ -282,13 +342,11 @@ const CashRegister: React.FC = () => {
          )}
       </div>
 
-      {/* TABS */}
       <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-slate-200">
-         {[
-            { id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={18}/> },
-            { id: 'EGRESOS', label: 'Gastos/Compras', icon: <ArrowDownCircle size={18}/> },
-            { id: 'RECARGAS', label: 'Recargas', icon: <Smartphone size={18}/> },
-            { id: 'VENTAS', label: 'Historial Ventas', icon: <ShoppingCart size={18}/> }
+         {[{ id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={18}/> },
+           { id: 'EGRESOS', label: 'Gastos/Compras', icon: <ArrowDownCircle size={18}/> },
+           { id: 'RECARGAS', label: 'Recargas', icon: <Smartphone size={18}/> },
+           { id: 'VENTAS', label: 'Historial Ventas', icon: <ShoppingCart size={18}/> }
          ].map((tab) => (
             <button
               key={tab.id}
@@ -300,9 +358,7 @@ const CashRegister: React.FC = () => {
          ))}
       </div>
 
-      {/* CONTENT */}
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-         
          {activeTab === 'INGRESOS' && (
            <div className="space-y-4">
               <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-xl border border-emerald-100">
@@ -310,19 +366,27 @@ const CashRegister: React.FC = () => {
                     <h3 className="font-bold text-emerald-800">Registrar Ingreso Manual</h3>
                     <p className="text-xs text-emerald-600">Para productos fuera de inventario o servicios.</p>
                  </div>
-                 <button onClick={() => setShowIngresoModal(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 shadow-md flex items-center gap-2 font-bold text-sm">
+                 <button onClick={() => { setIsEditingIngreso(false); setIngresoForm({id:'', descripcion:'', monto:'', costo:'', irAPos:true}); setShowIngresoModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 shadow-md flex items-center gap-2 font-bold text-sm">
                     <PlusCircle size={18}/> Nuevo Ingreso
                  </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3">Estado</th></tr></thead>
+                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3">Costo</th><th className="p-3 text-right">Acciones</th></tr></thead>
                     <tbody>
                         {ingresos.map(i => (
                         <tr key={i.idIngreso} className="border-b hover:bg-slate-50">
                             <td className="p-3 font-medium text-slate-700">{i.descripcion}</td>
                             <td className="p-3 font-bold text-emerald-600">L. {Number(i.monto).toFixed(2)}</td>
-                            <td className="p-3 text-xs text-slate-400">{i.estado}</td>
+                            <td className="p-3 text-slate-500">L. {Number(i.costo).toFixed(2)}</td>
+                            <td className="p-3 text-right flex justify-end gap-2">
+                                {hasPermission('EDITAR_MOVIMIENTOS') && (
+                                    <button onClick={() => openEditIngreso(i)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Edit2 size={16}/></button>
+                                )}
+                                {hasPermission('ELIMINAR_MOVIMIENTOS') && (
+                                    <button onClick={() => handleDeleteItem(i.idIngreso, 'INGRESO')} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                                )}
+                            </td>
                         </tr>
                         ))}
                     </tbody>
@@ -339,7 +403,7 @@ const CashRegister: React.FC = () => {
                             <h3 className="font-bold text-red-800">Registrar Gasto Operativo</h3>
                             <p className="text-xs text-red-600">Salidas de dinero de caja.</p>
                         </div>
-                        <button onClick={() => setShowEgresoModal(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 shadow-md flex items-center gap-2 font-bold text-sm">
+                        <button onClick={() => { setIsEditingEgreso(false); setEgresoForm({id:'', descripcion:'', monto:''}); setShowEgresoModal(true); }} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 shadow-md flex items-center gap-2 font-bold text-sm">
                             <ArrowDownCircle size={18}/> Nuevo Gasto
                         </button>
                     </div>
@@ -356,12 +420,20 @@ const CashRegister: React.FC = () => {
               
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Descripción</th><th className="p-3">Monto</th></tr></thead>
+                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acciones</th></tr></thead>
                     <tbody>
                         {egresos.map(e => (
                         <tr key={e.idegresos} className="border-b hover:bg-slate-50">
                             <td className="p-3 font-medium text-slate-700">{e.descripcion}</td>
                             <td className="p-3 font-bold text-red-600">L. {Number(e.monto).toFixed(2)}</td>
+                            <td className="p-3 text-right flex justify-end gap-2">
+                                {hasPermission('EDITAR_MOVIMIENTOS') && (
+                                    <button onClick={() => openEditEgreso(e)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Edit2 size={16}/></button>
+                                )}
+                                {hasPermission('ELIMINAR_MOVIMIENTOS') && (
+                                    <button onClick={() => handleDeleteItem(e.idegresos, 'EGRESO')} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16}/></button>
+                                )}
+                            </td>
                         </tr>
                         ))}
                     </tbody>
@@ -380,13 +452,13 @@ const CashRegister: React.FC = () => {
                     </div>
                     <div className="p-6 flex-1 flex flex-col gap-4">
                         <button 
-                          onClick={() => setShowRecargaModal({ red: red as any, tipo: 'RECARGA' })}
+                          onClick={() => { setShowRecargaModal({ red: red as any, tipo: 'RECARGA' }); setRecargaForm({ tipo: 'RECARGA', monto:'', precio:'', paqueteId:''}); }}
                           className={`w-full py-4 bg-slate-50 font-bold rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${red === 'TIGO' ? 'text-blue-700 border-blue-100 hover:bg-blue-600 hover:text-white' : 'text-red-700 border-red-100 hover:bg-red-600 hover:text-white'}`}
                         >
                            <Smartphone/> RECARGA NORMAL
                         </button>
                         <button 
-                          onClick={() => setShowRecargaModal({ red: red as any, tipo: 'PAQUETE' })}
+                          onClick={() => { setShowRecargaModal({ red: red as any, tipo: 'PAQUETE' }); setRecargaForm({ tipo: 'PAQUETE', monto:'', precio:'', paqueteId:''}); }}
                           className={`w-full py-4 bg-slate-50 font-bold rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${red === 'TIGO' ? 'text-blue-700 border-blue-100 hover:bg-blue-600 hover:text-white' : 'text-red-700 border-red-100 hover:bg-red-600 hover:text-white'}`}
                         >
                            <Smartphone/> PAQUETES
@@ -402,14 +474,19 @@ const CashRegister: React.FC = () => {
               <h3 className="font-bold text-slate-700">Historial Ventas POS</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Factura</th><th className="p-3">Cliente</th><th className="p-3">Total</th><th className="p-3">Estado</th></tr></thead>
+                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Factura</th><th className="p-3">Cliente</th><th className="p-3">Total</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr></thead>
                     <tbody>
                         {ventas.map(v => (
-                        <tr key={v.codVenta} className="border-b hover:bg-slate-50">
+                        <tr key={v.codVenta} className={`border-b hover:bg-slate-50 ${v.estado === 'Anulada' ? 'opacity-50 bg-slate-100' : ''}`}>
                             <td className="p-3 font-mono text-xs">{v.codVenta}</td>
                             <td className="p-3 text-xs">{v.nombreCliente}</td>
-                            <td className="p-3 font-bold">L. {Number(v.total).toFixed(2)}</td>
-                            <td className="p-3"><span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">{v.estado}</span></td>
+                            <td className={`p-3 font-bold ${v.estado === 'Anulada' ? 'line-through text-slate-400' : ''}`}>L. {Number(v.total).toFixed(2)}</td>
+                            <td className="p-3"><span className={`text-xs px-2 py-1 rounded-full ${v.estado === 'Anulada' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{v.estado}</span></td>
+                            <td className="p-3 text-right">
+                                {v.estado !== 'Anulada' && hasPermission('ANULAR_VENTA') && (
+                                    <button onClick={() => handleAnularVenta(v.codVenta)} className="text-red-500 hover:bg-red-50 p-1.5 rounded text-xs font-bold border border-red-200">ANULAR</button>
+                                )}
+                            </td>
                         </tr>
                         ))}
                     </tbody>
@@ -444,7 +521,7 @@ const CashRegister: React.FC = () => {
             <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl animate-fade-in">
                <div className="flex justify-between items-center mb-4 border-b pb-2">
                   <h3 className="font-bold text-lg">{showRecargaModal.tipo} {showRecargaModal.red}</h3>
-                  <button onClick={() => setShowRecargaModal(null)}><Ban size={20} className="text-slate-400 hover:text-red-500"/></button>
+                  <button onClick={() => setShowRecargaModal(null)}><X size={20} className="text-slate-400 hover:text-red-500"/></button>
                </div>
                
                {showRecargaModal.tipo === 'PAQUETE' ? (
@@ -457,7 +534,16 @@ const CashRegister: React.FC = () => {
                      ))}
                   </select>
                ) : (
-                  <input type="number" className="w-full p-4 border-2 rounded-xl text-center text-3xl font-bold tracking-widest" placeholder="0.00" value={recargaForm.monto} onChange={e => setRecargaForm({...recargaForm, monto: e.target.value})} autoFocus />
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase">Monto a Enviar (Saldo/Costo)</label>
+                          <input type="number" className="w-full p-3 border-2 rounded-xl text-xl font-mono" placeholder="0.00" value={recargaForm.monto} onChange={e => setRecargaForm({...recargaForm, monto: e.target.value})} autoFocus />
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase">Precio a Cobrar (Venta)</label>
+                          <input type="number" className="w-full p-3 border-2 rounded-xl text-xl font-bold text-emerald-600" placeholder="0.00" value={recargaForm.precio} onChange={e => setRecargaForm({...recargaForm, precio: e.target.value})} />
+                      </div>
+                  </div>
                )}
 
                <button onClick={handleRecargaSubmit} className="w-full mt-6 py-4 rounded-xl font-bold text-white shadow-lg bg-slate-800 hover:bg-slate-700 transition-colors">PROCESAR</button>
@@ -471,7 +557,7 @@ const CashRegister: React.FC = () => {
             <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl animate-fade-in">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold text-lg text-slate-800">Comprar Saldo</h3>
-                  <button onClick={() => setShowSaldoModal(false)}><Ban size={20} className="text-slate-400"/></button>
+                  <button onClick={() => setShowSaldoModal(false)}><X size={20} className="text-slate-400"/></button>
                 </div>
                 <div className="space-y-4">
                     <select className="w-full p-3 border rounded-xl bg-slate-50" value={saldoForm.red} onChange={e => setSaldoForm({...saldoForm, red: e.target.value})}>
@@ -496,28 +582,42 @@ const CashRegister: React.FC = () => {
       {showIngresoModal && (
          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl animate-fade-in">
-               <h3 className="font-bold text-lg mb-4">Registrar Ingreso</h3>
+               <h3 className="font-bold text-lg mb-4">{isEditingIngreso ? 'Editar Ingreso' : 'Registrar Ingreso'}</h3>
                <div className="space-y-4">
-                  <input className="w-full p-3 border rounded-xl" placeholder="Descripción del producto/servicio" value={ingresoForm.descripcion} onChange={e => setIngresoForm({...ingresoForm, descripcion:e.target.value})} />
-                  <input type="number" className="w-full p-3 border rounded-xl font-bold" placeholder="Precio Venta" value={ingresoForm.monto} onChange={e => setIngresoForm({...ingresoForm, monto:e.target.value})} />
-                  
-                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <input 
-                        type="checkbox" 
-                        id="irAPos" 
-                        checked={ingresoForm.irAPos} 
-                        onChange={e => setIngresoForm({...ingresoForm, irAPos: e.target.checked})}
-                        className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
-                      />
-                      <label htmlFor="irAPos" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
-                          Facturar en Punto de Venta
-                          <p className="text-xs text-slate-400 font-normal">Genera factura formal e imprime ticket</p>
-                      </label>
+                  <div>
+                      <label className="text-xs font-bold text-slate-500">Descripción</label>
+                      <input className="w-full p-3 border rounded-xl" placeholder="Producto/Servicio" value={ingresoForm.descripcion} onChange={e => setIngresoForm({...ingresoForm, descripcion:e.target.value})} />
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500">Precio Venta</label>
+                          <input type="number" className="w-full p-3 border rounded-xl font-bold text-emerald-600" placeholder="0.00" value={ingresoForm.monto} onChange={e => setIngresoForm({...ingresoForm, monto:e.target.value})} />
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500">Costo</label>
+                          <input type="number" className="w-full p-3 border rounded-xl" placeholder="0.00" value={ingresoForm.costo} onChange={e => setIngresoForm({...ingresoForm, costo:e.target.value})} />
+                      </div>
+                  </div>
+                  
+                  {!isEditingIngreso && (
+                      <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <input 
+                            type="checkbox" 
+                            id="irAPos" 
+                            checked={ingresoForm.irAPos} 
+                            onChange={e => setIngresoForm({...ingresoForm, irAPos: e.target.checked})}
+                            className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
+                          />
+                          <label htmlFor="irAPos" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
+                              Facturar en Punto de Venta
+                              <p className="text-xs text-slate-400 font-normal">Genera ticket formal</p>
+                          </label>
+                      </div>
+                  )}
 
                   <div className="flex gap-2 mt-4">
                       <button onClick={() => setShowIngresoModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</button>
-                      <button onClick={handleCreateIngreso} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg">Continuar</button>
+                      <button onClick={handleIngresoAction} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg">Guardar</button>
                   </div>
                </div>
             </div>
@@ -528,14 +628,14 @@ const CashRegister: React.FC = () => {
       {showEgresoModal && (
          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl animate-fade-in">
-               <h3 className="font-bold text-lg mb-4">Registrar Gasto</h3>
+               <h3 className="font-bold text-lg mb-4">{isEditingEgreso ? 'Editar Gasto' : 'Registrar Gasto'}</h3>
                <div className="space-y-4">
                   <input className="w-full p-3 border rounded-xl" placeholder="Descripción del gasto" value={egresoForm.descripcion} onChange={e => setEgresoForm({...egresoForm, descripcion:e.target.value})} />
                   <input type="number" className="w-full p-3 border rounded-xl font-bold text-red-600" placeholder="Monto" value={egresoForm.monto} onChange={e => setEgresoForm({...egresoForm, monto:e.target.value})} />
                   
                   <div className="flex gap-2 mt-4">
                       <button onClick={() => setShowEgresoModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</button>
-                      <button onClick={handleCreateEgreso} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg">Guardar</button>
+                      <button onClick={handleEgresoAction} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg">Guardar</button>
                   </div>
                </div>
             </div>

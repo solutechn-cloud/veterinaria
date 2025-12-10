@@ -7,6 +7,8 @@ const { authenticateToken } = require('../middleware/auth');
 // --- PRODUCTOS UNIFICADOS (POS) ---
 router.get('/productos/unificados', authenticateToken, async (req, res) => {
     try {
+        // Se eliminó la restricción estricta de stock para que al menos aparezcan (visual feedback)
+        // Se unifican teléfonos disponibles y accesorios activos
         const query = `
             SELECT 
                 codigo as id, 'TELEFONO' as tipo, 
@@ -28,7 +30,7 @@ router.get('/productos/unificados', authenticateToken, async (req, res) => {
                 i.idubicacion as ubicacion
             FROM inventario i
             JOIN accesorios a ON i.codAccesorio = a.codAccesorio
-            WHERE i.estado = 'Activo' AND i.cantidad > 0
+            WHERE i.estado = 'Activo'
         `;
         const result = await pool.query(query);
         res.json(result.rows);

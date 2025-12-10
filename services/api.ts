@@ -82,7 +82,12 @@ export const CashService = {
   getEgresos: (idCaja: string) => request<Egreso[]>(`/egresos?idCaja=${idCaja}`).then(res => Array.isArray(res) ? res : []),
   
   createIngreso: (data: Partial<Ingreso>) => request<Ingreso>('/ingresos', { method: 'POST', body: JSON.stringify(data) }),
+  updateIngreso: (id: string, data: Partial<Ingreso>) => request(`/ingresos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteIngreso: (id: string) => request(`/ingresos/${id}`, { method: 'DELETE' }),
+
   createEgreso: (data: Partial<Egreso>) => request<Egreso>('/egresos', { method: 'POST', body: JSON.stringify(data) }),
+  updateEgreso: (id: string, data: Partial<Egreso>) => request(`/egresos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteEgreso: (id: string) => request(`/egresos/${id}`, { method: 'DELETE' }),
   
   createRecarga: (data: any) => request('/recargas', { method: 'POST', body: JSON.stringify(data) }),
   buySaldo: (data: { red: string, montoPagado: number, montoRecibido: number }) => request('/saldos/buy', { method: 'POST', body: JSON.stringify(data) }),
