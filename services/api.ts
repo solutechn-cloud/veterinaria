@@ -58,6 +58,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 }
 
+export const ReportsService = {
+  getSalesTrend: (year: number) => request<any[]>(`/reports/sales-trend?year=${year}`).then(res => Array.isArray(res) ? res : []),
+  getTopProducts: (startDate: string, endDate: string) => request<any[]>(`/reports/top-products?startDate=${startDate}&endDate=${endDate}`).then(res => Array.isArray(res) ? res : []),
+  getRechargesProfit: (year: number) => request<any[]>(`/reports/recharges-profit?year=${year}`).then(res => Array.isArray(res) ? res : []),
+  getInventoryValuation: () => request<any[]>(`/reports/inventory-valuation`).then(res => Array.isArray(res) ? res : []),
+  getTopClients: (startDate: string, endDate: string) => request<any[]>(`/reports/top-clients?startDate=${startDate}&endDate=${endDate}`).then(res => Array.isArray(res) ? res : []),
+  getDailySales: (startDate: string, endDate: string) => request<any[]>(`/reports/daily-sales?startDate=${startDate}&endDate=${endDate}`).then(res => Array.isArray(res) ? res : []),
+};
+
 export const PackagesService = {
   getAll: () => request<Paquete[]>('/paquetes').then(res => Array.isArray(res) ? res : []),
   create: (data: Partial<Paquete>) => request('/paquetes', { method: 'POST', body: JSON.stringify(data) }),

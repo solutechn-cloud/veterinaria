@@ -15,6 +15,7 @@ import Login from './pages/Login';
 import AdminUsers from './pages/AdminUsers';
 import Packages from './pages/Packages';
 import AdminCashDashboard from './pages/AdminCashDashboard';
+import Reports from './pages/Reports';
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="flex flex-col items-center justify-center h-96 text-slate-400">
@@ -47,7 +48,7 @@ const App: React.FC = () => {
                   <Route path="/cash" element={<ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>} />
                   <Route path="/costs" element={<ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>} />
 
-                  <Route path="/reports" element={<ProtectedRoute requiredPermission="VER_REPORTES"><Placeholder title="Reportes" /></ProtectedRoute>} />
+                  <Route path="/reports" element={<ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>} />
                   
                   {/* Rutas de Administración */}
                   <Route path="/admin/cash-dashboard" element={<ProtectedRoute requiredPermission="VER_ADMIN"><AdminCashDashboard /></ProtectedRoute>} />

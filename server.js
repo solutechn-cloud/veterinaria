@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const financeRoutes = require('./routes/financeRoutes');
+const reportsRoutes = require('./routes/reportsRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -91,6 +92,7 @@ app.use('/api', adminRoutes);
 app.use('/api', inventoryRoutes);
 app.use('/api', salesRoutes);
 app.use('/api', financeRoutes);
+app.use('/api', reportsRoutes);
 
 // --- STATIC FILES ---
 app.use(express.static(path.join(__dirname, 'build')));
