@@ -30,7 +30,6 @@ pool.connect((err, client, release) => {
 async function generateNextId(table, column, prefix) {
   try {
     // Busca el último ID que coincida con el prefijo
-    // Ej: SELECT codUsuario FROM usuarios WHERE codUsuario LIKE 'USER-%' ORDER BY LENGTH(codUsuario) DESC, codUsuario DESC LIMIT 1
     const query = `
       SELECT ${column} as id 
       FROM ${table} 
@@ -44,13 +43,11 @@ async function generateNextId(table, column, prefix) {
       return `${prefix}-0001`;
     }
 
-    const lastId = result.rows[0].id; // Ej: USER-0045
-    const numberPart = lastId.split('-')[1]; // 0045
-    const nextNumber = parseInt(numberPart, 10) + 1; // 46
+    const lastId = result.rows[0].id; 
+    const numberPart = lastId.split('-')[1]; 
+    const nextNumber = parseInt(numberPart, 10) + 1; 
     
-    // Rellenar con ceros a la izquierda (pad)
-    const paddedNumber = nextNumber.toString().padStart(4, '0'); // 0046
-    
+    const paddedNumber = nextNumber.toString().padStart(4, '0'); 
     return `${prefix}-${paddedNumber}`;
   } catch (err) {
     console.error(`Error generando ID para ${table}:`, err);
@@ -78,6 +75,7 @@ app.post('/api/auth/login', async (req, res) => {
   console.log(`🔹 Intento de login para usuario: ${usuario}`);
 
   try {
+    // PostgreSQL column alias to handle case sensitivity
     const query = `
       SELECT 
         u.codUsuario, u.usuario, u.password, u.estado,
@@ -90,6 +88,7 @@ app.post('/api/auth/login', async (req, res) => {
     `;
     
     const result = await pool.query(query, [usuario]);
+    // Postgres returns lowercase keys if aliases aren't quoted, but here we used aliases like rol_nombre
     const userRaw = result.rows[0];
 
     if (!userRaw) return res.status(401).json({ error: 'Usuario no encontrado' });
@@ -138,7 +137,9 @@ app.get('/api/users', authenticateToken, async (req, res) => {
       ORDER BY u.usuario ASC
     `;
     const result = await pool.query(query);
-    res.json(result.rows.map(row => ({
+    
+    // MAPEO IMPORTANTE: Postgres devuelve minúsculas (codusuario, idcaja), React espera CamelCase
+    const mappedUsers = result.rows.map(row => ({
         codUsuario: row.codusuario,
         usuario: row.usuario,
         identidad: row.identidad,
@@ -148,8 +149,11 @@ app.get('/api/users', authenticateToken, async (req, res) => {
         nombreEmpleado: row.nombreempleado,
         nombreRol: row.nombrerol,
         nombreCaja: row.nombrecaja
-    })));
+    }));
+
+    res.json(mappedUsers);
   } catch (err) {
+    console.error('Error fetching users:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -158,7 +162,11 @@ app.post('/api/users', authenticateToken, async (req, res) => {
   try {
     const { usuario, password, identidad, idCaja, idrol } = req.body;
     
-    // Generar ID USER-XXXX
+    // Validar datos básicos
+    if (!idCaja || !idrol || !identidad) {
+       return res.status(400).json({ error: "Faltan datos obligatorios (Caja, Rol o Empleado)" });
+    }
+
     const codUsuario = await generateNextId('usuarios', 'codUsuario', 'USER');
 
     const salt = await bcrypt.genSalt(10);
@@ -173,14 +181,15 @@ app.post('/api/users', authenticateToken, async (req, res) => {
     await pool.query(query, [codUsuario, usuario, hashedPassword, identidad, idCaja, idrol, fecha]);
     res.status(201).json({ message: 'Usuario creado', id: codUsuario });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error creando usuario' });
+    console.error('Error creating user:', err);
+    // Devuelve el mensaje real del error SQL (ej: null value in column "idCaja")
+    res.status(500).json({ error: err.message });
   }
 });
 
 app.put('/api/users/:id/status', authenticateToken, async (req, res) => {
   try {
-    const { status } = req.body; // 'Activo' o 'Inactivo'
+    const { status } = req.body;
     await pool.query('UPDATE usuarios SET estado = $1 WHERE codUsuario = $2', [status, req.params.id]);
     res.json({ message: 'Estado actualizado' });
   } catch(err) {
@@ -193,7 +202,17 @@ app.put('/api/users/:id/status', authenticateToken, async (req, res) => {
 app.get('/api/empleados', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM empleado ORDER BY nombre ASC");
-    res.json(result.rows);
+    // Mapeo manual para evitar problemas de minúsculas
+    const empleados = result.rows.map(row => ({
+      identidad: row.identidad,
+      nombre: row.nombre,
+      apellido: row.apellido,
+      direccion: row.direccion,
+      telefono: row.telefono,
+      estado: row.estado,
+      fechaCreacion: row.fechacreacion
+    }));
+    res.json(empleados);
   } catch (err) {
     res.status(500).json({ error: 'Error obteniendo empleados' });
   }
@@ -202,7 +221,6 @@ app.get('/api/empleados', authenticateToken, async (req, res) => {
 app.post('/api/empleados', authenticateToken, async (req, res) => {
   try {
     const { identidad, nombre, apellido, direccion, telefono } = req.body;
-    // Empleado usa Identidad como PK, no generamos ID
     const query = `
       INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono, fechaCreacion, estado)
       VALUES ($1, $2, $3, $4, $5, NOW(), 'Activo')
@@ -211,21 +229,6 @@ app.post('/api/empleados', authenticateToken, async (req, res) => {
     res.status(201).json({ message: 'Empleado creado' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error creando empleado' });
-  }
-});
-
-app.put('/api/empleados/:id', authenticateToken, async (req, res) => {
-  try {
-    const { nombre, apellido, direccion, telefono, estado } = req.body;
-    const query = `
-      UPDATE empleado 
-      SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, estado=$5, fechaModificacion=NOW()
-      WHERE identidad=$6
-    `;
-    await pool.query(query, [nombre, apellido, direccion, telefono, estado, req.params.id]);
-    res.json({ message: 'Empleado actualizado' });
-  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -235,7 +238,13 @@ app.put('/api/empleados/:id', authenticateToken, async (req, res) => {
 app.get('/api/cajas', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM caja ORDER BY idCaja ASC");
-    res.json(result.rows);
+    // Mapeo manual crítico para los selects del frontend
+    const cajas = result.rows.map(row => ({
+      idCaja: row.idcaja, // Postgres devuelve idcaja (minúsculas)
+      nombre: row.nombre,
+      estado: row.estado
+    }));
+    res.json(cajas);
   } catch (err) {
     res.status(500).json({ error: 'Error obteniendo cajas' });
   }
@@ -268,7 +277,12 @@ app.put('/api/cajas/:id', authenticateToken, async (req, res) => {
 app.get('/api/roles', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM roles ORDER BY idrol ASC");
-    res.json(result.rows);
+    const roles = result.rows.map(row => ({
+      idrol: row.idrol, // Postgres devuelve idrol
+      nombre: row.nombre,
+      estado: row.estado
+    }));
+    res.json(roles);
   } catch (err) {
     res.status(500).json({ error: 'Error obteniendo roles' });
   }
@@ -286,17 +300,102 @@ app.post('/api/roles', authenticateToken, async (req, res) => {
   }
 });
 
-// --- OTROS ENDPOINTS (Productos, Clientes, Arqueo) ---
-// Se mantienen los anteriores...
 
+// --- SETUP & INSTALL UTILS ---
 app.get('/api/setup/install', async (req, res) => {
-  // ... (Mismo código de install que tenías, asegurando que las tablas existen)
-  res.send('Tablas instaladas (ver logs para detalles)');
+  try {
+    // 1. Crear Tabla Roles
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        idrol varchar(100) PRIMARY KEY,
+        nombre varchar(50) NOT NULL,
+        estado varchar(20) NOT NULL DEFAULT 'Activo'
+      );
+    `);
+
+    // 2. Crear Tabla Caja
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS caja (
+        idCaja varchar(100) PRIMARY KEY,
+        nombre varchar(50) NOT NULL,
+        estado varchar(50) NOT NULL DEFAULT 'Activa'
+      );
+    `);
+
+    // 3. Crear Tabla Empleado
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS empleado (
+          identidad varchar(20) PRIMARY KEY,
+          nombre varchar(30) NOT NULL,
+          apellido varchar(30) NOT NULL,
+          direccion varchar(100) NOT NULL,
+          telefono varchar(20) NOT NULL,
+          estado varchar(20) NOT NULL DEFAULT 'Activo',
+          fechaCreacion timestamp NOT NULL DEFAULT NOW(),
+          fechaModificacion timestamp
+      );
+    `);
+
+    // 4. Crear Tabla Usuarios
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+          codUsuario varchar(100) PRIMARY KEY,
+          usuario varchar(100) NOT NULL,
+          password varchar(100) NOT NULL,
+          identidad varchar(20) NOT NULL,
+          idCaja varchar(100) NOT NULL,
+          idrol varchar(100) NOT NULL,
+          foto bytea,
+          fechaCreacion timestamp NOT NULL DEFAULT NOW(),
+          fechaModificacion timestamp,
+          estado varchar(20) NOT NULL DEFAULT 'Activo',
+          CONSTRAINT fk_empleado FOREIGN KEY (identidad) REFERENCES empleado(identidad),
+          CONSTRAINT fk_caja FOREIGN KEY (idCaja) REFERENCES caja(idCaja),
+          CONSTRAINT fk_rol FOREIGN KEY (idrol) REFERENCES roles(idrol)
+      );
+    `);
+
+    res.send('✅ Tablas Maestras Creadas (Roles, Caja, Empleado, Usuarios)');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error creando tablas: ' + err.message);
+  }
 });
 
 app.get('/api/setup/seed', async (req, res) => {
-    // ... (Mismo seed básico)
-    res.send('Seed ejecutado');
+  try {
+    // Verificar si existen datos
+    const check = await pool.query('SELECT * FROM usuarios');
+    if (check.rows.length > 0) return res.send('⚠️ Ya existen usuarios, seed omitido.');
+
+    // 1. Roles
+    await pool.query("INSERT INTO roles (idrol, nombre) VALUES ('ROL-ADMIN', 'Administrador') ON CONFLICT DO NOTHING");
+    await pool.query("INSERT INTO roles (idrol, nombre) VALUES ('ROL-VEND', 'Vendedor') ON CONFLICT DO NOTHING");
+
+    // 2. Caja
+    await pool.query("INSERT INTO caja (idCaja, nombre) VALUES ('CAJA-001', 'Caja Principal') ON CONFLICT DO NOTHING");
+
+    // 3. Empleado Admin
+    await pool.query(`
+      INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono) 
+      VALUES ('0606200201168', 'Super', 'Admin', 'Oficina', '99999999') 
+      ON CONFLICT DO NOTHING
+    `);
+
+    // 4. Usuario Admin (Pass: cadenas21)
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash('cadenas21', salt);
+    
+    await pool.query(`
+      INSERT INTO usuarios (codUsuario, usuario, password, identidad, idCaja, idrol)
+      VALUES ('USER-001', 'alvcd21', $1, '0606200201168', 'CAJA-001', 'ROL-ADMIN')
+    `, [hash]);
+
+    res.send('✅ Datos Semilla Insertados Correctamente');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error en seed: ' + err.message);
+  }
 });
 
 // --- SERVIR FRONTEND ---

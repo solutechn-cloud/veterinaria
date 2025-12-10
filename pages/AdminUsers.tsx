@@ -72,8 +72,8 @@ const AdminUsers: React.FC = () => {
       alert('Registro creado exitosamente');
       setShowModal(false);
       loadAllData();
-    } catch (error) {
-      alert('Error al crear registro');
+    } catch (error: any) {
+      alert('Error al crear registro: ' + (error.message || 'Error desconocido'));
     }
   };
 
@@ -240,7 +240,11 @@ const AdminUsers: React.FC = () => {
                     <tr key={c.idCaja} className="hover:bg-slate-50">
                       <td className="p-4 font-mono text-slate-500">{c.idCaja}</td>
                       <td className="p-4 font-bold text-slate-700">{c.nombre}</td>
-                      <td className="p-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">{c.estado}</span></td>
+                      <td className="p-4">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${(c.estado === 'Activa' || c.estado === 'Activo') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                           {c.estado}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

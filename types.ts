@@ -177,7 +177,7 @@ export interface Recarga {
 export interface Caja {
   idCaja: string; // PK
   nombre: string;
-  estado: EstadoGeneral;
+  estado: EstadoGeneral | 'Activa' | 'Inactiva';
 }
 
 export interface Arqueo {
