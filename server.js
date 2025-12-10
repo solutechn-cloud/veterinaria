@@ -79,9 +79,10 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!userRaw || userRaw.estado !== 'Activo') return res.status(401).json({ error: 'Usuario no válido' });
     
-    // Simple password check (In prod use bcrypt.compare)
+    // Simple password check
     if (userRaw.password !== password) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    // Mapeo manual porque userRaw viene en minúsculas desde PG
     const userData = { 
       codUsuario: userRaw.codusuario,
       usuario: userRaw.usuario, 
@@ -99,7 +100,11 @@ app.post('/api/auth/login', async (req, res) => {
 // ==========================================
 app.get('/api/costos', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM costos ORDER BY codCostos DESC');
+    const result = await pool.query(`
+      SELECT codCostos as "codCostos", tipo, descripcion, monto, estado 
+      FROM costos 
+      ORDER BY codCostos DESC
+    `);
     res.json(result.rows);
   } catch(e) { handleDbError(res,e); }
 });
@@ -143,7 +148,16 @@ app.get('/api/arqueo/active', authenticateToken, async (req, res) => {
   try {
     const { idCaja } = req.user;
     const result = await pool.query(
-      `SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo' ORDER BY fechaApertura DESC LIMIT 1`,
+      `SELECT 
+        idArqueo as "idArqueo", 
+        idCaja as "idCaja", 
+        idUsuario as "idUsuario", 
+        fechaApertura as "fechaApertura", 
+        montoInicial as "montoInicial", 
+        estado 
+       FROM arqueo 
+       WHERE idCaja = $1 AND estado = 'Activo' 
+       ORDER BY fechaApertura DESC LIMIT 1`,
       [idCaja]
     );
     res.json(result.rows[0] || null);
@@ -154,7 +168,11 @@ app.get('/api/arqueo/active', authenticateToken, async (req, res) => {
 app.get('/api/saldos/today', authenticateToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const result = await pool.query(`SELECT * FROM saldos WHERE fecha = $1`, [today]);
+    const result = await pool.query(`
+      SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha 
+      FROM saldos 
+      WHERE fecha = $1
+    `, [today]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -186,7 +204,6 @@ app.post('/api/arqueo/open', authenticateToken, async (req, res) => {
     
     if (checkSaldos.rows.length === 0) {
       const idSaldoTigo = await generateNextId('saldos', 'idsaldos', 'SAL', client);
-      // Hack to ensure distinct IDs if generated closely
       const idSaldoClaroNum = parseInt(idSaldoTigo.split('-')[1]) + 1;
       const idSaldoClaro = `SAL-${idSaldoClaroNum.toString().padStart(4,'0')}`;
 
@@ -221,10 +238,13 @@ app.post('/api/arqueo/close', authenticateToken, async (req, res) => {
 
 // Ingresos CRUD
 app.get('/api/ingresos', authenticateToken, async (req, res) => {
-  const { idCaja } = req.query; // Filter by Box logic
+  const { idCaja } = req.query;
   try {
-    // Show recent incomes
-    const result = await pool.query(`SELECT * FROM ingresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
+    const result = await pool.query(`
+      SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado 
+      FROM ingresos 
+      WHERE idCaja = $1 
+      ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -248,7 +268,11 @@ app.post('/api/ingresos', authenticateToken, async (req, res) => {
 app.get('/api/egresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
-    const result = await pool.query(`SELECT * FROM egresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
+    const result = await pool.query(`
+      SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado 
+      FROM egresos 
+      WHERE idCaja = $1 
+      ORDER BY fechaCreacion DESC LIMIT 100`, [idCaja]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -268,7 +292,7 @@ app.post('/api/egresos', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Registrar Recarga (Afecta Ingresos, Recargas y Saldos)
+// Registrar Recarga
 app.post('/api/recargas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -277,7 +301,7 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 1. Ingreso de Caja (Entra dinero)
+    // 1. Ingreso de Caja
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) 
@@ -293,15 +317,7 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
       [idRecargas, red, tipo, descripcion, precioCobrado, precioPagado]
     );
 
-    // 3. Descontar Saldo (Tabla Saldos)
-    // Find today's saldo record for the red
-    // NOTE: This logic assumes saldoComprado is additions, saldoFinal is remaining. 
-    // We update saldoFinal or simply track usage. Schema is 'saldoInicio', 'saldoComprado', 'saldoFinal'.
-    // Let's assume we subtract from saldoFinal or update it.
-    /* 
-       Logic: If record exists for today, update saldoFinal = saldoFinal - precioPagado (cost).
-       If saldoFinal is null, assume it starts as saldoInicio + saldoComprado.
-    */
+    // 3. Descontar Saldo
     const today = new Date().toISOString().split('T')[0];
     await client.query(`
       UPDATE saldos 
@@ -321,7 +337,7 @@ app.post('/api/recargas', authenticateToken, async (req, res) => {
 
 
 // ==========================================
-// INVENTARIO (Updated for Schema)
+// INVENTARIO
 // ==========================================
 
 app.get('/api/productos/unificados', authenticateToken, async (req, res) => {
@@ -330,7 +346,7 @@ app.get('/api/productos/unificados', authenticateToken, async (req, res) => {
         SELECT codigo as id, 'TELEFONO' as tipo, (marca || ' ' || modelo) as nombre, codigo, precioventa as "precioVenta", 1 as stock, imei1 as imei, idubicacion as ubicacion 
         FROM telefonos WHERE estado = 'Disponible' 
         UNION ALL 
-        SELECT i.codInventario as id, 'ACCESORIO' as tipo, a.descripcion as nombre, i.codInventario as codigo, i.precioVenta, i.cantidad as stock, NULL as imei, i.idubicacion as ubicacion 
+        SELECT i.codInventario as id, 'ACCESORIO' as tipo, a.descripcion as nombre, i.codInventario as codigo, i.precioVenta as "precioVenta", i.cantidad as stock, NULL as imei, i.idubicacion as ubicacion 
         FROM inventario i 
         JOIN accesorios a ON i.codAccesorio = a.codAccesorio 
         WHERE i.estado = 'Activo' AND i.cantidad > 0
@@ -342,7 +358,11 @@ app.get('/api/productos/unificados', authenticateToken, async (req, res) => {
 // Accessories Master
 app.get('/api/inventory/accesorios-master', authenticateToken, async (req, res) => {
   try {
-    const r = await pool.query(`SELECT a.*, c.tipo as "nombreCategoria" FROM accesorios a JOIN categoria c ON a.codCategoria = c.codCategoria`);
+    const r = await pool.query(`
+      SELECT a.codAccesorio as "codAccesorio", a.codCategoria as "codCategoria", a.descripcion, c.tipo as "nombreCategoria" 
+      FROM accesorios a 
+      JOIN categoria c ON a.codCategoria = c.codCategoria
+    `);
     res.json(r.rows);
   } catch(e){handleDbError(res,e)} 
 });
@@ -359,7 +379,8 @@ app.post('/api/inventory/accesorios-master', authenticateToken, async (req, res)
 app.get('/api/inventory/stock', authenticateToken, async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT i.*, a.descripcion as "descripcionAccesorio", u.nombre as "nombreUbicacion" 
+      SELECT i.codInventario as "codInventario", i.codAccesorio as "codAccesorio", i.cantidad, i.precioCompra as "precioCompra", i.precioVenta as "precioVenta", i.codProveedor as "codProveedor", i.fecha, i.idubicacion, i.estado,
+             a.descripcion as "descripcionAccesorio", u.nombre as "nombreUbicacion" 
       FROM inventario i 
       JOIN accesorios a ON i.codAccesorio = a.codAccesorio
       JOIN ubicacion u ON i.idubicacion = u.idUbicacion
@@ -382,7 +403,13 @@ app.post('/api/inventory/stock', authenticateToken, async (req, res) => {
 // Telefonos
 app.get('/api/inventory/telefonos', authenticateToken, async (req,res) => { 
   try{
-    const r=await pool.query(`SELECT t.*, u.nombre as "nombreUbicacion" FROM telefonos t LEFT JOIN ubicacion u ON t.idubicacion=u.idUbicacion ORDER BY t.codigo DESC`);
+    const r=await pool.query(`
+      SELECT t.codigo, t.imei1, t.imei2, t.marca, t.modelo, t.precioCompra as "precioCompra", t.precioVenta as "precioVenta", t.codProveedor as "codProveedor", t.fecha, t.idubicacion, t.estado,
+             u.nombre as "nombreUbicacion" 
+      FROM telefonos t 
+      LEFT JOIN ubicacion u ON t.idubicacion=u.idUbicacion 
+      ORDER BY t.codigo DESC
+    `);
     res.json(r.rows)
   }catch(e){handleDbError(res,e)}
 });
@@ -399,20 +426,20 @@ app.post('/api/inventory/telefonos', authenticateToken, async (req, res) => {
   } catch(e){handleDbError(res,e)}
 });
 
-// Categories & Locations (Standard CRUD)
-app.get('/api/inventory/categorias', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM categoria'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+// Categories & Locations
+app.get('/api/inventory/categorias', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codCategoria as "codCategoria", tipo FROM categoria'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
 app.post('/api/inventory/categorias', authenticateToken, async (req, res) => { try { const id = await generateNextId('categoria','codCategoria','CAT'); await pool.query('INSERT INTO categoria VALUES($1,$2)',[id,req.body.tipo]); res.json({}); } catch(e){handleDbError(res,e)} });
 
-app.get('/api/inventory/ubicaciones', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM ubicacion'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/inventory/ubicaciones', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idUbicacion as "idUbicacion", nombre, descripcion, estante, nivel, estado FROM ubicacion'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
 app.post('/api/inventory/ubicaciones', authenticateToken, async (req, res) => { try { const id = await generateNextId('ubicacion','idUbicacion','UBI'); const {nombre,descripcion,estante,nivel,estado}=req.body; await pool.query('INSERT INTO ubicacion VALUES($1,$2,$3,$4,$5,$6)',[id,nombre,descripcion,estante,nivel,estado]); res.json({}); } catch(e){handleDbError(res,e)} });
 
 // ==========================================
-// VENTAS (Updated for Schema)
+// VENTAS
 // ==========================================
 app.post('/api/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { identidadCliente, total, detalles } = req.body; // Removed 'tipoCompra' as it is not in 'ventas' table definition provided
+    const { identidadCliente, total, detalles } = req.body;
     const { codUsuario } = req.user;
     
     // Check Box
@@ -422,9 +449,8 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
     await client.query('BEGIN');
     
     const codVenta = await generateNextId('ventas', 'codVenta', 'FAC', client);
-    const fecha = new Date().toISOString().split('T')[0]; // DATE type in DB
+    const fecha = new Date().toISOString().split('T')[0];
     
-    // Using codUsuario as codVendedor as per schema usually implies
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado) VALUES ($1, $2, $3, $4, $5, 'Completada')`,
       [codVenta, fecha, codUsuario, identidadCliente, total]
@@ -437,21 +463,13 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
       const codDetalle = `DET-${currentDetailIdNum.toString().padStart(4, '0')}`;
       currentDetailIdNum++;
       
-      // Mapeo item: idTelefono or idInventario(stock -> accesorio)
-      // Schema has: idAccesorio, idTelefono, idIngreso.
-      // If selling accessory from stock (inventario), we need to link the codAccesorio.
-      
       let idAccesorio = null;
       let idTelefono = null;
 
       if (item.tipoProducto === 'TELEFONO') {
-        idTelefono = item.idTelefono; // Assuming this comes as the specific code 'TEL-XXXX'
+        idTelefono = item.idTelefono;
         await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [idTelefono]);
       } else if (item.tipoProducto === 'ACCESORIO') {
-        // Here we need to find the related accesorio code if the cart item has codInventario
-        // But the schema implies idAccesorio. 
-        // Let's assume item.idInventario is passed. We reduce stock from inventario table.
-        // We can get the codAccesorio from inventario table.
         const invResult = await client.query('SELECT codAccesorio FROM inventario WHERE codInventario = $1', [item.idInventario]);
         if(invResult.rows.length > 0) idAccesorio = invResult.rows[0].codaccesorio;
         
@@ -475,7 +493,8 @@ app.get('/api/ventas/historial', authenticateToken, async (req, res) => {
   const { codUsuario } = req.user;
   try {
     const result = await pool.query(`
-      SELECT v.*, c.nombre || ' ' || c.apellido as "nombreCliente"
+      SELECT v.codVenta as "codVenta", v.fecha, v.codVendedor as "codVendedor", v.identidadCliente as "identidadCliente", v.total, v.estado,
+             c.nombre || ' ' || c.apellido as "nombreCliente"
       FROM ventas v
       LEFT JOIN clientes c ON v.identidadCliente = c.identidad
       WHERE v.codVendedor = $1 AND v.fecha = $2
@@ -485,13 +504,35 @@ app.get('/api/ventas/historial', authenticateToken, async (req, res) => {
   } catch(err) { handleDbError(res, err); }
 });
 
-// Admin Users, Empleados, Roles, Cajas, Proveedores, Clientes (Standard CRUD updated for columns)
-app.get('/api/users', authenticateToken, async (req, res) => { try { const r = await pool.query(`SELECT u.*, e.nombre || ' ' || e.apellido as "nombreEmpleado", r.nombre as "nombreRol", c.nombre as "nombreCaja" FROM usuarios u JOIN empleado e ON u.identidad = e.identidad JOIN roles r ON u.idrol = r.idrol JOIN caja c ON u.idCaja = c.idCaja`); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/empleados', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM empleado'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/roles', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM roles'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/cajas', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM caja'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/clientes', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM clientes'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
-app.get('/api/proveedores', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT * FROM proveedores'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+// Admin Users, Empleados, Roles, Cajas, Proveedores, Clientes
+app.get('/api/users', authenticateToken, async (req, res) => { 
+    try { 
+        const r = await pool.query(`
+            SELECT u.codUsuario as "codUsuario", u.usuario, u.identidad, u.idCaja as "idCaja", u.idrol, u.estado,
+                   e.nombre || ' ' || e.apellido as "nombreEmpleado", 
+                   r.nombre as "nombreRol", 
+                   c.nombre as "nombreCaja" 
+            FROM usuarios u 
+            JOIN empleado e ON u.identidad = e.identidad 
+            JOIN roles r ON u.idrol = r.idrol 
+            JOIN caja c ON u.idCaja = c.idCaja
+        `); 
+        res.json(r.rows); 
+    } catch(e){handleDbError(res,e)} 
+});
+
+app.get('/api/empleados', authenticateToken, async (req, res) => { 
+    try { 
+        // Empleado keys are simple (lowercase names in DB usually match simple keys, but 'fechaCreacion' needs alias)
+        const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, estado FROM empleado'); 
+        res.json(r.rows); 
+    } catch(e){handleDbError(res,e)} 
+});
+
+app.get('/api/roles', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idrol, nombre, estado FROM roles'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/cajas', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idCaja as "idCaja", nombre, estado FROM caja'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/clientes', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion as "fechaCreacion" FROM clientes'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.get('/api/proveedores', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codProveedor as "codProveedor", nombre, telefono, direccion FROM proveedores'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
 
 // Serve Frontend
 app.use(express.static(path.join(__dirname, 'build')));

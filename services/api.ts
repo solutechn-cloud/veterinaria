@@ -33,7 +33,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   try {
     const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
     
-    if (response.status === 401 || response.status === 403) {
+    // Si es error de autenticación (401/403) PERO no es el login, redirigir.
+    // Si es login, dejamos pasar el error para que el formulario muestre "Contraseña incorrecta".
+    if ((response.status === 401 || response.status === 403) && !endpoint.includes('/auth/login')) {
       localStorage.removeItem('smartcloud_token');
       localStorage.removeItem('smartcloud_user');
       window.location.href = '#/login';
@@ -41,7 +43,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
 
     if (!response.ok) {
-        const errData = await response.json();
+        const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || `Error ${response.status}`);
     }
     
