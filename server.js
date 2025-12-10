@@ -63,7 +63,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// --- AUTH (CORREGIDO) ---
+// --- AUTH (CORREGIDO CON BCRYPT) ---
 app.post('/api/auth/login', async (req, res) => {
   const { usuario, password } = req.body;
   try {
@@ -95,10 +95,20 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'El usuario está inactivo' });
     }
     
-    const dbPass = userRaw.password ? userRaw.password.trim() : '';
-    const inputPass = password ? password.trim() : '';
+    // Validar contraseña (Soporte Híbrido: Bcrypt o Texto Plano para migración)
+    let validPassword = false;
+    
+    // Si la contraseña en DB empieza con $2a, $2b o $2y, es un hash bcrypt
+    if (userRaw.password && (userRaw.password.startsWith('$2a$') || userRaw.password.startsWith('$2b$') || userRaw.password.startsWith('$2y$'))) {
+        validPassword = await bcrypt.compare(password, userRaw.password);
+    } else {
+        // Fallback para contraseñas antiguas en texto plano
+        const dbPass = userRaw.password ? userRaw.password.trim() : '';
+        const inputPass = password ? password.trim() : '';
+        validPassword = (dbPass === inputPass);
+    }
 
-    if (dbPass !== inputPass) {
+    if (!validPassword) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
@@ -126,7 +136,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ==========================================
-// ROLES Y PERMISOS (ACTUALIZADO)
+// ROLES Y PERMISOS
 // ==========================================
 
 app.get('/api/permisos', authenticateToken, async (req, res) => {
@@ -138,14 +148,12 @@ app.get('/api/permisos', authenticateToken, async (req, res) => {
 
 app.get('/api/roles', authenticateToken, async (req, res) => { 
   try { 
-    // Obtener roles
     const rolesResult = await pool.query('SELECT idrol, nombre, estado FROM roles ORDER BY idrol');
     const roles = rolesResult.rows;
 
-    // Obtener permisos para cada rol
     for (let rol of roles) {
         const pResult = await pool.query('SELECT idPermiso FROM rol_permisos WHERE idRol = $1', [rol.idrol]);
-        rol.permisos = pResult.rows.map(r => r.idpermiso); // idPermiso en minúsculas por PG
+        rol.permisos = pResult.rows.map(r => r.idpermiso);
     }
 
     res.json(roles); 
@@ -155,7 +163,7 @@ app.get('/api/roles', authenticateToken, async (req, res) => {
 app.post('/api/roles', authenticateToken, async (req, res) => { 
   const client = await pool.connect();
   try {
-    const { nombre, permisos } = req.body; // permisos is array of strings
+    const { nombre, permisos } = req.body;
     await client.query('BEGIN');
     
     const idrol = await generateNextId('roles', 'idrol', 'ROL', client);
@@ -187,7 +195,6 @@ app.put('/api/roles/:id', authenticateToken, async (req, res) => {
         
         await client.query('UPDATE roles SET nombre=$1, estado=$2 WHERE idrol=$3', [nombre, estado, idRol]);
         
-        // Actualizar permisos: Borrar todos y re-insertar
         await client.query('DELETE FROM rol_permisos WHERE idRol=$1', [idRol]);
         
         if (permisos && Array.isArray(permisos)) {
@@ -208,7 +215,6 @@ app.put('/api/roles/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/roles/:id', authenticateToken, async (req, res) => { 
     try { 
-        // ON DELETE CASCADE en la DB se encarga de rol_permisos
         await pool.query('DELETE FROM roles WHERE idrol=$1', [req.params.id]); 
         res.json({ message: 'Rol eliminado' }); 
     } catch(e){ handleDbError(res,e) } 
@@ -233,16 +239,81 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     } catch(e){handleDbError(res,e)} 
 });
 
+app.post('/api/users', authenticateToken, async (req, res) => { 
+  try { 
+    const { usuario, password, identidad, idrol, idCaja, estado } = req.body;
+    const id = await generateNextId('usuarios', 'codUsuario', 'US');
+    
+    // Encriptar contraseña antes de guardar
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      'INSERT INTO usuarios VALUES($1,$2,$3,$4,$5,$6,NULL,NOW(),NULL,$7)',
+      [id, usuario, hashedPassword, identidad, idCaja, idrol, estado]
+    ); 
+    res.json({ message: 'Usuario creado' }); 
+  } catch(e){ handleDbError(res,e) } 
+});
+
+app.put('/api/users/:id', authenticateToken, async (req, res) => { 
+  try { 
+    const { usuario, password, identidad, idrol, idCaja, estado } = req.body;
+    
+    if (password && password.trim() !== '') {
+       // Si envían contraseña, encriptarla
+       const hashedPassword = await bcrypt.hash(password, 10);
+       await pool.query(
+         'UPDATE usuarios SET usuario=$1, password=$2, identidad=$3, idrol=$4, idCaja=$5, estado=$6 WHERE codUsuario=$7',
+         [usuario, hashedPassword, identidad, idrol, idCaja, estado, req.params.id]
+       );
+    } else {
+       await pool.query(
+         'UPDATE usuarios SET usuario=$1, identidad=$2, idrol=$3, idCaja=$4, estado=$5 WHERE codUsuario=$6',
+         [usuario, identidad, idrol, idCaja, estado, req.params.id]
+       ); 
+    } 
+    res.json({ message: 'Usuario actualizado' }); 
+  } catch(e){ handleDbError(res,e) } 
+});
+
+app.delete('/api/users/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM usuarios WHERE codUsuario=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+
 app.get('/api/empleados', authenticateToken, async (req, res) => { 
     try { 
         const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, estado FROM empleado'); 
         res.json(r.rows); 
     } catch(e){handleDbError(res,e)} 
 });
+app.post('/api/empleados', authenticateToken, async (req, res) => { 
+    try { 
+        const {identidad,nombre,apellido,direccion,telefono,estado}=req.body; 
+        await pool.query('INSERT INTO empleado VALUES($1,$2,$3,$4,$5,$6,NOW())',[identidad,nombre,apellido,direccion,telefono,estado]); 
+        res.json({message:'Creado'}); 
+    } catch(e){handleDbError(res,e)} 
+});
+app.put('/api/empleados/:id', authenticateToken, async (req, res) => { try { const {nombre,apellido,direccion,telefono,estado}=req.body; await pool.query('UPDATE empleado SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, estado=$5 WHERE identidad=$6',[nombre,apellido,direccion,telefono,estado,req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/empleados/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM empleado WHERE identidad=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
 
 app.get('/api/cajas', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT idCaja as "idCaja", nombre, estado FROM caja'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.post('/api/cajas', authenticateToken, async (req, res) => { 
+    try { 
+        const id = await generateNextId('caja','idCaja','CAJA'); 
+        await pool.query('INSERT INTO caja (idCaja, nombre, estado) VALUES ($1,$2,$3)', [id, req.body.nombre, 'Activa']); 
+        res.json({ message: 'Caja Creada' }); 
+    } catch(e){handleDbError(res,e)} 
+});
+app.put('/api/cajas/:id', authenticateToken, async (req, res) => { try { const {nombre,estado}=req.body; await pool.query('UPDATE caja SET nombre=$1, estado=$2 WHERE idCaja=$3',[nombre,estado,req.params.id]); res.json({message:'Caja Actualizada'}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/cajas/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM caja WHERE idCaja=$1',[req.params.id]); res.json({message:'Caja Eliminada'}); } catch(e){handleDbError(res,e)} });
+
 app.get('/api/clientes', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion as "fechaCreacion" FROM clientes'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.post('/api/clientes', authenticateToken, async (req, res) => { try { const {identidad,nombre,apellido,direccion,telefono,correo}=req.body; await pool.query('INSERT INTO clientes (identidad,nombre,apellido,direccion,telefono,correo,fechaCreacion) VALUES($1,$2,$3,$4,$5,$6,NOW())',[identidad,nombre,apellido,direccion,telefono,correo]); res.json({message:'Creado'}); } catch(e){handleDbError(res,e)} });
+app.put('/api/clientes/:id', authenticateToken, async (req, res) => { try { const {nombre,apellido,direccion,telefono,correo}=req.body; await pool.query('UPDATE clientes SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, correo=$5 WHERE identidad=$6',[nombre,apellido,direccion,telefono,correo,req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/clientes/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM clientes WHERE identidad=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+
 app.get('/api/proveedores', authenticateToken, async (req, res) => { try { const r = await pool.query('SELECT codProveedor as "codProveedor", nombre, telefono, direccion FROM proveedores'); res.json(r.rows); } catch(e){handleDbError(res,e)} });
+app.post('/api/proveedores', authenticateToken, async (req, res) => { try { const id = await generateNextId('proveedores','codProveedor','PROV'); const {nombre,telefono,direccion}=req.body; await pool.query('INSERT INTO proveedores (codProveedor,nombre,telefono,direccion,fechaCreacion) VALUES($1,$2,$3,$4,NOW())',[id,nombre,telefono,direccion]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.put('/api/proveedores/:id', authenticateToken, async (req, res) => { try { const {nombre,telefono,direccion}=req.body; await pool.query('UPDATE proveedores SET nombre=$1, telefono=$2, direccion=$3 WHERE codProveedor=$4',[nombre,telefono,direccion,req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
+app.delete('/api/proveedores/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM proveedores WHERE codProveedor=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
 
 // COSTOS
 app.get('/api/costos', authenticateToken, async (req, res) => {
@@ -621,35 +692,6 @@ app.get('/api/ventas/historial', authenticateToken, async (req, res) => {
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
-
-// Admin Ops for Boxes and Roles
-app.post('/api/roles', authenticateToken, async (req, res) => { 
-  // Handled above in transaction
-});
-
-app.post('/api/cajas', authenticateToken, async (req, res) => { 
-    try { 
-        const id = await generateNextId('caja','idCaja','CAJA'); 
-        await pool.query('INSERT INTO caja (idCaja, nombre, estado) VALUES ($1,$2,$3)', [id, req.body.nombre, 'Activa']); 
-        res.json({ message: 'Caja Creada' }); 
-    } catch(e){handleDbError(res,e)} 
-});
-app.put('/api/cajas/:id', authenticateToken, async (req, res) => { try { const {nombre,estado}=req.body; await pool.query('UPDATE caja SET nombre=$1, estado=$2 WHERE idCaja=$3',[nombre,estado,req.params.id]); res.json({message:'Caja Actualizada'}); } catch(e){handleDbError(res,e)} });
-app.delete('/api/cajas/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM caja WHERE idCaja=$1',[req.params.id]); res.json({message:'Caja Eliminada'}); } catch(e){handleDbError(res,e)} });
-
-app.post('/api/empleados', authenticateToken, async (req, res) => { 
-    try { 
-        const {identidad,nombre,apellido,direccion,telefono,estado}=req.body; 
-        await pool.query('INSERT INTO empleado VALUES($1,$2,$3,$4,$5,$6,NOW())',[identidad,nombre,apellido,direccion,telefono,estado]); 
-        res.json({message:'Creado'}); 
-    } catch(e){handleDbError(res,e)} 
-});
-app.put('/api/empleados/:id', authenticateToken, async (req, res) => { try { const {nombre,apellido,direccion,telefono,estado}=req.body; await pool.query('UPDATE empleado SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, estado=$5 WHERE identidad=$6',[nombre,apellido,direccion,telefono,estado,req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
-app.delete('/api/empleados/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM empleado WHERE identidad=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
-
-app.post('/api/users', authenticateToken, async (req, res) => { try { const {usuario,password,identidad,idrol,idCaja,estado}=req.body; const id=await generateNextId('usuarios','codUsuario','US'); await pool.query('INSERT INTO usuarios VALUES($1,$2,$3,$4,$5,$6,NULL,NOW(),NULL,$7)',[id,usuario,password,identidad,idCaja,idrol,estado]); res.json({}); } catch(e){handleDbError(res,e)} });
-app.put('/api/users/:id', authenticateToken, async (req, res) => { try { const {usuario,password,identidad,idrol,idCaja,estado}=req.body; if(password){ await pool.query('UPDATE usuarios SET usuario=$1, password=$2, identidad=$3, idrol=$4, idCaja=$5, estado=$6 WHERE codUsuario=$7',[usuario,password,identidad,idrol,idCaja,estado,req.params.id]); } else { await pool.query('UPDATE usuarios SET usuario=$1, identidad=$2, idrol=$3, idCaja=$4, estado=$5 WHERE codUsuario=$6',[usuario,identidad,idrol,idCaja,estado,req.params.id]); } res.json({}); } catch(e){handleDbError(res,e)} });
-app.delete('/api/users/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM usuarios WHERE codUsuario=$1',[req.params.id]); res.json({}); } catch(e){handleDbError(res,e)} });
 
 app.use(express.static(path.join(__dirname, 'build')));
 app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'build', 'index.html')); });
