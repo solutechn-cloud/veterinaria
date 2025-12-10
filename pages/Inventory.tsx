@@ -13,7 +13,7 @@ import {
   Tag, List, PlusCircle, X, RefreshCw, Printer
 } from 'lucide-react';
 import Swal from 'sweetalert2';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
 
 type InventoryTab = 'TELEPHONES' | 'STOCK' | 'MASTER' | 'CATEGORIES' | 'LOCATIONS';
@@ -128,22 +128,7 @@ const Inventory: React.FC = () => {
       const barcodeImg = canvas.toDataURL("image/png");
 
       // 3. Add Content to PDF
-      // Rotate Logic: The user legacy code shows rotation. 
-      // However, usually for a vertical label (25x40), we print normally 
-      // OR we print rotated if the printer expects it sideways.
-      // Based on legacy code: "pdfImg.setRotationDegrees(90)".
-      // This implies the physical label comes out wide-edge leading or similar.
-      // BUT, let's try standard vertical layout first which is easier for web.
-      // If text needs to be vertical on the side (like spine labels):
-      
-      // -- Standard Layout for 25x40mm Label --
-      doc.setFontSize(8);
-      
-      // Description (Word Wrap) - Centered at top, rotated if needed?
-      // Let's implement vertical text on the side (Legacy style interpretation)
-      // Actually legacy code: cb.showTextAligned(..., 90) -> Rotated 90 degrees.
-      
-      // Let's do a simple vertical layout first: Text Top, Barcode Bottom.
+      // Standard vertical layout: Text Top, Barcode Bottom.
       // Text
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
@@ -297,7 +282,6 @@ const Inventory: React.FC = () => {
                       <div className="flex flex-col">
                         <span className="font-bold">{p.nombreUbicacion}</span>
                         {/* If backend returns estante/nivel for phones join query */}
-                        {/* Note: I updated the query in server.js to return these fields */}
                         <span className="text-[10px] text-slate-400">Est: {(p as any).estante} - Nvl: {(p as any).nivel}</span>
                       </div>
                     ) : (p.idubicacion)}
