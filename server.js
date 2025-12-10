@@ -35,17 +35,20 @@ async function initDB() {
     await pool.query(`CREATE TABLE IF NOT EXISTS telefonos (codigo varchar(100) PRIMARY KEY, imei1 varchar(50) NOT NULL, imei2 varchar(50) NOT NULL, marca varchar(50) NOT NULL, modelo varchar(50) NOT NULL, precioCompra numeric(10,2) NOT NULL, precioVenta numeric(10,2) NOT NULL, codProveedor varchar(50) NOT NULL, fecha date NOT NULL, idubicacion varchar(100) NOT NULL, estado varchar(20) NOT NULL);`);
     await pool.query(`CREATE TABLE IF NOT EXISTS inventario (codInventario varchar(100) PRIMARY KEY, codAccesorio varchar(100), cantidad integer NOT NULL, precioCompra numeric(10,2) NOT NULL, precioVenta numeric(10,2) NOT NULL, codProveedor varchar(50) NOT NULL, fecha date NOT NULL, idubicacion varchar(100) NOT NULL, estado varchar(100) NOT NULL);`);
     
-    // UPDATED: Added fechaCreacion to providers to match typical error requirements if DB has it
+    // 3. Tablas que pueden necesitar migracion (Columnas faltantes)
     await pool.query(`CREATE TABLE IF NOT EXISTS proveedores (codProveedor varchar(50) PRIMARY KEY, nombre varchar(100) NOT NULL, telefono varchar(50), direccion varchar(150), fechaCreacion timestamp DEFAULT NOW());`);
-    
-    // 3. Clientes
+    // Alter table to ensure column exists if it was created previously without it
+    try { await pool.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS fechaCreacion timestamp DEFAULT NOW()`); } catch(e) {}
+
     await pool.query(`CREATE TABLE IF NOT EXISTS clientes (identidad varchar(20) PRIMARY KEY, nombre varchar(50) NOT NULL, apellido varchar(50) NOT NULL, direccion varchar(150) NOT NULL, telefono varchar(20), correo varchar(100), fechaCreacion timestamp DEFAULT NOW());`);
+    // Alter table to ensure column exists
+    try { await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fechaCreacion timestamp DEFAULT NOW()`); } catch(e) {}
 
     // 4. Ventas
     await pool.query(`CREATE TABLE IF NOT EXISTS ventas (codVenta varchar(100) PRIMARY KEY, fecha timestamp NOT NULL, codUsuario varchar(100) NOT NULL, identidadCliente varchar(20) NOT NULL, tipoCompra varchar(20) NOT NULL, total numeric(10,2) NOT NULL, isv numeric(10,2) NOT NULL, descuento numeric(10,2) NOT NULL, estado varchar(20) NOT NULL);`);
     await pool.query(`CREATE TABLE IF NOT EXISTS detalle_venta (codDetalleVenta varchar(100) PRIMARY KEY, idVenta varchar(100) NOT NULL, idTelefono varchar(100), idInventario varchar(100), cantidad integer NOT NULL, precioVenta numeric(10,2) NOT NULL);`);
     
-    // 5. Data Inicial (Seeds) - FIXED Insert to include NOW() for fechaCreacion
+    // 5. Data Inicial (Seeds)
     await pool.query("INSERT INTO proveedores (codProveedor, nombre, telefono, direccion, fechaCreacion) VALUES ('PROV-GEN', 'General', '0000', 'Ciudad', NOW()) ON CONFLICT DO NOTHING");
     await pool.query("INSERT INTO ubicacion (idUbicacion, nombre, descripcion, estante, nivel, estado) VALUES ('UBIC-0001', 'Vitrina Principal', 'Entrada', '1', '1', 'Activo') ON CONFLICT DO NOTHING");
     
@@ -56,7 +59,6 @@ async function initDB() {
 }
 
 // --- HELPER: GENERADOR DE IDs (ROBUST) ---
-// Updated to accept an optional 'client' parameter for transaction visibility
 async function generateNextId(table, column, prefix, client = pool) {
   try {
     const query = `SELECT ${column} as id FROM ${table} WHERE ${column} LIKE '${prefix}-%'`;
@@ -132,6 +134,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!validPassword) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    // Note: Postgres returns lowercase keys
     const userData = { codUsuario: userRaw.codusuario, usuario: userRaw.usuario, rol: userRaw.rol_nombre, nombreEmpleado: `${userRaw.emp_nombre} ${userRaw.emp_apellido}` };
     const token = jwt.sign(userData, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, user: userData });
@@ -151,7 +154,7 @@ app.get('/api/clientes', authenticateToken, async (req, res) => {
 app.post('/api/clientes', authenticateToken, async (req, res) => {
   try {
     const { identidad, nombre, apellido, direccion, telefono, correo } = req.body;
-    // Updated to include NOW() for fechaCreacion to prevent null errors
+    // Updated to include NOW() for fechaCreacion
     await pool.query(
       `INSERT INTO clientes (identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion) 
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -226,7 +229,7 @@ app.delete('/api/proveedores/:id', authenticateToken, async (req, res) => {
 
 
 // ==========================================
-// VENTAS (POS) - TRANSACTIONAL
+// VENTAS (POS) - TRANSACTIONAL & BATCHED
 // ==========================================
 app.post('/api/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
@@ -234,9 +237,11 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
     const { identidadCliente, tipoCompra, total, isv, descuento, detalles } = req.body;
     const codUsuario = req.user.codUsuario;
 
+    if (!codUsuario) throw new Error("ID de usuario no encontrado en la sesión");
+
     await client.query('BEGIN');
 
-    // 1. Crear Venta Header - Pass 'client' to ID generator
+    // 1. Create Header
     const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
     const fecha = new Date();
     
@@ -246,26 +251,29 @@ app.post('/api/ventas', authenticateToken, async (req, res) => {
       [codVenta, fecha, codUsuario, identidadCliente, tipoCompra, total, isv, descuento]
     );
 
-    // 2. Procesar Detalles y Actualizar Stock
+    // 2. Process Details - BATCH ID GENERATION
+    // Calculate the start ID once to avoid loop race conditions/collisions
+    const startIdStr = await generateNextId('detalle_venta', 'codDetalleVenta', 'DET', client);
+    let currentDetailIdNum = parseInt(startIdStr.split('-')[1], 10);
+
     for (const item of detalles) {
-      // Pass 'client' to ID generator so it sees previous IDs created in this transaction loop
-      const codDetalle = await generateNextId('detalle_venta', 'codDetalleVenta', 'DET', client); 
-      
+      // Generate ID locally
+      const codDetalle = `DET-${currentDetailIdNum.toString().padStart(4, '0')}`;
+      currentDetailIdNum++;
+
       await client.query(
         `INSERT INTO detalle_venta (codDetalleVenta, idVenta, idTelefono, idInventario, cantidad, precioVenta)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [codDetalle, codVenta, item.idTelefono || null, item.idInventario || null, item.cantidad, item.precioVenta]
       );
 
-      // STOCK UPDATE LOGIC
+      // STOCK UPDATE
       if (item.idTelefono) {
-        // Es un teléfono: Marcar como vendido
         await client.query(
           "UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1",
           [item.idTelefono]
         );
       } else if (item.idInventario) {
-        // Es un accesorio: Restar cantidad
         await client.query(
           "UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2",
           [item.cantidad, item.idInventario]
