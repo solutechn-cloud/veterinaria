@@ -6,18 +6,12 @@ import {
   Venta, 
   Arqueo, 
   Ingreso, 
-  Egreso 
+  Egreso,
+  Usuario,
+  Empleado,
+  Rol,
+  Caja
 } from '../types';
-import { 
-  MOCK_TELEFONOS, 
-  MOCK_INVENTARIO, 
-  MOCK_ACCESORIOS, 
-  MOCK_CLIENTES, 
-  MOCK_ARQUEO, 
-  MOCK_INGRESOS, 
-  MOCK_EGRESOS,
-  getMockUnifiedProducts
-} from './mockData';
 
 const API_URL = '/api';
 
@@ -37,7 +31,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     });
     
     if (response.status === 401 || response.status === 403) {
-      // Token expirado o inválido, limpieza básica (idealmente usar el AuthContext)
       localStorage.removeItem('smartcloud_token');
       localStorage.removeItem('smartcloud_user');
       window.location.href = '#/login';
@@ -52,32 +45,35 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     if (contentType && contentType.indexOf("application/json") !== -1) {
         return await response.json();
     } else {
-        // En caso de que el backend devuelva 200 OK pero vacío o texto
         return {} as T;
     }
 
   } catch (error) {
-    console.warn(`Fallo conectando a API Real en ${endpoint} o error de auth.`, error);
-    // En producción, aquí lanzarías el error. Para demo, fallback a Mock.
-    // Solo usamos fallback si NO es error de autenticación (401 ya manejado arriba)
-    if (endpoint.includes('auth')) throw error;
-    
-    return handleMockFallback<T>(endpoint);
+    console.error(`Error en API ${endpoint}`, error);
+    throw error;
   }
 }
 
-// Fallback simulator
-function handleMockFallback<T>(endpoint: string): any {
-  if (endpoint === '/productos/unificados') return getMockUnifiedProducts();
-  if (endpoint === '/telefonos') return MOCK_TELEFONOS;
-  if (endpoint === '/accesorios') return MOCK_ACCESORIOS;
-  if (endpoint === '/clientes') return MOCK_CLIENTES;
-  if (endpoint === '/ventas') return []; 
-  if (endpoint.includes('/arqueo/active')) return MOCK_ARQUEO;
-  if (endpoint.includes('/ingresos')) return MOCK_INGRESOS;
-  if (endpoint.includes('/egresos')) return MOCK_EGRESOS;
-  return [];
-}
+export const AdminService = {
+  // Usuarios
+  getUsers: () => request<Usuario[]>('/users'),
+  createUser: (data: any) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
+  toggleUserStatus: (id: string, status: string) => request(`/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  
+  // Empleados
+  getEmpleados: () => request<Empleado[]>('/empleados'),
+  createEmpleado: (data: Empleado) => request('/empleados', { method: 'POST', body: JSON.stringify(data) }),
+  updateEmpleado: (id: string, data: Partial<Empleado>) => request(`/empleados/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  
+  // Roles
+  getRoles: () => request<Rol[]>('/roles'),
+  createRol: (nombre: string) => request('/roles', { method: 'POST', body: JSON.stringify({ nombre }) }),
+  
+  // Cajas
+  getCajas: () => request<Caja[]>('/cajas'),
+  createCaja: (nombre: string) => request('/cajas', { method: 'POST', body: JSON.stringify({ nombre }) }),
+  updateCaja: (id: string, data: Partial<Caja>) => request(`/cajas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};
 
 export const InventoryService = {
   getUnifiedProducts: () => request<any[]>('/productos/unificados'), 
