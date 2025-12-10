@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, withRouter, RouteComponentProps } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, 
   Smartphone, 
@@ -12,21 +13,36 @@ import {
   X,
   Search,
   Bell,
-  CloudLightning
+  CloudLightning,
+  ShieldCheck
 } from 'lucide-react';
 
-const Layout: React.FC = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
+interface LayoutProps extends RouteComponentProps {
+  children?: React.ReactNode;
+}
 
-  const navItems = [
-    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
-    { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={20} /> },
-    { name: 'Inventario', path: '/inventory', icon: <Smartphone size={20} /> },
-    { name: 'Clientes', path: '/clients', icon: <Users size={20} /> },
-    { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={20} /> },
-    { name: 'Reportes', path: '/reports', icon: <FileText size={20} /> },
+const Layout: React.FC<LayoutProps> = ({ history, location, children }) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, logout, hasPermission } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    history.push('/login');
+  };
+
+  // Definir menú y qué roles pueden ver cada ítem
+  const allNavItems = [
+    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['ALL'] },
+    { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={20} />, roles: ['Administrador', 'Vendedor'] },
+    { name: 'Inventario', path: '/inventory', icon: <Smartphone size={20} />, roles: ['Administrador', 'Inventario'] },
+    { name: 'Clientes', path: '/clients', icon: <Users size={20} />, roles: ['Administrador', 'Vendedor'] },
+    { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={20} />, roles: ['Administrador', 'Cajero'] },
+    { name: 'Reportes', path: '/reports', icon: <FileText size={20} />, roles: ['Administrador'] },
+    { name: 'Usuarios & Roles', path: '/admin/users', icon: <ShieldCheck size={20} />, roles: ['Administrador'] },
   ];
+
+  // Filtrar ítems según rol
+  const navItems = allNavItems.filter(item => hasPermission(item.roles));
 
   const getPageTitle = () => {
     const item = navItems.find(i => i.path === location.pathname);
@@ -37,7 +53,6 @@ const Layout: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-72 bg-[#0f172a] text-white shadow-2xl z-30 transition-all duration-300">
-        {/* Brand Logo */}
         <div className="h-20 flex items-center gap-3 px-8 border-b border-slate-800/50 bg-gradient-to-r from-slate-900 to-slate-800">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <CloudLightning className="text-white" size={22} strokeWidth={2.5} />
@@ -48,48 +63,46 @@ const Layout: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-8 px-4">
           <div className="mb-4 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Menú Principal</div>
           <ul className="space-y-1">
-            {navItems.map((item) => (
-              <li key={item.path}>
-                <NavLink
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group ${
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <li key={item.path}>
+                  <Link
+                    to={item.path}
+                    className={`flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group ${
                       isActive 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 translate-x-1' 
                         : 'text-slate-400 hover:bg-slate-800/50 hover:text-white hover:translate-x-1'
-                    }`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <span className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}>
-                        {item.icon}
-                      </span>
-                      <span className="font-medium text-sm">{item.name}</span>
-                    </>
-                  )}
-                </NavLink>
-              </li>
-            ))}
+                    }`}
+                  >
+                    <span className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}>
+                      {item.icon}
+                    </span>
+                    <span className="font-medium text-sm">{item.name}</span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 
-        {/* User Profile / Logout */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/50">
           <div className="flex items-center gap-3 mb-4 px-2">
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
-              AD
+              {user?.usuario.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">Administrador</p>
-              <p className="text-xs text-slate-400 truncate">admin@smartcloud.com</p>
+              <p className="text-sm font-semibold text-white truncate">{user?.nombreEmpleado || 'Usuario'}</p>
+              <p className="text-xs text-slate-400 truncate">{user?.rol || 'Sin Rol'}</p>
             </div>
           </div>
-          <button className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-slate-300 hover:text-white hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors text-sm font-medium border border-transparent hover:border-red-500/20">
+          <button 
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-slate-300 hover:text-white hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors text-sm font-medium border border-transparent hover:border-red-500/20"
+          >
             <LogOut size={18} />
             <span>Cerrar Sesión</span>
           </button>
@@ -98,7 +111,6 @@ const Layout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#f8fafc]">
-        {/* Top Header */}
         <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-20 flex items-center justify-between px-8 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button 
@@ -127,10 +139,9 @@ const Layout: React.FC = () => {
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-8 scroll-smooth">
           <div className="max-w-7xl mx-auto animate-fade-in">
-            <Outlet />
+             {children}
           </div>
         </main>
       </div>
@@ -156,24 +167,25 @@ const Layout: React.FC = () => {
             </div>
             <nav className="flex-1 py-6 px-4 overflow-y-auto">
               <ul className="space-y-2">
-                {navItems.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      to={item.path}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <li key={item.path}>
+                      <Link
+                        to={item.path}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${
                           isActive 
                             ? 'bg-indigo-600 text-white shadow-lg' 
                             : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                        }`
-                      }
-                    >
-                      {item.icon}
-                      <span>{item.name}</span>
-                    </NavLink>
-                  </li>
-                ))}
+                        }`}
+                      >
+                        {item.icon}
+                        <span>{item.name}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             </nav>
           </div>
@@ -183,4 +195,4 @@ const Layout: React.FC = () => {
   );
 };
 
-export default Layout;
+export default withRouter(Layout);

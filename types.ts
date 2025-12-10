@@ -5,6 +5,25 @@ export type EstadoGeneral = 'Activo' | 'Inactivo';
 export type EstadoVenta = 'Completada' | 'Anulada' | 'Devolucion';
 export type TipoProducto = 'TELEFONO' | 'ACCESORIO' | 'RECARGA';
 
+// --- AUTH & PERMISSIONS ---
+
+export interface AuthResponse {
+  token: string;
+  user: UserSession;
+}
+
+export interface UserSession {
+  codUsuario: string;
+  usuario: string;
+  rol: string; // 'ADMIN', 'VENDEDOR', etc.
+  nombreEmpleado: string;
+}
+
+export interface LoginCredentials {
+  usuario: string;
+  password: string; 
+}
+
 // --- CORE ENTITIES ---
 
 export interface Cliente {
@@ -24,16 +43,21 @@ export interface Empleado {
   direccion: string;
   telefono: string;
   estado: EstadoGeneral;
-  fechaCreacion: string;
+  fechaCreacion?: string;
 }
 
+// Extendido para incluir datos visuales en la tabla de admin
 export interface Usuario {
   codUsuario: string; // PK
   usuario: string;
+  password?: string; // Solo para creación/update
   identidad: string; // FK -> Empleado
   idCaja: string; // FK -> Caja
   idrol: string; // FK -> Rol
   estado: EstadoGeneral;
+  // UI Helpers
+  nombreEmpleado?: string;
+  nombreRol?: string;
 }
 
 export interface Rol {

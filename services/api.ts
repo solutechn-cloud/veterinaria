@@ -19,54 +19,63 @@ import {
   getMockUnifiedProducts
 } from './mockData';
 
-// Al usar ruta relativa vacía o solo '/api', el navegador usará automáticamente el mismo dominio
-// donde está alojada la web (tu servidor Render).
 const API_URL = '/api';
 
-async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem('smartcloud_token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
   try {
     const response = await fetch(`${API_URL}${endpoint}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers,
     });
     
-    // Si la API real falla (ej. tabla no existe, error 500), lanzamos error para usar Mock
+    if (response.status === 401 || response.status === 403) {
+      // Token expirado o inválido, limpieza básica (idealmente usar el AuthContext)
+      localStorage.removeItem('smartcloud_token');
+      localStorage.removeItem('smartcloud_user');
+      window.location.href = '#/login';
+      throw new Error('Sesión expirada');
+    }
+
     if (!response.ok) {
         throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
     
-    // Verificamos si la respuesta es JSON
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.indexOf("application/json") !== -1) {
         return await response.json();
     } else {
-        throw new Error("Respuesta no es JSON");
+        // En caso de que el backend devuelva 200 OK pero vacío o texto
+        return {} as T;
     }
 
   } catch (error) {
-    console.warn(`Fallo conectando a API Real en ${endpoint}. Usando Datos de Prueba (Mock).`, error);
+    console.warn(`Fallo conectando a API Real en ${endpoint} o error de auth.`, error);
+    // En producción, aquí lanzarías el error. Para demo, fallback a Mock.
+    // Solo usamos fallback si NO es error de autenticación (401 ya manejado arriba)
+    if (endpoint.includes('auth')) throw error;
+    
     return handleMockFallback<T>(endpoint);
   }
 }
 
-// Fallback simulator: Si la BD está vacía o falla la conexión, mostramos datos falsos
+// Fallback simulator
 function handleMockFallback<T>(endpoint: string): any {
-  // Inventory
   if (endpoint === '/productos/unificados') return getMockUnifiedProducts();
   if (endpoint === '/telefonos') return MOCK_TELEFONOS;
   if (endpoint === '/accesorios') return MOCK_ACCESORIOS;
-  
-  // Clients
   if (endpoint === '/clientes') return MOCK_CLIENTES;
-  
-  // Sales
   if (endpoint === '/ventas') return []; 
-  
-  // Cash / Arqueo
   if (endpoint.includes('/arqueo/active')) return MOCK_ARQUEO;
   if (endpoint.includes('/ingresos')) return MOCK_INGRESOS;
   if (endpoint.includes('/egresos')) return MOCK_EGRESOS;
-  
   return [];
 }
 
