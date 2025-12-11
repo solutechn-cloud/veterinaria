@@ -213,67 +213,76 @@ const Inventory: React.FC = () => {
     }
   };
 
-  const handlePrintBarcode = (code: string, description: string) => {
-    try {
-      // --- CONFIGURACIÓN DE PÁGINA ---
-      // Formato: 50mm Ancho x 80mm Alto.
-      const PAGE_WIDTH = 50;  
-      const PAGE_HEIGHT = 80; 
-      
-      // --- CONFIGURACIÓN VISUAL DEL CÓDIGO DE BARRAS ---
-      // Dimensiones visuales en la etiqueta vertical (final)
-      const BARCODE_VISUAL_LENGTH = 65; // Alto visual del código (largo de las barras en horizontal antes de rotar)
-      const BARCODE_VISUAL_THICKNESS = 16; // Ancho visual del código (grosor del conjunto de barras)
-      
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
+  // Función Auxiliar: Rotar imagen en canvas
+  const createRotatedBarcode = (code: string): string => {
       const canvas = document.createElement('canvas');
-      
-      // Generar código de barras horizontal de alta resolución
+      // Generar primero horizontalmente
       JsBarcode(canvas, code, { 
           format: "CODE128", 
           displayValue: false, 
           margin: 0,
-          width: 3, // Grosor de barra individual
-          height: 100, // Altura de barra (resolución)
-          fontSize: 20
+          width: 4, 
+          height: 120, // Altura original (será el largo vertical final)
       });
-      const barcodeImg = canvas.toDataURL("image/png");
 
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Crear canvas destino (invertido)
+      const rotatedCanvas = document.createElement('canvas');
+      rotatedCanvas.width = h;
+      rotatedCanvas.height = w;
+      const ctx = rotatedCanvas.getContext('2d');
+      
+      if (ctx) {
+          ctx.translate(h / 2, w / 2);
+          ctx.rotate(90 * Math.PI / 180); // Rotar 90 grados
+          ctx.drawImage(canvas, -w / 2, -h / 2);
+      }
+      
+      return rotatedCanvas.toDataURL("image/png");
+  };
+
+  const handlePrintBarcode = (code: string, description: string) => {
+    try {
+      // --- CONFIGURACIÓN ETIQUETA ---
+      const PAGE_WIDTH = 50;  
+      const PAGE_HEIGHT = 80; 
+      
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
       doc.setFont("helvetica", "bold");
-      
-      // --- GEOMETRÍA DE ROTACIÓN (90 GRADOS) ---
-      // El eje Y del PDF (0-80) se convierte en el eje horizontal visual.
-      // El eje X del PDF (0-50) se convierte en el eje vertical visual.
-      // Centro Visual = (25, 40) en coordenadas PDF.
-      
-      const cy = PAGE_HEIGHT / 2; // 40 (Centro horizontal visual)
 
-      // 1. TÍTULO (Arriba Visualmente -> Izquierda del PDF)
-      // X=8mm aprox margen izquierdo del PDF.
+      // 1. GENERAR CÓDIGO DE BARRAS VERTICAL (Rotado previamente en canvas)
+      // Esto evita problemas de pivote en jsPDF
+      const barcodeImg = createRotatedBarcode(code);
+      
+      // Dimensiones visuales finales en el PDF
+      const BC_WIDTH_VISUAL = 14; // Grosor del código (Ancho en PDF)
+      const BC_HEIGHT_VISUAL = 65; // Largo del código (Alto en PDF)
+      
+      // Centrar geométricamente en X=25
+      const bcX = (PAGE_WIDTH - BC_WIDTH_VISUAL) / 2; // (50 - 14) / 2 = 18
+      const bcY = (PAGE_HEIGHT - BC_HEIGHT_VISUAL) / 2; // (80 - 65) / 2 = 7.5
+
+      // Insertar imagen vertical (sin rotation param, ya viene rotada)
+      doc.addImage(barcodeImg, 'PNG', bcX, bcY, BC_WIDTH_VISUAL, BC_HEIGHT_VISUAL);
+
+      // 2. TEXTOS ROTADOS (90 GRADOS)
+      // Y=40 es el centro vertical del papel.
+      const cy = PAGE_HEIGHT / 2;
+
+      // A. TÍTULO (Marca/Modelo)
+      // Visualmente Arriba -> Izquierda del PDF (X=10)
       doc.setFontSize(9);
-      const maxWidth = PAGE_HEIGHT - 6; // Margen seguridad
+      const maxWidth = PAGE_HEIGHT - 6; 
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxWidth);
-      doc.text(splitTitle, 8, cy, { align: "center", angle: 90 });
+      doc.text(splitTitle, 10, cy, { align: "center", angle: 90 });
 
-      // 2. CÓDIGO DE BARRAS (Centro Visualmente -> Centro del PDF en X)
-      // Para centrar una imagen rotada 90 grados en X=26 (aprox centro óptico entre textos):
-      // addImage(img, fmt, x, y, w, h, ..., 90)
-      // Con rotación 90, la imagen se dibuja hacia "arriba" desde el punto (x,y).
-      // 'w' es el largo visual vertical. 'h' es el grosor visual horizontal.
-      // Coordenada X de inserción = Centro Deseado X + (Grosor / 2).
-      // Coordenada Y de inserción = Centro Deseado Y - (Largo / 2).
-      
-      const targetCenterX = 26; // Centro deseado en el ancho del papel
-      const imgX = targetCenterX + (BARCODE_VISUAL_THICKNESS / 2);
-      const imgY = cy - (BARCODE_VISUAL_LENGTH / 2); // 40 - 32.5 = 7.5
-      
-      doc.addImage(barcodeImg, 'PNG', imgX, imgY, BARCODE_VISUAL_LENGTH, BARCODE_VISUAL_THICKNESS, undefined, 'FAST', 90);
-
-      // 3. CÓDIGO TEXTO (Abajo Visualmente -> Derecha del PDF)
-      // X=44mm aprox margen derecho del PDF.
+      // B. SKU (Código Texto)
+      // Visualmente Abajo -> Derecha del PDF (X=42)
       doc.setFontSize(11);
       doc.setFont("courier", "bold");
-      doc.text(code, 44, cy, { align: "center", angle: 90 });
+      doc.text(code, 42, cy, { align: "center", angle: 90 });
 
       doc.save(`etiqueta_${code}.pdf`);
     } catch (err) {
