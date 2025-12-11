@@ -233,7 +233,7 @@ export interface Costo {
 
 // --- LABEL DESIGNER TYPES ---
 
-export type ElementType = 'TEXT' | 'BARCODE' | 'IMAGE' | 'RECTANGLE';
+export type ElementType = 'TEXT' | 'BARCODE' | 'QR' | 'IMAGE' | 'SHAPE';
 
 export interface LabelElement {
   id: string;
@@ -251,6 +251,12 @@ export interface LabelElement {
   fontWeight?: string; // 'bold', 'normal'
   color?: string; // hex
   textAlign?: 'left' | 'center' | 'right';
+  
+  // Shape/Image specific
+  shapeType?: 'RECTANGLE' | 'LINE';
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
   
   // Barcode specific
   barcodeFormat?: string; // 'CODE128', 'EAN13'
