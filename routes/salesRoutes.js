@@ -79,8 +79,8 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
     
-    // 1. Crear Venta
-    const codVenta = await generateNextId('ventas', 'codVenta', 'FAC', client);
+    // 1. Crear Venta (Prefijo FACT)
+    const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado) VALUES ($1, CURRENT_DATE, $2, $3, $4, 'Completada')`,
       [codVenta, codUsuario, identidadCliente, total]
@@ -133,7 +133,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCostoVenta]
     );
 
-    // UPDATE BALANCE
+    // 4. UPDATE BALANCE (Importante: Pasar el client de la transacción)
     await updateArqueoBalance(idCaja, client);
 
     await client.query('COMMIT');
@@ -173,7 +173,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         // 3. Eliminar detalles anteriores
         await client.query('DELETE FROM detalleventa WHERE idVenta = $1', [codVenta]);
 
-        // 4. Actualizar Cabecera de Venta
+        // 4. Actualizar Cabecera de Venta (Total y Cliente)
         await client.query('UPDATE ventas SET identidadCliente = $1, total = $2 WHERE codVenta = $3', [identidadCliente, total, codVenta]);
 
         // 5. Insertar Nuevos Detalles y Descontar Stock
@@ -212,14 +212,15 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
              );
         }
 
-        // 6. Actualizar el Ingreso en Caja (Buscando por descripción típica)
+        // 6. Actualizar el Ingreso en Caja para reflejar el nuevo total
+        // Se busca por descripción, asumiendo que es el único ingreso generado para esta factura
         const descSearch = `Venta Factura #${codVenta}`;
         await client.query(
             `UPDATE ingresos SET monto = $1, costo = $2 WHERE idCaja = $3 AND descripcion = $4`,
             [total, totalCostoVenta, idCaja, descSearch]
         );
 
-        // 7. Recalcular Saldo Caja
+        // 7. Recalcular Saldo Caja (Arqueo)
         await updateArqueoBalance(idCaja, client);
 
         await client.query('COMMIT');
@@ -297,7 +298,7 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
 
         await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [codVenta]);
 
-        // Registrar Egreso por anulación
+        // Registrar Egreso por anulación (Resta el dinero de la caja)
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Anulación Venta')`,
