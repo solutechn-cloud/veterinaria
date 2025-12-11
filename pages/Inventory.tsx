@@ -256,7 +256,7 @@ const Inventory: React.FC = () => {
       const CENTER_Y = PAGE_HEIGHT / 2; 
 
       // 2. CONFIGURACIÓN VISUAL DEL CÓDIGO DE BARRAS
-      const BARCODE_THICKNESS = 12; // Grosor visual del bloque de barras (ancho en PDF)
+      const BARCODE_THICKNESS = 20; // Grosor visual del bloque de barras (ancho en PDF)
       const BARCODE_LENGTH = 65;    // Largo visual de las barras (alto en PDF)
 
       // 3. POSICIONES VERTICALES (Arriba/Abajo)
@@ -267,7 +267,7 @@ const Inventory: React.FC = () => {
       // -> TÍTULO (Marca/Modelo)
       // Modifica este valor para subir o bajar el título.
       // 4 = Muy arriba, 8 = Más abajo.
-      const POS_X_TITULO = 4; 
+      const POS_X_TITULO = 30; 
 
       // -> CÓDIGO DE BARRAS (Imagen)
       // Se calcula para que esté centrado entre el título y el SKU.
@@ -277,7 +277,7 @@ const Inventory: React.FC = () => {
       // -> SKU (Texto numérico abajo)
       // Modifica este valor para subir o bajar el código numérico al pie.
       // 42 = Más arriba, 48 = Muy al borde inferior.
-      const POS_X_SKU = 46; 
+      const POS_X_SKU = 50; 
 
       // INICIO PDF
       const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
