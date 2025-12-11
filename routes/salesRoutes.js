@@ -41,7 +41,6 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; // Espera formato YYYY-MM-DD
-        // Usamos TO_CHAR para evitar problemas de timestamp y comparar solo la fecha como string
         const result = await pool.query(`
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
@@ -82,9 +81,9 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const { identidadCliente, tipoCompra, total, detalles, fecha, isv, descuento } = req.body;
     const { codUsuario, idCaja } = req.user;
     
-    // Validar Caja Abierta
+    // Validar Caja Abierta (Obligatorio)
     const openBox = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
-    if(openBox.rows.length === 0) throw new Error("Caja cerrada o no asignada.");
+    if(openBox.rows.length === 0) return res.status(400).json({ error: "Caja cerrada. Debe realizar apertura antes de vender." });
 
     await client.query('BEGIN');
     
@@ -166,6 +165,10 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         const codVenta = req.params.id;
         const { identidadCliente, total, detalles, tipoCompra, isv, descuento } = req.body;
         const { idCaja } = req.user;
+
+        // Validar Caja (Edición también afecta saldo)
+        const openBox = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
+        if(openBox.rows.length === 0) return res.status(400).json({ error: "Caja cerrada. No se puede modificar venta." });
 
         await client.query('BEGIN');
 
@@ -288,6 +291,10 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
         const codVenta = req.params.id;
         const { idCaja } = req.user;
         
+        // Validación de caja abierta necesaria porque se inserta un Egreso
+        const openBox = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
+        if(openBox.rows.length === 0) return res.status(400).json({ error: "Caja cerrada. No se puede anular venta (requiere registrar egreso)." });
+
         await client.query('BEGIN');
         
         const ventaRes = await client.query('SELECT total, estado FROM ventas WHERE codVenta = $1', [codVenta]);

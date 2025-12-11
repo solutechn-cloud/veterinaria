@@ -42,37 +42,39 @@ async function updateArqueoBalance(idCaja, client = pool) {
             [idCaja]
         );
         
-        if (arqRes.rows.length === 0) return; // No hay caja abierta para actualizar
+        if (arqRes.rows.length === 0) {
+            console.warn(`No se pudo actualizar balance: Caja ${idCaja} no tiene sesión activa.`);
+            return; 
+        }
 
         const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
 
         // 2. Calcular sumatorias de movimientos DESDE la fecha/hora de apertura
-        // Usamos COALESCE para evitar nulos y ::numeric para asegurar matemáticas precisas
         
         // Calcular Ingresos (Incluye Ventas POS y Manuales)
         const ingRes = await client.query(`
-            SELECT COALESCE(SUM(monto), 0)::numeric as total, COALESCE(SUM(costo), 0)::numeric as costo
+            SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
             FROM ingresos 
             WHERE idCaja = $1 AND fechaCreacion >= $2
         `, [idCaja, fechaApertura]);
 
         // Calcular Egresos (Gastos, Compras Saldo, Anulaciones)
         const egrRes = await client.query(`
-            SELECT COALESCE(SUM(monto), 0)::numeric as total
+            SELECT COALESCE(SUM(monto), 0) as total
             FROM egresos 
             WHERE idCaja = $1 AND fechaCreacion >= $2
         `, [idCaja, fechaApertura]);
 
-        const totalIngresos = parseFloat(ingRes.rows[0].total);
-        const totalCostos = parseFloat(ingRes.rows[0].costo);
-        const totalEgresos = parseFloat(egrRes.rows[0].total);
-        const baseInicial = parseFloat(montoInicial);
+        const totalIngresos = parseFloat(ingRes.rows[0].total || 0);
+        const totalCostos = parseFloat(ingRes.rows[0].costo || 0);
+        const totalEgresos = parseFloat(egrRes.rows[0].total || 0);
+        const baseInicial = parseFloat(montoInicial || 0);
 
         // Fórmula: Caja Final = Lo que había al inicio + Lo que entró - Lo que salió
         const montoFinal = baseInicial + totalIngresos - totalEgresos;
         const ganancia = totalIngresos - totalCostos;
 
-        // 3. Impactar en base de datos
+        // 3. Impactar en base de datos (Usando nombres de columnas estándar insensible a mayúsculas si no llevan comillas)
         await client.query(`
             UPDATE arqueo 
             SET 
@@ -84,7 +86,7 @@ async function updateArqueoBalance(idCaja, client = pool) {
             WHERE idArqueo = $6
         `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idArqueo]);
         
-        console.log(`Caja ${idCaja} actualizada. Saldo Final: ${montoFinal}`);
+        console.log(`Balance Actualizado [${idCaja}]: Ini(${baseInicial}) + Ing(${totalIngresos}) - Egr(${totalEgresos}) = Final(${montoFinal})`);
         
     } catch (err) {
         console.error("Error crítico actualizando balance:", err);
