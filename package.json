@@ -30,6 +30,8 @@
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2",
     "jsbarcode": "^3.11.6",
+    "qrcode": "^1.5.3",
+    "@types/qrcode": "^1.5.5",
     "@types/jspdf": "^2.0.0",
     "@types/jsbarcode": "^3.11.4"
   },
