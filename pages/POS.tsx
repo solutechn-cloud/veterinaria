@@ -6,7 +6,7 @@ import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, 
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 
 const POS: React.FC = () => {
   const [products, setProducts] = useState<ProductoUnified[]>([]);
@@ -24,8 +24,8 @@ const POS: React.FC = () => {
   const [discount, setDiscount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const history = useHistory();
+  const location = useLocation<any>();
 
   useEffect(() => {
     checkRegisterStatus();
@@ -61,7 +61,7 @@ const POS: React.FC = () => {
            icon: 'warning',
            confirmButtonText: 'Ir a Caja'
          });
-         navigate('/cash');
+         history.push('/cash');
        }
      } catch (error) {
        console.error("Error checking register", error);

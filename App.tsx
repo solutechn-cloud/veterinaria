@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Switch, Route, Redirect } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -17,53 +17,74 @@ import Packages from './pages/Packages';
 import AdminCashDashboard from './pages/AdminCashDashboard';
 import Reports from './pages/Reports';
 
-const Placeholder = ({ title }: { title: string }) => (
-  <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-    <h2 className="text-2xl font-bold mb-2">{title}</h2>
-    <p>Módulo en construcción o migración</p>
-  </div>
-);
-
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <HashRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+        <Switch>
+          <Route path="/login" component={Login} />
 
-          <Route path="/*" element={
+          <Route path="/">
             <ProtectedRoute>
               <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
+                <Switch>
+                  <Route exact path="/">
+                    <Dashboard />
+                  </Route>
                   
                   {/* Rutas Protegidas por Permisos Específicos */}
-                  <Route path="/pos" element={<ProtectedRoute requiredPermission="VER_POS"><POS /></ProtectedRoute>} />
-                  <Route path="/clients" element={<ProtectedRoute requiredPermission="VER_CLIENTES"><Clients /></ProtectedRoute>} />
-                  <Route path="/packages" element={<ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO"><Packages /></ProtectedRoute>} />
+                  <Route path="/pos">
+                    <ProtectedRoute requiredPermission="VER_POS"><POS /></ProtectedRoute>
+                  </Route>
+                  <Route path="/clients">
+                    <ProtectedRoute requiredPermission="VER_CLIENTES"><Clients /></ProtectedRoute>
+                  </Route>
+                  <Route path="/packages">
+                    <ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO"><Packages /></ProtectedRoute>
+                  </Route>
                   
-                  <Route path="/providers" element={<ProtectedRoute requiredPermission="VER_PROVEEDORES"><Providers /></ProtectedRoute>} />
-                  <Route path="/inventory" element={<ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>} />
+                  <Route path="/providers">
+                    <ProtectedRoute requiredPermission="VER_PROVEEDORES"><Providers /></ProtectedRoute>
+                  </Route>
+                  <Route path="/inventory">
+                    <ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>
+                  </Route>
                   
-                  <Route path="/cash" element={<ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>} />
-                  <Route path="/costs" element={<ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>} />
+                  <Route path="/cash">
+                    <ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>
+                  </Route>
+                  <Route path="/costs">
+                    <ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>
+                  </Route>
 
-                  <Route path="/reports" element={<ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>} />
+                  <Route path="/reports">
+                    <ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>
+                  </Route>
                   
                   {/* Rutas de Administración */}
-                  <Route path="/admin/cash-dashboard" element={<ProtectedRoute requiredPermission="VER_ADMIN"><AdminCashDashboard /></ProtectedRoute>} />
-                  <Route path="/admin/users" element={<ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="USERS" /></ProtectedRoute>} />
-                  <Route path="/admin/employees" element={<ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="EMPLOYEES" /></ProtectedRoute>} />
-                  <Route path="/admin/roles" element={<ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="ROLES" /></ProtectedRoute>} />
-                  <Route path="/admin/boxes" element={<ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="CAJAS" /></ProtectedRoute>} />
+                  <Route path="/admin/cash-dashboard">
+                    <ProtectedRoute requiredPermission="VER_ADMIN"><AdminCashDashboard /></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/users">
+                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="USERS" /></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/employees">
+                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="EMPLOYEES" /></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/roles">
+                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="ROLES" /></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/boxes">
+                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="CAJAS" /></ProtectedRoute>
+                  </Route>
 
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                  <Redirect to="/" />
+                </Switch>
               </Layout>
             </ProtectedRoute>
-          } />
+          </Route>
 
-        </Routes>
+        </Switch>
       </HashRouter>
     </AuthProvider>
   );

@@ -3,17 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, PackagesService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete } from '../types';
 import { 
-  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X 
+  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X, CloudLightning
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 
 type TabType = 'INGRESOS' | 'EGRESOS' | 'VENTAS' | 'RECARGAS';
 
 const CashRegister: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('INGRESOS');
   const [arqueo, setArqueo] = useState<Arqueo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Data Lists
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
@@ -22,14 +23,14 @@ const CashRegister: React.FC = () => {
   const [saldos, setSaldos] = useState<Saldo[]>([]);
   const [paquetes, setPaquetes] = useState<Paquete[]>([]);
 
-  const [showOpenModal, setShowOpenModal] = useState(false);
-  const { user, hasPermission } = useAuth();
-  const navigate = useNavigate();
-
-  // Forms
+  // Open Box Logic
+  const [existingBalances, setExistingBalances] = useState({ tigo: false, claro: false });
   const [openForm, setOpenForm] = useState({ monto: '', tigo: '', claro: '' });
   
-  // Modals Control
+  const { user, hasPermission } = useAuth();
+  const history = useHistory();
+
+  // Modals Forms
   const [showIngresoModal, setShowIngresoModal] = useState(false);
   const [ingresoForm, setIngresoForm] = useState({ id: '', descripcion: '', monto: '', costo: '', irAPos: true });
   const [isEditingIngreso, setIsEditingIngreso] = useState(false);
@@ -57,9 +58,12 @@ const CashRegister: React.FC = () => {
   const loadData = async () => {
     try {
       const active = await CashService.getActiveArqueo();
+      
       if (!active) {
         setArqueo(null);
-        setShowOpenModal(true);
+        // Check if balances exist for today
+        const status = await CashService.getSaldosStatus();
+        setExistingBalances(status);
       } else {
         setArqueo(active);
         const [ing, egr, vts, slds] = await Promise.all([
@@ -72,10 +76,11 @@ const CashRegister: React.FC = () => {
         setEgresos(egr);
         setVentas(vts);
         setSaldos(slds);
-        setShowOpenModal(false);
       }
     } catch (error) {
       console.error(error);
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -84,8 +89,9 @@ const CashRegister: React.FC = () => {
      try {
        await CashService.openCaja({
          montoInicial: Number(openForm.monto),
-         saldoTigoInicial: Number(openForm.tigo || 0),
-         saldoClaroInicial: Number(openForm.claro || 0)
+         // Send 0 if hidden (existing) or empty
+         saldoTigoInicial: existingBalances.tigo ? 0 : Number(openForm.tigo || 0),
+         saldoClaroInicial: existingBalances.claro ? 0 : Number(openForm.claro || 0)
        });
        Swal.fire('Éxito', 'Caja Aperturada', 'success');
        loadData();
@@ -94,6 +100,7 @@ const CashRegister: React.FC = () => {
      }
   };
 
+  // --- ACTIONS HANDLERS (Same logic as before, just ensuring refreshes) ---
   const handleCloseBox = async () => {
      if(!arqueo) return;
      const result = await Swal.fire({ 
@@ -115,7 +122,7 @@ const CashRegister: React.FC = () => {
                 <div class="text-left space-y-2">
                     <p><strong>Total Ingresos:</strong> L. ${Number(resumen.totalIngresos).toFixed(2)}</p>
                     <p><strong>Total Costos:</strong> L. ${Number(resumen.totalCostos).toFixed(2)}</p>
-                    <p><strong>Total Gastos (Egresos):</strong> L. ${Number(resumen.totalEgresos).toFixed(2)}</p>
+                    <p><strong>Total Gastos:</strong> L. ${Number(resumen.totalEgresos).toFixed(2)}</p>
                     <hr/>
                     <p class="text-xl text-indigo-600 font-bold">Ganancia: L. ${Number(resumen.ganancia).toFixed(2)}</p>
                     <p class="text-lg text-emerald-600 font-bold">Efectivo Final en Caja: L. ${Number(resumen.montoFinal).toFixed(2)}</p>
@@ -137,12 +144,13 @@ const CashRegister: React.FC = () => {
                  costo: Number(ingresoForm.costo)
              });
              setShowIngresoModal(false);
-             await loadData(); // Force await to ensure balance update shows
+             await loadData();
              Swal.fire('Actualizado', 'Ingreso modificado', 'success');
          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
      } else {
          if (ingresoForm.irAPos) {
-             navigate('/pos', { 
+             history.push({ 
+                 pathname: '/pos',
                  state: { 
                      customItem: {
                          descripcion: ingresoForm.descripcion,
@@ -206,11 +214,10 @@ const CashRegister: React.FC = () => {
       }
   };
 
-  // ... (Rest of code: handleAnularVenta, handleBuySaldo, handleRecargaSubmit identical to previous, just ensure loadData is called)
   const handleAnularVenta = async (idVenta: string) => {
       const result = await Swal.fire({
           title: `¿Anular Venta #${idVenta}?`,
-          text: 'Se devolverán los productos al inventario y se descontará el dinero de la caja (creando un Egreso).',
+          text: 'Se devolverán los productos al inventario y se descontará el dinero de la caja.',
           icon: 'warning',
           showCancelButton: true,
           confirmButtonColor: '#d33',
@@ -277,14 +284,10 @@ const CashRegister: React.FC = () => {
   };
 
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
-  const totalEgresos = egresos.reduce((a,b) => a + Number(b.monto), 0);
-  const saldoCaja = (arqueo?.montoInicial || 0) + totalIngresos - totalEgresos;
-
   const getSaldoRed = (red: string) => {
     const s = saldos.find(x => x.red === red);
     return s ? (s.saldoFinal !== null && s.saldoFinal !== undefined ? Number(s.saldoFinal) : Number(s.saldoInicio)) : 0;
   };
-
   const paquetesFiltrados = showRecargaModal ? paquetes.filter(p => p.red === showRecargaModal.red && p.estado === 'Activo') : [];
 
   const openEditIngreso = (item: Ingreso) => {
@@ -299,31 +302,98 @@ const CashRegister: React.FC = () => {
       setShowEgresoModal(true);
   };
 
+  // --- RENDERING ---
+
+  if (isLoading) {
+      return <div className="flex justify-center items-center h-full text-slate-400">Cargando datos de caja...</div>;
+  }
+
+  // --- SCREEN 1: CAJA CERRADA (Full Screen) ---
+  if (!arqueo) {
+      return (
+          <div className="flex flex-col items-center justify-center h-full bg-slate-50 p-6 animate-fade-in">
+              <div className="bg-white max-w-lg w-full rounded-3xl shadow-xl p-8 border border-slate-100">
+                  <div className="flex flex-col items-center mb-8">
+                      <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-4">
+                          <CloudLightning className="text-white" size={32} />
+                      </div>
+                      <h2 className="text-3xl font-bold text-slate-800">Apertura de Caja</h2>
+                      <p className="text-slate-500 mt-2 text-center">Inicia tu turno registrando el efectivo inicial y los saldos de recargas disponibles.</p>
+                  </div>
+
+                  <div className="space-y-6">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Efectivo en Caja</label>
+                          <input 
+                             type="number" 
+                             className="w-full p-4 text-2xl font-bold text-center border-2 border-slate-200 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all" 
+                             placeholder="0.00" 
+                             value={openForm.monto} 
+                             onChange={e => setOpenForm({...openForm, monto: e.target.value})} 
+                             autoFocus
+                          />
+                      </div>
+
+                      {(existingBalances.tigo || existingBalances.claro) && (
+                          <div className="bg-blue-50 p-3 rounded-xl flex items-center gap-3 text-blue-800 text-sm">
+                              <Wallet size={20}/>
+                              <span>
+                                  Saldos ya registrados hoy para: 
+                                  <strong>
+                                      {existingBalances.tigo && ' TIGO'}
+                                      {existingBalances.tigo && existingBalances.claro && ' y'}
+                                      {existingBalances.claro && ' CLARO'}
+                                  </strong>. No es necesario ingresarlos nuevamente.
+                              </span>
+                          </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                          {!existingBalances.tigo && (
+                              <div>
+                                  <label className="text-xs font-bold text-blue-500 uppercase mb-2 block">Saldo Tigo</label>
+                                  <input type="number" className="w-full p-3 border-2 border-blue-100 bg-blue-50/50 rounded-xl" placeholder="0.00" value={openForm.tigo} onChange={e => setOpenForm({...openForm, tigo: e.target.value})} />
+                              </div>
+                          )}
+                          {!existingBalances.claro && (
+                              <div>
+                                  <label className="text-xs font-bold text-red-500 uppercase mb-2 block">Saldo Claro</label>
+                                  <input type="number" className="w-full p-3 border-2 border-red-100 bg-red-50/50 rounded-xl" placeholder="0.00" value={openForm.claro} onChange={e => setOpenForm({...openForm, claro: e.target.value})} />
+                              </div>
+                          )}
+                      </div>
+
+                      <button 
+                        onClick={handleOpenBox} 
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-xl shadow-indigo-600/30 transition-transform active:scale-95 flex items-center justify-center gap-3 text-lg"
+                      >
+                          <Lock size={20}/> APERTURAR TURNO
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // --- SCREEN 2: DASHBOARD CAJA (Normal View) ---
   return (
     <div className="space-y-6 min-h-[80vh] flex flex-col pb-10">
-      {/* HEADER */}
       <div className="bg-slate-800 rounded-2xl p-6 text-white shadow-lg">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
              <div>
                <h2 className="text-xl font-bold uppercase tracking-wider">Caja: {user?.idCaja}</h2>
                <p className="text-slate-400 text-sm">Usuario: {user?.nombreEmpleado}</p>
              </div>
-             <div className="flex items-center gap-4">
-               {arqueo ? (
-                  <button onClick={handleCloseBox} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg border border-red-500">
-                    <Lock size={16}/> CIERRE DE CAJA
-                  </button>
-               ) : (
-                  <span className="bg-amber-500 px-3 py-1 rounded text-xs font-bold text-black animate-pulse">CAJA CERRADA</span>
-               )}
-             </div>
+             <button onClick={handleCloseBox} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg border border-red-500">
+                <Lock size={16}/> CIERRE DE CAJA
+             </button>
          </div>
 
-         {arqueo && (
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-slate-400 mb-1 font-bold uppercase">Efectivo en Caja</p>
-                 <h3 className="text-3xl font-bold tracking-tight">L. {saldoCaja.toFixed(2)}</h3>
+                 {/* Se usa arqueo.montoFinal calculado por el backend */}
+                 <h3 className="text-3xl font-bold tracking-tight">L. {Number(arqueo.montoFinal || arqueo.montoInicial).toFixed(2)}</h3>
               </div>
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-emerald-400 mb-1 font-bold uppercase">Total Ingresos Hoy</p>
@@ -338,8 +408,7 @@ const CashRegister: React.FC = () => {
                  <p className="text-xs text-red-200 mb-1 font-bold uppercase">Saldo Claro</p>
                  <h3 className="text-xl font-bold">L. {getSaldoRed('CLARO').toFixed(2)}</h3>
               </div>
-           </div>
-         )}
+         </div>
       </div>
 
       <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-slate-200">
@@ -395,7 +464,6 @@ const CashRegister: React.FC = () => {
            </div>
          )}
 
-         {/* ... EGRESOS, RECARGAS, VENTAS Sections identical, already reviewed ... */}
          {activeTab === 'EGRESOS' && (
            <div className="space-y-4">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -477,7 +545,9 @@ const CashRegister: React.FC = () => {
                 <table className="w-full text-sm text-left">
                     <thead className="bg-slate-50 text-slate-500 uppercase text-xs"><tr><th className="p-3">Factura</th><th className="p-3">Cliente</th><th className="p-3">Total</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr></thead>
                     <tbody>
-                        {ventas.map(v => (
+                        {ventas.length === 0 ? (
+                            <tr><td colSpan={5} className="p-4 text-center text-slate-400">No hay ventas registradas hoy.</td></tr>
+                        ) : ventas.map(v => (
                         <tr key={v.codVenta} className={`border-b hover:bg-slate-50 ${v.estado === 'Anulada' ? 'opacity-50 bg-slate-100' : ''}`}>
                             <td className="p-3 font-mono text-xs">{v.codVenta}</td>
                             <td className="p-3 text-xs">{v.nombreCliente}</td>
@@ -497,25 +567,9 @@ const CashRegister: React.FC = () => {
          )}
       </div>
 
-      {/* ... All Modals (Open, Recarga, Saldo, Ingreso, Egreso) ... */}
-      {/* (Assuming modals remain same but including Ingreso/Egreso for completeness as they were modified in logic) */}
+      {/* --- MODALS --- */}
+      {/* ... (Existing Modals: Recarga, Saldo, Ingreso, Egreso) ... */}
       
-      {showOpenModal && (
-        <div className="fixed inset-0 bg-slate-900/90 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
-           <div className="bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl animate-fade-in">
-              <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">Apertura de Caja</h2>
-              <div className="space-y-4">
-                 <input type="number" className="w-full p-3 border-2 rounded-xl" placeholder="Efectivo Inicial" value={openForm.monto} onChange={e => setOpenForm({...openForm, monto: e.target.value})} />
-                 <div className="grid grid-cols-2 gap-4">
-                    <input type="number" className="w-full p-3 border-2 bg-blue-50 rounded-xl" placeholder="Saldo Tigo" value={openForm.tigo} onChange={e => setOpenForm({...openForm, tigo: e.target.value})} />
-                    <input type="number" className="w-full p-3 border-2 bg-red-50 rounded-xl" placeholder="Saldo Claro" value={openForm.claro} onChange={e => setOpenForm({...openForm, claro: e.target.value})} />
-                 </div>
-                 <button onClick={handleOpenBox} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg mt-4">APERTURAR</button>
-              </div>
-           </div>
-        </div>
-      )}
-
       {showRecargaModal && (
          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl animate-fade-in">

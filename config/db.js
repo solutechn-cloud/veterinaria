@@ -7,7 +7,6 @@ const pool = new Pool({
 });
 
 // Función auxiliar para generar IDs consecutivos (ej: USR-0001)
-// Se exporta para que todos los controladores la usen sin reescribir código
 async function generateNextId(table, column, prefix, client = pool) {
   try {
     const query = `
@@ -34,6 +33,34 @@ async function generateNextId(table, column, prefix, client = pool) {
   }
 }
 
+// Función para actualizar el balance del arqueo en tiempo real
+async function updateArqueoBalance(idCaja, client = pool) {
+    try {
+        // 1. Obtener Arqueo Activo
+        const arqRes = await client.query(`SELECT idArqueo, montoInicial, fechaApertura FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
+        if (arqRes.rows.length === 0) return; // No hay caja abierta
+
+        const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
+
+        // 2. Sumar Ingresos (desde apertura)
+        const ingRes = await client.query(`SELECT COALESCE(SUM(monto), 0) as total FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2`, [idCaja, fechaApertura]);
+        const totalIngresos = parseFloat(ingRes.rows[0].total);
+
+        // 3. Sumar Egresos (desde apertura)
+        const egrRes = await client.query(`SELECT COALESCE(SUM(monto), 0) as total FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2`, [idCaja, fechaApertura]);
+        const totalEgresos = parseFloat(egrRes.rows[0].total);
+
+        // 4. Calcular Saldo Actual
+        const montoFinal = parseFloat(montoInicial) + totalIngresos - totalEgresos;
+
+        // 5. Actualizar registro
+        await client.query(`UPDATE arqueo SET montoFinal = $1 WHERE idArqueo = $2`, [montoFinal, idArqueo]);
+        
+    } catch (err) {
+        console.error("Error actualizando balance de arqueo:", err);
+    }
+}
+
 const handleDbError = (res, err) => {
   console.error('DB Error:', err); 
   if (err.code === '23503') return res.status(409).json({ error: 'No se puede eliminar/crear: Registro relacionado a otra entidad.' });
@@ -41,4 +68,4 @@ const handleDbError = (res, err) => {
   res.status(500).json({ error: err.message || 'Error interno del servidor' });
 };
 
-module.exports = { pool, generateNextId, handleDbError };
+module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance };

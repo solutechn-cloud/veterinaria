@@ -46,7 +46,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
 
     if (!response.ok) {
-        // Intentar parsear el JSON de error
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || `Error del servidor (${response.status})`);
     }
@@ -84,6 +83,7 @@ export const CostsService = {
 export const CashService = {
   getActiveArqueo: () => request<Arqueo | null>(`/arqueo/active`),
   getSaldosToday: () => request<Saldo[]>('/saldos/today').then(res => Array.isArray(res) ? res : []),
+  getSaldosStatus: () => request<{ tigo: boolean, claro: boolean }>('/saldos/status'),
   openCaja: (data: { montoInicial: number, saldoTigoInicial: number, saldoClaroInicial: number }) => request('/arqueo/open', { method: 'POST', body: JSON.stringify(data) }),
   closeCaja: (idArqueo: string) => request<{ message: string, resumen: any }>('/arqueo/close', { method: 'POST', body: JSON.stringify({ idArqueo }) }),
   
@@ -101,7 +101,6 @@ export const CashService = {
   createRecarga: (data: any) => request('/recargas', { method: 'POST', body: JSON.stringify(data) }),
   buySaldo: (data: { red: string, montoPagado: number, montoRecibido: number }) => request('/saldos/buy', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Admin Functions
   getAdminBoxesStatus: () => request<any[]>('/admin/cajas-status').then(res => Array.isArray(res) ? res : []),
   reopenBox: (idArqueo: string) => request('/admin/reopen-box', { method: 'POST', body: JSON.stringify({ idArqueo }) }),
 };

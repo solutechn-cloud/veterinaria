@@ -1,15 +1,16 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError } = require('../config/db');
+const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // --- ARQUEO CAJA ---
 router.get('/arqueo/active', authenticateToken, async (req, res) => {
   try {
     const { idCaja } = req.user;
+    // Se asegura de traer 'montoFinal' que es el saldo real actual
     const result = await pool.query(
-      `SELECT idArqueo as "idArqueo", idCaja as "idCaja", idUsuario as "idUsuario", fechaApertura as "fechaApertura", montoInicial as "montoInicial", estado 
+      `SELECT idArqueo as "idArqueo", idCaja as "idCaja", idUsuario as "idUsuario", fechaApertura as "fechaApertura", montoInicial as "montoInicial", montoFinal as "montoFinal", estado 
        FROM arqueo WHERE idCaja = $1 AND estado = 'Activo' ORDER BY fechaApertura DESC LIMIT 1`,
       [idCaja]
     );
@@ -28,31 +29,34 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
     const idArqueo = await generateNextId('arqueo', 'idArqueo', 'ARQ', client);
+    // Al abrir, montoFinal = montoInicial
     await client.query(
-      `INSERT INTO arqueo (idArqueo, idCaja, idUsuario, fechaApertura, montoInicial, estado)
-       VALUES ($1, $2, $3, NOW(), $4, 'Activo')`,
+      `INSERT INTO arqueo (idArqueo, idCaja, idUsuario, fechaApertura, montoInicial, montoFinal, estado)
+       VALUES ($1, $2, $3, NOW(), $4, $4, 'Activo')`,
       [idArqueo, idCaja, codUsuario, montoInicial]
     );
 
     const today = new Date().toISOString().split('T')[0];
-    const checkSaldos = await client.query('SELECT * FROM saldos WHERE fecha = $1', [today]);
     
-    if (checkSaldos.rows.length === 0) {
+    // Validar si ya existen saldos HOY (para cualquiera)
+    const checkSaldosTigo = await client.query('SELECT * FROM saldos WHERE red=$1 AND fecha = $2', ['TIGO', today]);
+    if (checkSaldosTigo.rows.length === 0 && saldoTigoInicial !== undefined) {
       const idSaldoTigo = await generateNextId('saldos', 'idsaldos', 'SAL', client);
-      // Hack simple para ID consecutivo
-      const parts = idSaldoTigo.split('-');
-      const nextNum = parseInt(parts[1]) + 1;
-      const idSaldoClaro = `${parts[0]}-${nextNum.toString().padStart(4,'0')}`;
-
       await client.query(
         `INSERT INTO saldos (idsaldos, red, saldoInicio, saldoComprado, saldoFinal, fecha) VALUES ($1, 'TIGO', $2, 0, $2, $3)`,
-        [idSaldoTigo, saldoTigoInicial || 0, today]
-      );
-      await client.query(
-        `INSERT INTO saldos (idsaldos, red, saldoInicio, saldoComprado, saldoFinal, fecha) VALUES ($1, 'CLARO', $2, 0, $2, $3)`,
-        [idSaldoClaro, saldoClaroInicial || 0, today]
+        [idSaldoTigo, saldoTigoInicial, today]
       );
     }
+
+    const checkSaldosClaro = await client.query('SELECT * FROM saldos WHERE red=$1 AND fecha = $2', ['CLARO', today]);
+    if (checkSaldosClaro.rows.length === 0 && saldoClaroInicial !== undefined) {
+      const nextId = await generateNextId('saldos', 'idsaldos', 'SAL', client); 
+      await client.query(
+        `INSERT INTO saldos (idsaldos, red, saldoInicio, saldoComprado, saldoFinal, fecha) VALUES ($1, 'CLARO', $2, 0, $2, $3)`,
+        [nextId, saldoClaroInicial, today]
+      );
+    }
+
     await client.query('COMMIT');
     res.status(201).json({ message: 'Caja Aperturada', idArqueo });
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
@@ -102,7 +106,6 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
 router.get('/ingresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.query;
   try {
-    // Increased limit to ensure correct calculations in frontend if paging is not implemented yet
     const result = await pool.query(`SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado FROM ingresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 500`, [idCaja]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
@@ -115,6 +118,10 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
     await pool.query(`INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Registrado')`,
       [idIngreso, idCaja, descripcion, monto, costo || 0]);
+    
+    // UPDATE BALANCE
+    await updateArqueoBalance(idCaja, pool);
+
     res.status(201).json({ message: 'Ingreso registrado', idIngreso });
   } catch(err) { handleDbError(res, err); }
 });
@@ -122,14 +129,24 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
 router.put('/ingresos/:id', authenticateToken, async (req, res) => {
     try {
         const { descripcion, monto, costo } = req.body;
+        const { idCaja } = req.user;
         await pool.query('UPDATE ingresos SET descripcion=$1, monto=$2, costo=$3 WHERE idIngreso=$4', [descripcion, monto, costo, req.params.id]);
+        
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, pool);
+
         res.json({ message: 'Ingreso actualizado' });
     } catch(err) { handleDbError(res, err); }
 });
 
 router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
     try {
+        const { idCaja } = req.user;
         await pool.query('DELETE FROM ingresos WHERE idIngreso=$1', [req.params.id]);
+        
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, pool);
+
         res.json({ message: 'Ingreso eliminado' });
     } catch(err) { handleDbError(res, err); }
 });
@@ -150,6 +167,10 @@ router.post('/egresos', authenticateToken, async (req, res) => {
     const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
     await pool.query(`INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Registrado')`,
       [idegresos, idCaja, descripcion, monto]);
+    
+    // UPDATE BALANCE
+    await updateArqueoBalance(idCaja, pool);
+
     res.status(201).json({ message: 'Egreso registrado', idegresos });
   } catch(err) { handleDbError(res, err); }
 });
@@ -157,14 +178,24 @@ router.post('/egresos', authenticateToken, async (req, res) => {
 router.put('/egresos/:id', authenticateToken, async (req, res) => {
     try {
         const { descripcion, monto } = req.body;
+        const { idCaja } = req.user;
         await pool.query('UPDATE egresos SET descripcion=$1, monto=$2 WHERE idegresos=$3', [descripcion, monto, req.params.id]);
+        
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, pool);
+
         res.json({ message: 'Egreso actualizado' });
     } catch(err) { handleDbError(res, err); }
 });
 
 router.delete('/egresos/:id', authenticateToken, async (req, res) => {
     try {
+        const { idCaja } = req.user;
         await pool.query('DELETE FROM egresos WHERE idegresos=$1', [req.params.id]);
+        
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, pool);
+
         res.json({ message: 'Egreso eliminado' });
     } catch(err) { handleDbError(res, err); }
 });
@@ -176,6 +207,19 @@ router.get('/saldos/today', authenticateToken, async (req, res) => {
     const result = await pool.query(`SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha FROM saldos WHERE fecha = $1`, [today]);
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
+});
+
+// Verificación inteligente: ¿Ya existen saldos hoy?
+router.get('/saldos/status', authenticateToken, async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const tigo = await pool.query('SELECT 1 FROM saldos WHERE red=$1 AND fecha=$2', ['TIGO', today]);
+        const claro = await pool.query('SELECT 1 FROM saldos WHERE red=$1 AND fecha=$2', ['CLARO', today]);
+        res.json({
+            tigo: tigo.rows.length > 0,
+            claro: claro.rows.length > 0
+        });
+    } catch(err) { handleDbError(res, err); }
 });
 
 router.post('/saldos/buy', authenticateToken, async (req, res) => {
@@ -205,6 +249,10 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
             await client.query(`UPDATE saldos SET saldoComprado = COALESCE(saldoComprado, 0) + $1, saldoFinal = COALESCE(saldoFinal, 0) + $1 WHERE red = $2 AND fecha = $3`, 
             [montoRecibido, red, today]);
         }
+        
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, client);
+
         await client.query('COMMIT');
         res.status(201).json({ message: 'Saldo comprado registrado' });
     } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
@@ -232,11 +280,15 @@ router.post('/recargas', authenticateToken, async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     await client.query(`UPDATE saldos SET saldoFinal = COALESCE(saldoFinal, saldoInicio) - $1 WHERE red = $2 AND fecha = $3`, [precioPagado, red, today]);
 
+    // UPDATE BALANCE
+    await updateArqueoBalance(idCaja, client);
+
     await client.query('COMMIT');
     res.status(201).json({ message: 'Recarga exitosa' });
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
+// ... (Paquetes, Costos, Admin code remains same as before) ...
 // --- PAQUETES ---
 router.get('/paquetes', authenticateToken, async (req, res) => {
     try {

@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError } = require('../config/db');
+const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // --- CLIENTES ---
@@ -105,6 +105,9 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCostoVenta]
     );
 
+    // UPDATE BALANCE
+    await updateArqueoBalance(idCaja, client);
+
     await client.query('COMMIT');
     res.status(201).json({ message: 'Venta OK', codVenta });
   } catch (err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
@@ -119,8 +122,9 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
-            WHERE v.codVendedor = $1 AND v.fecha = $2
-        `, [req.user.codUsuario, fecha]);
+            WHERE v.fecha = $1 AND v.codVendedor = $2
+            ORDER BY v.codVenta DESC
+        `, [fecha, req.user.codUsuario]);
         res.json(result.rows);
     } catch(e) { handleDbError(res, e); }
 });
@@ -133,39 +137,47 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
         
         await client.query('BEGIN');
         
-        // 1. Obtener detalles de la venta
         const ventaRes = await client.query('SELECT total, estado FROM ventas WHERE codVenta = $1', [codVenta]);
         if(ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
         if(ventaRes.rows[0].estado === 'Anulada') throw new Error("Venta ya anulada");
         
         const totalDevolver = parseFloat(ventaRes.rows[0].total);
 
-        // 2. Revertir Inventario
+        // Revertir Inventario
         const detallesRes = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [codVenta]);
         
         for (const det of detallesRes.rows) {
             if(det.idtelefono) {
                 await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
             } else if (det.idaccesorio) {
-                // Como detalleventa guarda codAccesorio pero no codInventario especifico (simple design), 
-                // incrementamos el stock en cualquier lote disponible o el último. 
-                // Mejor aproximación: buscar el lote más reciente de ese accesorio y sumar.
-                const lastInv = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 LIMIT 1", [det.idaccesorio]);
-                if(lastInv.rows.length > 0) {
-                    await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, lastInv.rows[0].codinventario]);
+                // Devolver al stock. Busca un lote disponible del accesorio.
+                const lastInv = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = (SELECT codAccesorio FROM inventario WHERE codInventario = $1 LIMIT 1) LIMIT 1", [det.idinventario || '']); 
+                
+                // Fallback si idInventario en detalle era null (legacy) o ya no existe
+                // Intenta buscar por codAccesorio si está en detalle (debería estar)
+                let targetInv = lastInv.rows.length > 0 ? lastInv.rows[0].codinventario : null;
+                
+                if (!targetInv && det.idaccesorio) {
+                     const anyInv = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 LIMIT 1", [det.idaccesorio]);
+                     if(anyInv.rows.length > 0) targetInv = anyInv.rows[0].codinventario;
+                }
+
+                if(targetInv) {
+                    await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, targetInv]);
                 }
             }
         }
 
-        // 3. Marcar venta como anulada
         await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [codVenta]);
 
-        // 4. Registrar Egreso de Caja (Devolución)
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Anulación Venta')`,
             [idegresos, idCaja, `Devolución/Anulación Fac #${codVenta}`, totalDevolver]
         );
+
+        // UPDATE BALANCE
+        await updateArqueoBalance(idCaja, client);
 
         await client.query('COMMIT');
         res.json({ message: 'Venta anulada y stock revertido' });
