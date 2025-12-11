@@ -54,8 +54,8 @@ async function updateArqueoBalance(idCaja, client = pool) {
         const inicial = parseFloat(montoInicial);
         const montoFinal = inicial + totalIngresos - totalEgresos;
 
-        // 5. Actualizar registro
-        await client.query(`UPDATE arqueo SET montoFinal = $1, fechaModificacion = NOW() WHERE idArqueo = $2`, [montoFinal.toFixed(2), idArqueo]);
+        // 5. Actualizar registro (SOLO montoFinal, sin fechaModificacion)
+        await client.query(`UPDATE arqueo SET montoFinal = $1 WHERE idArqueo = $2`, [montoFinal.toFixed(2), idArqueo]);
         
     } catch (err) {
         console.error("Error actualizando balance de arqueo:", err);

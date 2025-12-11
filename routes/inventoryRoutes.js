@@ -7,8 +7,6 @@ const { authenticateToken } = require('../middleware/auth');
 // --- PRODUCTOS UNIFICADOS (POS) ---
 router.get('/productos/unificados', authenticateToken, async (req, res) => {
     try {
-        // Se unifican teléfonos disponibles y accesorios con stock
-        // ESTANDARIZACIÓN: Solo se muestran productos con estado 'Disponible'
         const query = `
             SELECT 
                 codigo as id, 
@@ -42,7 +40,6 @@ router.get('/productos/unificados', authenticateToken, async (req, res) => {
 // --- TELEFONOS ---
 router.get('/inventory/telefonos', authenticateToken, async (req, res) => {
     try {
-        // AGREGADO alias "codProveedor" para que el frontend lo mapee correctamente en el Select
         const r = await pool.query(`
             SELECT 
                 t.codigo, t.imei1, t.imei2, t.marca, t.modelo, 
@@ -119,7 +116,6 @@ router.post('/inventory/stock', authenticateToken, async (req, res) => {
     try {
         const { codAccesorio, cantidad, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado } = req.body;
         const codInventario = await generateNextId('inventario', 'codInventario', 'INV');
-        // ESTANDARIZACIÓN: Por defecto 'Disponible' para inventario comercial
         await pool.query(
             `INSERT INTO inventario (codInventario, codAccesorio, cantidad, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -280,7 +276,7 @@ router.delete('/proveedores/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- PAQUETES ---
+// --- PAQUETES (NUEVO) ---
 router.get('/paquetes', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT idPaquete as "idPaquete", red, nombre, precio, costo, estado FROM paquetes');

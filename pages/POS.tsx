@@ -106,14 +106,16 @@ const POS: React.FC = () => {
           const header = await SalesService.getVenta(saleId);
           
           if (header) {
+              // Asegurar el seteo del cliente
               setSelectedClientId(header.identidadCliente);
+
               // Calcular descuento inverso: (Suma Productos) - (Total Pagado)
               const subtotalCalculado = details.reduce((sum, item) => sum + (Number(item.cantidad) * Number(item.precioVenta)), 0);
               const totalGuardado = Number(header.total);
+              // Si el total guardado es menor que la suma de productos, hubo descuento
               const descuentoAplicado = subtotalCalculado - totalGuardado;
               
-              setDiscount(descuentoAplicado > 0 ? descuentoAplicado : 0);
-              // Podríamos setear tipoCompra si la API lo devolviera
+              setDiscount(descuentoAplicado > 0.01 ? descuentoAplicado : 0);
           }
           
           const Toast = Swal.mixin({

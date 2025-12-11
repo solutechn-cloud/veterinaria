@@ -42,7 +42,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; // Espera formato YYYY-MM-DD
         const result = await pool.query(`
-            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
+            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
@@ -56,7 +56,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
 router.get('/ventas/:id', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
+            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             LEFT JOIN clientes c ON v.identidadCliente = c.identidad
@@ -70,7 +70,7 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
 router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { identidadCliente, tipoCompra, total, detalles } = req.body; // tipoCompra agregado
+    const { identidadCliente, tipoCompra, total, detalles } = req.body;
     const { codUsuario, idCaja } = req.user;
     
     // Validar Caja Abierta
@@ -81,8 +81,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     
     // 1. Crear Venta
     const codVenta = await generateNextId('ventas', 'codVenta', 'FAC', client);
-    // Asumimos columna 'tipocompra' en tabla ventas, si no existe, la ignora o daría error si esquema no actualizado
-    // Usaremos estructura basica existente
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado) VALUES ($1, CURRENT_DATE, $2, $3, $4, 'Completada')`,
       [codVenta, codUsuario, identidadCliente, total]
@@ -164,9 +162,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
             if (det.idtelefono) {
                 await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
             } else if (det.idaccesorio) {
-                // Devolver stock. Buscamos inventario activo de este accesorio para sumar.
-                // Si no existe uno especifico guardado en detalle (si esquema DB no lo tiene), buscamos uno disponible.
-                // Prioridad: buscar un registro de inventario para ese accesorio.
+                // Devolver stock
                 const stockRes = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1", [det.idaccesorio]);
                 if (stockRes.rows.length > 0) {
                      await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, stockRes.rows[0].codinventario]);
@@ -199,7 +195,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
                 itemCosto = telRes.rows[0]?.preciocompra || 0;
                 await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [idTelefono]);
              } else if (item.tipoProducto === 'ACCESORIO') {
-                // Se espera que el frontend envíe el idInventario correcto seleccionado
                 const invRes = await client.query('SELECT codAccesorio, precioCompra FROM inventario WHERE codInventario = $1', [item.idInventario]);
                 if(invRes.rows.length > 0) {
                     idAccesorio = invRes.rows[0].codaccesorio;
@@ -240,7 +235,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
 router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
     try {
-        // Recuperar detalles para cargar en el POS
         const query = `
             SELECT 
                 dv.codDetalleVenta, dv.cantidad, dv.precioVenta, 
@@ -256,11 +250,10 @@ router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
         `;
         const result = await pool.query(query, [req.params.id]);
         
-        // Intentar mapear idInventario para accesorios (best effort)
+        // Mapear idInventario
         const mapped = await Promise.all(result.rows.map(async (row) => {
              let idInventario = null;
              if (row.tipoProducto === 'ACCESORIO') {
-                 // Busca el inventario más reciente de este accesorio
                  const inv = await pool.query('SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1', [row.accesorioId]);
                  if(inv.rows.length > 0) idInventario = inv.rows[0].codinventario;
              }
