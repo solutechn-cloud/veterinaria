@@ -109,10 +109,12 @@ router.get('/inventory/stock', authenticateToken, async (req, res) => {
                 i.estado, 
                 i.idubicacion,
                 i.codProveedor as "codProveedor",
-                a.descripcion as "descripcionAccesorio", 
+                a.descripcion as "descripcionAccesorio",
+                c.tipo as "categoriaAccesorio", 
                 u.nombre as "nombreUbicacion"
             FROM inventario i
             JOIN accesorios a ON i.codAccesorio = a.codAccesorio
+            LEFT JOIN categoria c ON a.codCategoria = c.codCategoria
             LEFT JOIN ubicacion u ON i.idubicacion = u.idUbicacion
             ORDER BY i.fecha DESC
         `);

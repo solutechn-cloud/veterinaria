@@ -215,42 +215,79 @@ const Inventory: React.FC = () => {
 
   const handlePrintBarcode = (code: string, description: string) => {
     try {
-      // CORRECCIÓN: Etiqueta Vertical con rotación de 90 grados para texto y código
-      // Formato: 50mm Ancho x 80mm Alto (Etiqueta estrecha y alta)
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [50, 80] });
+      // 1. Configuración de Página (CAMBIAR TAMAÑO AQUI SI SE REQUIERE)
+      // Formato: 50mm Ancho x 80mm Alto.
+      // Esta orientación es "portrait", pero pondremos todo rotado 90 grados para que quede "vertical" visualmente.
+      const pageWidth = 50;
+      const pageHeight = 80;
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [pageWidth, pageHeight] });
       const canvas = document.createElement('canvas');
       
+      // 2. Generación del Código de Barras (Horizontal por naturaleza)
+      // Lo generamos ancho y alto para que al rotar se vea grande.
       JsBarcode(canvas, code, { 
           format: "CODE128", 
-          displayValue: true, // Mostramos el valor dentro del barcode, pero la orientación la dará la rotación
+          displayValue: false, // No mostrar texto automático, lo ponemos manualmente rotado
           margin: 0,
-          width: 2,    
-          height: 60,  // Altura del código (será el ancho al rotar)
-          fontSize: 16,
-          textMargin: 2
+          width: 4,    // Barras bastante gruesas (antes 2) para facilitar escaneo
+          height: 100, // Altura en pixels (será el "largo" al rotar)
       });
       const barcodeImg = canvas.toDataURL("image/png");
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-
-      // --- 1. TEXTO DESCRIPTIVO (ROTADO 90 GRADOS) ---
-      // Alineado a la izquierda del papel (parte inferior de la rotación)
-      // Ajustamos para que empiece desde abajo (y=75) hacia arriba
-      const maxWidth = 75; // Alto disponible para el texto
+      
+      // COORDENADAS:
+      // Queremos que el contenido esté centrado en el eje X (25mm) y eje Y (40mm).
+      // Al rotar 90 grados, el sistema de coordenadas cambia.
+      // Eje X original del PDF (0 a 50) se convierte en el eje vertical visual.
+      // Eje Y original del PDF (0 a 80) se convierte en el eje horizontal visual (pero invertido por la rotación).
+      
+      // ESTRATEGIA: Usar angle: 90 y coordenadas relativas al centro.
+      
+      // --- A. TITULO DEL PRODUCTO (Rotado 90) ---
+      // Posición visual: Izquierda (o Arriba si rotamos la cabeza).
+      // En PDF 50x80: x=10mm (margen izquierdo), y=40mm (centro vertical).
+      doc.setFontSize(9);
+      const maxWidth = 70; // Espacio disponible a lo largo (80mm - margenes)
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxWidth);
       
-      // x=10 (margen izquierdo), y=75 (base del texto)
-      doc.text(splitTitle, 10, 75, { angle: 90 });
+      // align: center hace que el texto se centre en el punto (x,y) respecto a la rotación.
+      // Con angle 90: El texto corre hacia arriba. El punto de anclaje es el centro de la linea base.
+      // x=8: Cerca del borde izquierdo del papel.
+      // y=40: Centro del papel (verticalmente).
+      doc.text(splitTitle, 8, 40, { align: "center", angle: 90 });
 
-      // --- 2. CÓDIGO DE BARRAS (ROTADO 90 GRADOS) ---
-      // Para que aparezca a la derecha del texto
-      // addImage(img, format, x, y, w, h, alias, compression, rotation)
-      // Al rotar 90 grados, el punto (x,y) es la esquina inferior izquierda de la imagen rotada.
-      // x=22 (dejamos espacio para el texto), y=75 (misma base)
-      // w=60 (largo del código hacia arriba), h=20 (ancho del código/barras)
+      // --- B. CODIGO DE BARRAS (Rotado 90) ---
+      // addImage rota alrededor de la esquina superior izquierda de la imagen (x, y).
+      // Queremos que quede centrado.
+      // Ancho visual deseado (grosor de barras): 18mm
+      // Largo visual deseado (longitud del código): 60mm
+      // En addImage(img, format, x, y, w, h, alias, compression, rotation):
+      // w = 60 (largo), h = 18 (ancho) -> Esto dibuja horizontal.
+      // rotation = 90 -> Lo pone vertical.
+      // El punto (x,y) es la esquina inferior izquierda del rectángulo rotado.
       
-      doc.addImage(barcodeImg, 'PNG', 22, 75, 60, 18, undefined, 'FAST', 90);
+      // Queremos centrarlo en X=25 (aprox, un poco a la derecha del titulo).
+      // Centro X visual: 28mm (para dejar espacio al título).
+      // Centro Y visual: 40mm.
+      // Como rota desde la esquina, calculamos:
+      // x = 28.
+      // y = 40 + (60/2) = 70. (Porque dibujará hacia "arriba" desde y=70 hasta y=10).
+      
+      const barWidth = 65; // Largo del código
+      const barHeight = 22; // Grosor del código
+      const barX = 22; // Posición horizontal (empieza después del título)
+      const barY = (pageHeight / 2) + (barWidth / 2); // 40 + 32.5 = 72.5
+      
+      doc.addImage(barcodeImg, 'PNG', barX, barY, barWidth, barHeight, undefined, 'FAST', 90);
+
+      // --- C. TEXTO DEL CODIGO (TEL-0001) (Rotado 90) ---
+      // Posición visual: Derecha del código de barras.
+      // x = 45mm (cerca del borde derecho).
+      // y = 40mm (centro vertical).
+      doc.setFontSize(12);
+      doc.setFont("courier", "bold");
+      doc.text(code, 46, 40, { align: "center", angle: 90 });
 
       doc.save(`etiqueta_${code}.pdf`);
     } catch (err) {
@@ -403,12 +440,16 @@ const Inventory: React.FC = () => {
               {activeTab === 'STOCK' && stock.filter(s => JSON.stringify(s).toLowerCase().includes(searchTerm.toLowerCase())).map(s => (
                 <tr key={s.codInventario} className="hover:bg-slate-50">
                   <td className="p-4 text-xs font-mono text-slate-500">{s.codInventario}</td>
-                  <td className="p-4 text-sm font-medium text-slate-800">{s.descripcionAccesorio || s.codAccesorio}</td>
+                  <td className="p-4 text-sm font-medium text-slate-800">
+                      <span className="text-xs text-slate-500 uppercase font-bold mr-1">{s.categoriaAccesorio}</span>
+                      {s.descripcionAccesorio || s.codAccesorio}
+                  </td>
                   <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${s.cantidad < 3 ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>{s.cantidad}</span></td>
                   <td className="p-4 text-sm text-right font-bold text-emerald-600">L. {Number(s.precioVenta).toFixed(2)}</td>
                   <td className="p-4 text-xs text-slate-500 truncate max-w-[150px]">{s.nombreUbicacion || s.idubicacion}</td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
-                    <button onClick={() => handlePrintBarcode(s.codInventario, s.descripcionAccesorio || 'Acc')} className="text-slate-500 hover:text-indigo-600" title="Imprimir"><Printer size={16} /></button>
+                    {/* Imprimir: Pasamos Categoria + Descripcion */}
+                    <button onClick={() => handlePrintBarcode(s.codInventario, `${s.categoriaAccesorio || ''} ${s.descripcionAccesorio || ''}`)} className="text-slate-500 hover:text-indigo-600" title="Imprimir"><Printer size={16} /></button>
                     <button onClick={() => openEditModal(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(s.codInventario)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                   </td>

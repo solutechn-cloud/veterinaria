@@ -1,5 +1,4 @@
 
-
 // --- ENTIDADES BASE DE DATOS (Mapeo Estricto SQL) ---
 
 export type EstadoGeneral = 'Activo' | 'Inactivo';
@@ -117,6 +116,7 @@ export interface Inventario {
   estado: string;
   // UI Helpers
   descripcionAccesorio?: string;
+  categoriaAccesorio?: string; // Nuevo campo para etiqueta
   nombreUbicacion?: string;
 }
 
