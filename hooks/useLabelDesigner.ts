@@ -158,6 +158,13 @@ export const useLabelDesigner = () => {
         updateTemplate({ elements: newElements });
     };
 
+    const reorderElements = (fromIndex: number, toIndex: number) => {
+        const newElements = [...template.elements];
+        const [movedItem] = newElements.splice(fromIndex, 1);
+        newElements.splice(toIndex, 0, movedItem);
+        updateTemplate({ elements: newElements });
+    };
+
     // --- KEYBOARD SHORTCUTS ---
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
         // Ignorar si está escribiendo en un input
@@ -289,6 +296,7 @@ export const useLabelDesigner = () => {
         addElement, updateElement, deleteSelected, updateTemplate,
         saveTemplate,
         moveLayer,
+        reorderElements,
         interaction,
         handlePointerDown, handlePointerMove, handlePointerUp
     };

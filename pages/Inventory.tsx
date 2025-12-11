@@ -80,12 +80,12 @@ const Inventory: React.FC = () => {
     }
   };
 
-  // --- LOGICA DE IMPRESIÓN DIRECTA ---
+  // --- LOGICA DE IMPRESIÓN DIRECTA ACTUALIZADA ---
   const printLabel = async (type: 'TELEPHONE' | 'ACCESSORY', data: any) => {
       try {
           // Fetch templates specifically for the category, fallback to General
           const templates = await LabelService.getAll();
-          let tpl = templates.find(t => t.isDefault && t.category === type);
+          let tpl = templates.find(t => t.isDefault && t.category === (type === 'TELEPHONE' ? 'TELEPHONE' : 'ACCESSORY'));
           if (!tpl) tpl = templates.find(t => t.isDefault && t.category === 'GENERAL');
           
           if (!tpl) {
@@ -99,27 +99,47 @@ const Inventory: React.FC = () => {
           tpl.elements.forEach(el => {
               // Variable Replacement
               let content = el.content || '';
-              if (el.variableField) {
-                  // Common Replacements
-                  content = el.variableField
-                      .replace('{{PRECIO}}', `L. ${Number(data.precioVenta || 0).toFixed(2)}`)
-                      .replace('{{EMPRESA}}', 'SmartCloud');
-
-                  if (type === 'TELEPHONE') {
-                      content = content
-                          .replace('{{MARCA}}', data.marca || '')
-                          .replace('{{MODELO}}', data.modelo || '')
-                          .replace('{{IMEI1}}', data.imei1 || '')
-                          .replace('{{IMEI2}}', data.imei2 || '')
-                          .replace('{{PROVEEDOR}}', data.codProveedor || '');
-                  } else {
-                      content = content
-                          .replace('{{NOMBRE}}', data.descripcion || '')
-                          .replace('{{CODIGO}}', data.codigo || '')
-                          .replace('{{CATEGORIA}}', data.categoria || '')
-                          .replace('{{UBICACION}}', data.ubicacion || '');
+              
+              // Helper to safely replace both simple {{KEY}} and complex {{table.key}}
+              const safeReplace = (key: string, value: any) => {
+                  const valStr = value !== undefined && value !== null ? String(value) : '';
+                  // Replace {{KEY}}
+                  content = content.replace(new RegExp(`{{${key}}}`, 'g'), valStr);
+                  // Replace {{table.key}} (e.g., telefonos.marca)
+                  const tableKey = type === 'TELEPHONE' ? 'telefonos' : 'inventario';
+                  content = content.replace(new RegExp(`{{${tableKey}.${key}}}`, 'g'), valStr);
+                  // Also handle accesorios for inventory
+                  if (type === 'ACCESSORY') {
+                      content = content.replace(new RegExp(`{{accesorios.${key}}}`, 'g'), valStr);
                   }
+              };
+
+              // --- MAPEO ESPECÍFICO DE VARIABLES ---
+              if (type === 'TELEPHONE') {
+                  // Mapeo para Teléfonos
+                  safeReplace('marca', data.marca);
+                  safeReplace('modelo', data.modelo);
+                  safeReplace('imei1', data.imei1);
+                  safeReplace('imei2', data.imei2);
+                  safeReplace('precioVenta', `L. ${Number(data.precioVenta || 0).toFixed(2)}`);
+                  safeReplace('precioCompra', data.precioCompra);
+                  safeReplace('codigo', data.codigo);
+                  safeReplace('codProveedor', data.codProveedor);
+                  safeReplace('fecha', data.fecha ? data.fecha.split('T')[0] : '');
+              } else {
+                  // Mapeo para Accesorios/Inventario
+                  // Nota: 'descripcion' viene de la tabla accesorios, 'cantidad' de inventario
+                  safeReplace('descripcion', data.descripcion || data.descripcionAccesorio); 
+                  safeReplace('codInventario', data.codInventario || data.codigo);
+                  safeReplace('codAccesorio', data.codAccesorio);
+                  safeReplace('cantidad', data.cantidad);
+                  safeReplace('precioVenta', `L. ${Number(data.precioVenta || 0).toFixed(2)}`);
+                  safeReplace('categoriaAccesorio', data.categoria || data.categoriaAccesorio);
+                  safeReplace('nombreUbicacion', data.ubicacion || data.nombreUbicacion);
               }
+              
+              // Variables Globales
+              safeReplace('EMPRESA', 'SmartCloud');
 
               if (el.type === 'TEXT') {
                   doc.setFontSize(el.fontSize || 10);
@@ -139,7 +159,13 @@ const Inventory: React.FC = () => {
               } else if (el.type === 'BARCODE') {
                   try {
                       const canvas = document.createElement('canvas');
-                      JsBarcode(canvas, content, {
+                      // Si el contenido sigue teniendo {{}}, intentar usar el ID principal como fallback
+                      let codeContent = content;
+                      if (codeContent.includes('{{')) {
+                          codeContent = type === 'TELEPHONE' ? (data.imei1 || data.codigo) : (data.codInventario || data.codigo);
+                      }
+
+                      JsBarcode(canvas, codeContent, {
                           format: (el.barcodeFormat as any) || "CODE128",
                           displayValue: el.displayValue,
                           margin: 0,
@@ -165,7 +191,7 @@ const Inventory: React.FC = () => {
               }
           });
 
-          doc.save(`etiqueta_${data.codigo || data.imei1}.pdf`);
+          doc.save(`etiqueta_${type}_${data.codigo || data.imei1 || Date.now()}.pdf`);
 
       } catch (err: any) {
           console.error(err);
@@ -402,10 +428,12 @@ const Inventory: React.FC = () => {
                     <button 
                         onClick={() => printLabel('ACCESSORY', {
                             codigo: s.codInventario,
+                            codAccesorio: s.codAccesorio,
                             descripcion: s.descripcionAccesorio,
                             precioVenta: s.precioVenta,
                             categoria: s.categoriaAccesorio,
-                            ubicacion: s.nombreUbicacion
+                            ubicacion: s.nombreUbicacion,
+                            cantidad: s.cantidad
                         })}
                         className="text-slate-500 hover:text-indigo-600" 
                         title="Imprimir Etiqueta"
@@ -416,7 +444,7 @@ const Inventory: React.FC = () => {
                 </tr>
               ))}
 
-              {/* ... Rest of tabs (Master, Categories, Locations) similar to previous ... */}
+              {/* ... Rest of tabs (Master, Categories, Locations) ... */}
               {activeTab === 'MASTER' && master.filter(m => JSON.stringify(m).toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                 <tr key={m.codAccesorio} className="hover:bg-slate-50">
                   <td className="p-4 text-xs font-mono text-slate-500">{m.codAccesorio}</td>
@@ -458,6 +486,7 @@ const Inventory: React.FC = () => {
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
+            {/* Modal Content - Same as previous */}
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h3 className="text-xl font-bold text-slate-800">
                 {isEditing ? 'Editar' : 'Nuevo'}
@@ -466,7 +495,7 @@ const Inventory: React.FC = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="space-y-4">
-               {/* --- FORMULARIO TELEFONOS --- */}
+               {/* ... (Existing form content preserved) ... */}
                {activeTab === 'TELEPHONES' && (
                  <>
                    <div className="grid grid-cols-2 gap-4">

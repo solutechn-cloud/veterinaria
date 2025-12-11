@@ -1,9 +1,9 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
-  Layers, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Search, Database, Table, ChevronRight, Key
+  Layers, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Search, Database, Table, ChevronRight, Key, GripVertical
 } from 'lucide-react';
 import { LabelService } from '../services/api';
 import { LabelTemplate } from '../types';
@@ -28,7 +28,7 @@ const LabelDesigner: React.FC = () => {
       loadTemplate, createNew,
       undo, redo,
       addElement, updateElement, deleteSelected, updateTemplate,
-      saveTemplate, moveLayer,
+      saveTemplate, moveLayer, reorderElements,
       interaction,
       handlePointerDown, handlePointerMove, handlePointerUp
   } = useLabelDesigner();
@@ -42,6 +42,10 @@ const LabelDesigner: React.FC = () => {
   // Variable Modal Logic
   const [varSearch, setVarSearch] = useState('');
   const [expandedTables, setExpandedTables] = useState<string[]>([]);
+
+  // Drag and Drop Logic
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
 
   useEffect(() => {
       loadSavedList();
@@ -81,6 +85,23 @@ const LabelDesigner: React.FC = () => {
   // Helper for Variable Tree
   const toggleTable = (tableName: string) => {
       setExpandedTables(prev => prev.includes(tableName) ? prev.filter(t => t !== tableName) : [...prev, tableName]);
+  };
+
+  // DnD Handlers
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, position: number) => {
+    dragItem.current = position;
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, position: number) => {
+    dragOverItem.current = position;
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
+        reorderElements(dragItem.current, dragOverItem.current);
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
   };
 
   // --- VIEWS ---
@@ -199,29 +220,29 @@ const LabelDesigner: React.FC = () => {
                 ) : (
                     <div className="p-4 h-full flex flex-col">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2"><Layers size={20}/> Capas</h3>
+                        <p className="text-xs text-slate-400 mb-2">Arrastra para reordenar</p>
                         <div className="flex-1 overflow-y-auto space-y-1">
                             {template.elements.map((el, index) => (
                                 <div 
-                                    key={el.id} 
+                                    key={el.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, index)}
+                                    onDragEnter={(e) => handleDragEnter(e, index)}
+                                    onDragEnd={handleDragEnd}
+                                    onDragOver={(e) => e.preventDefault()}
                                     onClick={() => setSelectedId(el.id)}
-                                    className={`p-2 rounded-lg text-sm flex items-center gap-3 cursor-pointer ${selectedId === el.id ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-50 text-slate-600 border border-transparent'}`}
+                                    className={`p-2 rounded-lg text-sm flex items-center gap-3 cursor-pointer select-none transition-colors group
+                                        ${selectedId === el.id ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-50 text-slate-600 border border-transparent'}`}
                                 >
+                                    <div className="cursor-grab text-slate-300 hover:text-slate-500"><GripVertical size={14}/></div>
                                     <span className="text-[10px] bg-slate-200 px-1.5 rounded text-slate-500 font-mono w-6 text-center">{index+1}</span>
                                     {el.type === 'TEXT' && <Type size={14}/>}
                                     {el.type === 'BARCODE' && <ScanLine size={14}/>}
                                     {el.type === 'SHAPE' && <Shapes size={14}/>}
                                     <span className="truncate flex-1">{el.content || el.type}</span>
                                 </div>
-                            )).reverse()}
+                            ))}
                         </div>
-                        {selectedId && (
-                            <div className="grid grid-cols-4 gap-2 pt-4 border-t mt-4">
-                                <button onClick={() => moveLayer('TOP')} title="Traer al frente" className="p-2 bg-slate-100 hover:bg-slate-200 rounded flex justify-center"><ChevronsUp size={18}/></button>
-                                <button onClick={() => moveLayer('UP')} title="Subir" className="p-2 bg-slate-100 hover:bg-slate-200 rounded flex justify-center"><ArrowUp size={18}/></button>
-                                <button onClick={() => moveLayer('DOWN')} title="Bajar" className="p-2 bg-slate-100 hover:bg-slate-200 rounded flex justify-center"><ArrowDown size={18}/></button>
-                                <button onClick={() => moveLayer('BOTTOM')} title="Enviar al fondo" className="p-2 bg-slate-100 hover:bg-slate-200 rounded flex justify-center"><ChevronsDown size={18}/></button>
-                            </div>
-                        )}
                     </div>
                 )}
             </aside>
@@ -241,8 +262,12 @@ const LabelDesigner: React.FC = () => {
 
         {/* MOBILE SLIDE-UP PANEL */}
         <div className={`md:hidden fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 transition-transform duration-300 transform flex flex-col max-h-[70vh] border-t border-slate-100 ${isMobilePropOpen ? 'translate-y-0' : 'translate-y-full'}`}>
-            <div className="flex justify-center p-2" onClick={() => setIsMobilePropOpen(false)}>
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full"/>
+            <div className="flex justify-between items-center px-4 pt-3 pb-2 border-b border-slate-50">
+                <div className="w-8"/> {/* Spacer */}
+                <div className="w-12 h-1.5 bg-slate-200 rounded-full" onClick={() => setIsMobilePropOpen(false)}/>
+                <button onClick={() => setIsMobilePropOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                    <X size={16}/>
+                </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
                 {activePanel === 'PROPERTIES' ? (
@@ -255,11 +280,13 @@ const LabelDesigner: React.FC = () => {
                         setShowVarModal={setShowVarModal}
                     />
                 ) : (
-                    // Mobile Layers (Simplified)
+                    // Mobile Layers
                     <div className="space-y-2">
+                        <p className="text-xs text-slate-400 mb-2">Orden de capas</p>
                         {template.elements.map((el, i) => (
-                            <div key={el.id} onClick={() => setSelectedId(el.id)} className={`p-3 rounded-lg border ${selectedId===el.id?'border-indigo-500 bg-indigo-50':'border-slate-200'}`}>
-                                {i+1}. {el.type}
+                            <div key={el.id} onClick={() => setSelectedId(el.id)} className={`p-3 rounded-lg border flex items-center gap-2 ${selectedId===el.id?'border-indigo-500 bg-indigo-50':'border-slate-200'}`}>
+                                <span className="font-bold text-slate-400 text-xs">{i+1}.</span>
+                                {el.type}
                             </div>
                         ))}
                     </div>
@@ -348,7 +375,7 @@ const LabelDesigner: React.FC = () => {
                                                     <button 
                                                         key={col.name}
                                                         onClick={() => {
-                                                            if(selectedId) updateElement(selectedId, { content: template.elements.find(e => e.id === selectedId)?.content + `{{${col.name}}}` });
+                                                            if(selectedId) updateElement(selectedId, { content: template.elements.find(e => e.id === selectedId)?.content + `{{${table}.${col.name}}}` });
                                                             setShowVarModal(false);
                                                         }}
                                                         className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg text-left group transition-all border border-transparent hover:border-indigo-100"
