@@ -42,8 +42,8 @@ async function updateArqueoBalance(idCaja, client = pool) {
 
         const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
 
-        // 2. Calcular Totales usando SQL directo para evitar errores de punto flotante en JS
-        // Sumamos todos los ingresos y egresos que tengan fecha >= fechaApertura de la caja
+        // 2. Calcular Totales RECALCULANDO desde cero para esa sesión
+        // Esto asegura que montoFinal sea siempre (Inicial + SumaIngresos - SumaEgresos)
         
         await client.query(`
             UPDATE arqueo 
@@ -73,7 +73,7 @@ async function updateArqueoBalance(idCaja, client = pool) {
                     WHERE idCaja = $1 AND fechaCreacion >= $2
                 ),
                 ganancia = (
-                    SELECT COALESCE(SUM(monto), 0) - COALESCE(SUM(costo), 0)
+                    SELECT COALESCE(SUM(monto - costo), 0)
                     FROM ingresos 
                     WHERE idCaja = $1 AND fechaCreacion >= $2
                 )

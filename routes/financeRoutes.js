@@ -6,15 +6,70 @@ const { authenticateToken } = require('../middleware/auth');
 
 // --- ARQUEO CAJA ---
 router.get('/arqueo/active', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { idCaja } = req.user;
-    const result = await pool.query(
-      `SELECT idArqueo as "idArqueo", idCaja as "idCaja", idUsuario as "idUsuario", fechaApertura as "fechaApertura", montoInicial as "montoInicial", montoFinal as "montoFinal", estado 
-       FROM arqueo WHERE idCaja = $1 AND estado = 'Activo' ORDER BY fechaApertura DESC LIMIT 1`,
+    
+    // 1. Buscar arqueo activo
+    const result = await client.query(
+      `SELECT idArqueo as "idArqueo", idCaja as "idCaja", idUsuario as "idUsuario", 
+              fechaApertura as "fechaApertura", montoInicial as "montoInicial", 
+              montoFinal as "montoFinal", estado 
+       FROM arqueo 
+       WHERE idCaja = $1 AND estado = 'Activo' 
+       ORDER BY fechaApertura DESC LIMIT 1`,
       [idCaja]
     );
-    res.json(result.rows[0] || null);
-  } catch(err) { handleDbError(res, err); }
+
+    let activeArqueo = result.rows[0] || null;
+
+    // 2. Validar si el arqueo es del día actual (Logica de "Día Nuevo, Caja Nueva")
+    if (activeArqueo) {
+        const dbDate = new Date(activeArqueo.fechaApertura).toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
+
+        // Si la caja está abierta pero es de un día anterior, la cerramos automáticamente
+        if (dbDate !== today) {
+             const idArqueo = activeArqueo.idArqueo;
+             console.log(`Auto-closing expired box session: ${idArqueo}`);
+
+             // Calcular totales para el cierre automático
+             const ingresosRes = await client.query(`
+                SELECT COALESCE(SUM(monto), 0) as total_ingresos, COALESCE(SUM(costo), 0) as costo_ingresos
+                FROM ingresos 
+                WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion < $3::date + 1
+             `, [idCaja, activeArqueo.fechaApertura, dbDate]);
+             
+             const egresosRes = await client.query(`
+                SELECT COALESCE(SUM(monto), 0) as total_egresos
+                FROM egresos 
+                WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion < $3::date + 1
+             `, [idCaja, activeArqueo.fechaApertura, dbDate]);
+
+             const totalIngresos = parseFloat(ingresosRes.rows[0].total_ingresos);
+             const totalCostos = parseFloat(ingresosRes.rows[0].costo_ingresos);
+             const totalEgresos = parseFloat(egresosRes.rows[0].total_egresos);
+             const ganancia = totalIngresos - totalCostos;
+             const montoFinal = parseFloat(activeArqueo.montoInicial) + totalIngresos - totalEgresos;
+
+             await client.query(`
+                UPDATE arqueo 
+                SET estado = 'Cerrada', fechaCierre = NOW(), 
+                    montoFinal = $1, totalVentas = $2, totalCostos = $3, TotalGastos = $4, ganancia = $5
+                WHERE idArqueo = $6
+             `, [montoFinal, totalIngresos, totalCostos, totalEgresos, ganancia, idArqueo]);
+
+             // Retornamos null para forzar al usuario a abrir caja hoy
+             activeArqueo = null;
+        }
+    }
+
+    res.json(activeArqueo);
+  } catch(err) { 
+    handleDbError(res, err); 
+  } finally {
+    client.release();
+  }
 });
 
 router.post('/arqueo/open', authenticateToken, async (req, res) => {
@@ -24,11 +79,22 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
     const { codUsuario, idCaja } = req.user;
     const today = fechaLocal || new Date().toISOString().split('T')[0];
 
+    // Verificar si ya existe caja abierta HOY
     const check = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
-    if (check.rows.length > 0) return res.status(400).json({ error: 'Caja ya abierta.' });
+    if (check.rows.length > 0) {
+        // Doble verificación: Si la caja activa es de hoy, error. Si es vieja, el endpoint GET debió cerrarla, pero por seguridad:
+        const activeDate = new Date(check.rows[0].fechaapertura).toISOString().split('T')[0];
+        if (activeDate === today) {
+            return res.status(400).json({ error: 'Caja ya abierta para el día de hoy.' });
+        }
+        // Si llegamos aqui y hay caja vieja activa, forzamos cierre previo (safety net)
+        await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = NOW() WHERE idArqueo = $1`, [check.rows[0].idarqueo]);
+    }
 
     await client.query('BEGIN');
     const idArqueo = await generateNextId('arqueo', 'idArqueo', 'ARQ', client);
+    
+    // IMPORTANTE: montoFinal inicia igual al montoInicial
     await client.query(
       `INSERT INTO arqueo (idArqueo, idCaja, idUsuario, fechaApertura, montoInicial, montoFinal, estado)
        VALUES ($1, $2, $3, NOW(), $4, $4, 'Activo')`,
@@ -96,11 +162,20 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// --- INGRESOS ---
+// --- INGRESOS (Solo Hoy) ---
 router.get('/ingresos', authenticateToken, async (req, res) => {
-  const { idCaja } = req.query;
+  const { idCaja } = req.user; // Usar ID del token por seguridad, o query si es admin
+  const queryCaja = req.query.idCaja || idCaja;
+
   try {
-    const result = await pool.query(`SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado FROM ingresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 500`, [idCaja]);
+    // FILTRO: Solo registros del día actual (CURRENT_DATE)
+    const result = await pool.query(
+        `SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado 
+         FROM ingresos 
+         WHERE idCaja = $1 AND fechaCreacion::date = CURRENT_DATE 
+         ORDER BY fechaCreacion DESC`, 
+        [queryCaja]
+    );
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -110,10 +185,15 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
     const { descripcion, monto, costo } = req.body;
     const { idCaja } = req.user;
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
-    await pool.query(`INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Registrado')`,
-      [idIngreso, idCaja, descripcion, monto, costo || 0]);
     
+    await pool.query(
+        `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Registrado')`,
+        [idIngreso, idCaja, descripcion, monto, costo || 0]
+    );
+    
+    // Actualizar Saldo Caja
     await updateArqueoBalance(idCaja, pool);
+    
     res.status(201).json({ message: 'Ingreso registrado', idIngreso });
   } catch(err) { handleDbError(res, err); }
 });
@@ -139,11 +219,20 @@ router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
     } catch(err) { handleDbError(res, err); }
 });
 
-// --- EGRESOS ---
+// --- EGRESOS (Solo Hoy) ---
 router.get('/egresos', authenticateToken, async (req, res) => {
-  const { idCaja } = req.query;
+  const { idCaja } = req.user;
+  const queryCaja = req.query.idCaja || idCaja;
+
   try {
-    const result = await pool.query(`SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado FROM egresos WHERE idCaja = $1 ORDER BY fechaCreacion DESC LIMIT 500`, [idCaja]);
+    // FILTRO: Solo registros del día actual
+    const result = await pool.query(
+        `SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado 
+         FROM egresos 
+         WHERE idCaja = $1 AND fechaCreacion::date = CURRENT_DATE 
+         ORDER BY fechaCreacion DESC`, 
+        [queryCaja]
+    );
     res.json(result.rows);
   } catch(err) { handleDbError(res, err); }
 });
@@ -153,10 +242,15 @@ router.post('/egresos', authenticateToken, async (req, res) => {
     const { descripcion, monto } = req.body;
     const { idCaja } = req.user;
     const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
-    await pool.query(`INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Registrado')`,
-      [idegresos, idCaja, descripcion, monto]);
     
+    await pool.query(
+        `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Registrado')`,
+        [idegresos, idCaja, descripcion, monto]
+    );
+    
+    // Actualizar Saldo Caja
     await updateArqueoBalance(idCaja, pool);
+
     res.status(201).json({ message: 'Egreso registrado', idegresos });
   } catch(err) { handleDbError(res, err); }
 });
