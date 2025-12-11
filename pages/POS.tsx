@@ -6,7 +6,7 @@ import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, 
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 
 const POS: React.FC = () => {
   const [products, setProducts] = useState<ProductoUnified[]>([]);
@@ -30,7 +30,7 @@ const POS: React.FC = () => {
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const history = useHistory();
   const location = useLocation();
 
   // Obtener fecha local en formato YYYY-MM-DD
@@ -61,7 +61,7 @@ const POS: React.FC = () => {
           };
           setCart(prev => [...prev, newItem]);
           // Clean state
-          window.history.replaceState({}, document.title);
+          history.replace({ ...location, state: {} });
       }
 
       // 2. Modo Edición (Edit Sale)
@@ -81,7 +81,7 @@ const POS: React.FC = () => {
            icon: 'warning',
            confirmButtonText: 'Ir a Caja'
          });
-         navigate('/cash');
+         history.push('/cash');
        }
      } catch (error) {
        console.error("Error checking register", error);
@@ -328,7 +328,7 @@ const POS: React.FC = () => {
         setIsEditing(false);
         setEditingSaleId(null);
         // Remove location state
-        window.history.replaceState({}, document.title);
+        history.replace({ ...location, state: {} });
         
         loadInitialData();
       } catch (error: any) {
@@ -344,7 +344,7 @@ const POS: React.FC = () => {
       setSelectedClientId('');
       setDiscount(0);
       setTaxAmount(0);
-      window.history.replaceState({}, document.title);
+      history.replace({ ...location, state: {} });
       Swal.fire('Edición Cancelada', 'Se ha limpiado el punto de venta.', 'info');
   };
 

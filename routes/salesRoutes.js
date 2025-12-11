@@ -41,12 +41,13 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; // Espera formato YYYY-MM-DD
+        // Usamos TO_CHAR para evitar problemas de timestamp y comparar solo la fecha como string
         const result = await pool.query(`
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
-            WHERE v.fecha::DATE = $1::DATE AND v.codVendedor = $2
+            WHERE TO_CHAR(v.fecha, 'YYYY-MM-DD') = $1 AND v.codVendedor = $2
             ORDER BY v.codVenta DESC
         `, [fecha, req.user.codUsuario]);
         res.json(result.rows);
@@ -55,8 +56,6 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
 
 router.get('/ventas/:id', authenticateToken, async (req, res) => {
     try {
-        // CORRECCIÓN: Traer todos los campos necesarios para editar (isv, descuento, tipoCompra)
-        // Nota: Usamos COALESCE para evitar nulos en el frontend
         const result = await pool.query(`
             SELECT 
                 v.codVenta as "codVenta", 
@@ -89,7 +88,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
     
-    // 1. Crear Venta - CORRECCIÓN: Insertar todos los campos (tipoCompra, isv, descuento, codUsuario)
     const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
     await client.query(
       `INSERT INTO ventas (
@@ -112,7 +110,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const startIdStr = await generateNextId('detalleventa', 'codDetalleVenta', 'DET', client);
     let currentDetailIdNum = parseInt(startIdStr.split('-')[1]);
 
-    // 2. Procesar Detalles
     for (const item of detalles) {
       const codDetalle = `DET-${currentDetailIdNum.toString().padStart(4, '0')}`;
       currentDetailIdNum++;
@@ -147,13 +144,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       );
     }
 
-    // 3. REGISTRAR INGRESO AUTOMÁTICO EN CAJA (Si es Contado)
-    // Aunque sea crédito, muchas veces se registra para balance contable, pero típicamente ingreso de caja es solo CASH.
-    // Asumiremos que entra a caja si es Contado. Si es Crédito, no entra dinero FÍSICO a caja, pero afecta ventas.
-    // PARA SIMPLIFICAR TU SISTEMA: Registraremos todo como ingreso por ahora para que cuadre "Total Ventas", 
-    // pero si quieres control estricto de efectivo, deberíamos filtrar. 
-    // Basado en tu petición de "Monto Final", asumiré que quieres ver reflejado el dinero.
-    
+    // REGISTRAR INGRESO AUTOMÁTICO
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) 
@@ -161,7 +152,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCostoVenta]
     );
 
-    // 4. UPDATE BALANCE
+    // UPDATE BALANCE
     await updateArqueoBalance(idCaja, client);
 
     await client.query('COMMIT');
@@ -169,7 +160,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
   } catch (err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// EDITAR VENTA
 router.put('/ventas/:id', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -179,18 +169,15 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
 
-        // 1. Validar venta existente
         const ventaRes = await client.query("SELECT estado FROM ventas WHERE codVenta = $1", [codVenta]);
         if (ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
         if (ventaRes.rows[0].estado === 'Anulada') throw new Error("No se puede editar una venta anulada");
 
-        // 2. Revertir inventario de la venta anterior
         const oldDetalles = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [codVenta]);
         for (const det of oldDetalles.rows) {
             if (det.idtelefono) {
                 await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
             } else if (det.idaccesorio) {
-                // Devolver stock
                 const stockRes = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1", [det.idaccesorio]);
                 if (stockRes.rows.length > 0) {
                      await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, stockRes.rows[0].codinventario]);
@@ -198,10 +185,8 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        // 3. Eliminar detalles anteriores
         await client.query('DELETE FROM detalleventa WHERE idVenta = $1', [codVenta]);
 
-        // 4. Actualizar Cabecera de Venta (CORRECCIÓN: Actualizar todos los campos)
         await client.query(
             `UPDATE ventas 
              SET identidadCliente = $1, total = $2, tipoCompra = $3, isv = $4, descuento = $5 
@@ -209,7 +194,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
             [identidadCliente, total, tipoCompra, isv, descuento, codVenta]
         );
 
-        // 5. Insertar Nuevos Detalles y Descontar Stock
         let totalCostoVenta = 0;
         const startIdStr = await generateNextId('detalleventa', 'codDetalleVenta', 'DET', client);
         let currentDetailIdNum = parseInt(startIdStr.split('-')[1]);
@@ -217,7 +201,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         for (const item of detalles) {
              const codDetalle = `DET-${currentDetailIdNum.toString().padStart(4, '0')}`;
              currentDetailIdNum++;
-             
              let idAccesorio = null;
              let idTelefono = null;
              let itemCosto = 0;
@@ -235,7 +218,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
                 }
                 await client.query("UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2", [item.cantidad, item.idInventario]);
              }
-
              totalCostoVenta += (Number(itemCosto) * Number(item.cantidad));
 
              await client.query(
@@ -245,14 +227,12 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
              );
         }
 
-        // 6. Actualizar el Ingreso en Caja
         const descSearch = `Venta Factura #${codVenta}`;
         await client.query(
             `UPDATE ingresos SET monto = $1, costo = $2 WHERE idCaja = $3 AND descripcion = $4`,
             [total, totalCostoVenta, idCaja, descSearch]
         );
 
-        // 7. Recalcular Saldo Caja (Arqueo)
         await updateArqueoBalance(idCaja, client);
 
         await client.query('COMMIT');
@@ -268,7 +248,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
 router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
     try {
-        // Alias explícitos para asegurar que el frontend reciba "precioVenta" y no "precioventa"
         const query = `
             SELECT 
                 dv.codDetalleVenta as "codDetalleVenta", 
@@ -333,14 +312,12 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
 
         await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [codVenta]);
 
-        // Registrar Egreso por anulación (Resta el dinero de la caja)
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Anulación Venta')`,
             [idegresos, idCaja, `Devolución/Anulación Fac #${codVenta}`, totalDevolver]
         );
 
-        // UPDATE BALANCE
         await updateArqueoBalance(idCaja, client);
 
         await client.query('COMMIT');

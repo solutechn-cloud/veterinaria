@@ -33,55 +33,62 @@ async function generateNextId(table, column, prefix, client = pool) {
   }
 }
 
-// Función para actualizar el balance del arqueo en tiempo real
+// Función CRÍTICA: Actualizar balance en tiempo real
 async function updateArqueoBalance(idCaja, client = pool) {
     try {
-        // 1. Obtener Arqueo Activo
-        const arqRes = await client.query(`SELECT idArqueo, montoInicial, fechaApertura FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
-        if (arqRes.rows.length === 0) return; // No hay caja abierta
+        // 1. Obtener datos de la sesión activa
+        const arqRes = await client.query(
+            `SELECT idArqueo, montoInicial, fechaApertura FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, 
+            [idCaja]
+        );
+        
+        if (arqRes.rows.length === 0) return; // No hay caja abierta para actualizar
 
         const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
 
-        // 2. Calcular Totales RECALCULANDO desde cero para esa sesión
-        // Esto asegura que montoFinal sea siempre (Inicial + SumaIngresos - SumaEgresos)
+        // 2. Calcular sumatorias de movimientos DESDE la fecha/hora de apertura
+        // Usamos COALESCE para evitar nulos y ::numeric para asegurar matemáticas precisas
         
+        // Calcular Ingresos (Incluye Ventas POS y Manuales)
+        const ingRes = await client.query(`
+            SELECT COALESCE(SUM(monto), 0)::numeric as total, COALESCE(SUM(costo), 0)::numeric as costo
+            FROM ingresos 
+            WHERE idCaja = $1 AND fechaCreacion >= $2
+        `, [idCaja, fechaApertura]);
+
+        // Calcular Egresos (Gastos, Compras Saldo, Anulaciones)
+        const egrRes = await client.query(`
+            SELECT COALESCE(SUM(monto), 0)::numeric as total
+            FROM egresos 
+            WHERE idCaja = $1 AND fechaCreacion >= $2
+        `, [idCaja, fechaApertura]);
+
+        const totalIngresos = parseFloat(ingRes.rows[0].total);
+        const totalCostos = parseFloat(ingRes.rows[0].costo);
+        const totalEgresos = parseFloat(egrRes.rows[0].total);
+        const baseInicial = parseFloat(montoInicial);
+
+        // Fórmula: Caja Final = Lo que había al inicio + Lo que entró - Lo que salió
+        const montoFinal = baseInicial + totalIngresos - totalEgresos;
+        const ganancia = totalIngresos - totalCostos;
+
+        // 3. Impactar en base de datos
         await client.query(`
             UPDATE arqueo 
             SET 
-                totalVentas = (
-                    SELECT COALESCE(SUM(monto), 0) 
-                    FROM ingresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                ),
-                totalCostos = (
-                    SELECT COALESCE(SUM(costo), 0) 
-                    FROM ingresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                ),
-                TotalGastos = (
-                    SELECT COALESCE(SUM(monto), 0) 
-                    FROM egresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                ),
-                montoFinal = $3 + (
-                    SELECT COALESCE(SUM(monto), 0) 
-                    FROM ingresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                ) - (
-                    SELECT COALESCE(SUM(monto), 0) 
-                    FROM egresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                ),
-                ganancia = (
-                    SELECT COALESCE(SUM(monto - costo), 0)
-                    FROM ingresos 
-                    WHERE idCaja = $1 AND fechaCreacion >= $2
-                )
-            WHERE idArqueo = $4
-        `, [idCaja, fechaApertura, montoInicial, idArqueo]);
+                totalVentas = $1,
+                totalCostos = $2,
+                TotalGastos = $3,
+                montoFinal = $4,
+                ganancia = $5
+            WHERE idArqueo = $6
+        `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idArqueo]);
+        
+        console.log(`Caja ${idCaja} actualizada. Saldo Final: ${montoFinal}`);
         
     } catch (err) {
-        console.error("Error actualizando balance de arqueo:", err);
+        console.error("Error crítico actualizando balance:", err);
+        throw err;
     }
 }
 

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 
 type TabType = 'INGRESOS' | 'EGRESOS' | 'VENTAS' | 'RECARGAS';
 
@@ -28,7 +28,7 @@ const CashRegister: React.FC = () => {
   const [openForm, setOpenForm] = useState({ monto: '', tigo: '', claro: '' });
   
   const { user, hasPermission } = useAuth();
-  const navigate = useNavigate();
+  const history = useHistory();
 
   // Modals Forms
   const [showIngresoModal, setShowIngresoModal] = useState(false);
@@ -63,7 +63,6 @@ const CashRegister: React.FC = () => {
         setPaquetes(paqs || []);
       } catch(e) {
         console.error("Error cargando paquetes:", e);
-        // No bloquear la interfaz si fallan los paquetes
       }
   };
 
@@ -79,9 +78,10 @@ const CashRegister: React.FC = () => {
         setExistingBalances(status);
       } else {
         setArqueo(active);
+        // Pasar localDate a todos los servicios para garantizar filtro exacto
         const [ing, egr, vts, slds] = await Promise.all([
-           CashService.getIngresos(user?.idCaja || ''),
-           CashService.getEgresos(user?.idCaja || ''),
+           CashService.getIngresos(user?.idCaja || '', localDate),
+           CashService.getEgresos(user?.idCaja || '', localDate),
            SalesService.getVentasDiarias(localDate),
            CashService.getSaldosToday(localDate)
         ]);
@@ -114,7 +114,7 @@ const CashRegister: React.FC = () => {
      }
   };
 
-  // --- ACTIONS HANDLERS (Same logic as before, just ensuring refreshes) ---
+  // --- ACTIONS HANDLERS ---
   const handleCloseBox = async () => {
      if(!arqueo) return;
      const result = await Swal.fire({ 
@@ -163,7 +163,8 @@ const CashRegister: React.FC = () => {
          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
      } else {
          if (ingresoForm.irAPos) {
-             navigate('/pos', { 
+             history.push({ 
+                 pathname: '/pos',
                  state: { 
                      customItem: {
                          descripcion: ingresoForm.descripcion,
@@ -246,7 +247,8 @@ const CashRegister: React.FC = () => {
   };
   
   const handleEditVenta = (venta: Venta) => {
-      navigate('/pos', {
+      history.push({
+          pathname: '/pos',
           state: {
               editSaleId: venta.codVenta,
               saleData: venta // Pasar datos básicos como cliente
@@ -311,11 +313,8 @@ const CashRegister: React.FC = () => {
   const totalGastos = egresos.reduce((a,b) => a + Number(b.monto), 0);
   
   const getSaldoRed = (red: string) => {
-    // Buscar coincidencia exacta por red
     const s = saldos.find(x => x.red === red);
     if (!s) return 0;
-    
-    // Si saldoFinal existe (incluso si es 0), úsalo. Si no, usa saldoInicio.
     return s.saldoFinal !== null && s.saldoFinal !== undefined 
            ? Number(s.saldoFinal) 
            : Number(s.saldoInicio);
