@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryService, ClientService, SalesService, CashService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente } from '../types';
-import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, RefreshCw, List, LayoutGrid } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, RefreshCw, List, LayoutGrid, Save } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,11 @@ const POS: React.FC = () => {
   const [paymentType, setPaymentType] = useState<'Contado' | 'Credito'>('Contado');
   const [discount, setDiscount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Edit Mode State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,24 +37,30 @@ const POS: React.FC = () => {
     loadInitialData();
   }, []);
 
-  // Handle Custom Item passed from Cash Register
+  // Handle Custom Item passed from Cash Register OR Edit Mode
   useEffect(() => {
       const state = location.state as any;
+      
+      // 1. Ingreso Manual desde Caja (Custom Item)
       if (state && state.customItem) {
           const { descripcion, precio } = state.customItem;
-          // Add as custom item to cart
           const newItem: DetalleVenta = {
               codDetalleVenta: `MANUAL-${Date.now()}`,
               cantidad: 1,
               precioVenta: Number(precio),
               descripcionProducto: descripcion,
-              tipoProducto: 'SERVICIO' // Or generic
+              tipoProducto: 'SERVICIO'
           };
           setCart(prev => [...prev, newItem]);
-          
-          // Clear state so it doesn't add again on refresh (though location state persists, useEffect runs once on mount/location change)
+          // Clean state
           window.history.replaceState({}, document.title);
       }
+
+      // 2. Modo Edición (Edit Sale)
+      if (state && state.editSaleId) {
+          loadSaleToEdit(state.editSaleId, state.saleData);
+      }
+
   }, [location]);
 
   const checkRegisterStatus = async () => {
@@ -79,6 +90,38 @@ const POS: React.FC = () => {
       setClients(clientData || []);
     }).catch(err => console.error(err))
       .finally(() => setIsLoading(false));
+  };
+
+  const loadSaleToEdit = async (saleId: string, saleData?: any) => {
+      try {
+          setIsLoading(true);
+          setIsEditing(true);
+          setEditingSaleId(saleId);
+          
+          if(saleData) {
+              setSelectedClientId(saleData.identidadCliente);
+              // Podríamos setear tipoCompra si viniera en saleData
+          }
+
+          const details = await SalesService.getDetallesVenta(saleId);
+          setCart(details);
+          
+          const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000
+          });
+          Toast.fire({ icon: 'info', title: `Editando Venta #${saleId}` });
+
+      } catch (error) {
+          console.error(error);
+          Swal.fire('Error', 'No se pudo cargar la venta para edición', 'error');
+          setIsEditing(false);
+          setEditingSaleId(null);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   const getClientDetails = () => {
@@ -135,7 +178,7 @@ const POS: React.FC = () => {
   const calculateTotal = () => {
     const grossTotal = cart.reduce((acc, item) => acc + (item.cantidad * item.precioVenta), 0);
     const finalTotal = grossTotal - discount;
-    const isv = finalTotal * 0.15;
+    const isv = finalTotal * 0.15; // Estimado, backend calcula si es necesario
     const subtotal = finalTotal - isv;
 
     return { 
@@ -214,28 +257,35 @@ const POS: React.FC = () => {
     if (!selectedClientId) return Swal.fire('Cliente Requerido', 'Selecciona un cliente para la factura.', 'warning');
 
     const result = await Swal.fire({
-      title: '¿Procesar Venta?',
+      title: isEditing ? '¿Actualizar Venta?' : '¿Procesar Venta?',
       text: `Total: L. ${total.toFixed(2)}`,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Sí, Facturar',
+      confirmButtonText: isEditing ? 'Sí, Actualizar' : 'Sí, Facturar',
       confirmButtonColor: '#4f46e5'
     });
 
     if (result.isConfirmed) {
       try {
-        const response = await SalesService.createVenta({
-          identidadCliente: selectedClientId,
-          tipoCompra: paymentType,
-          total: total,
-          isv: tax,
-          descuento: discount,
-          detalles: cart
-        });
+        const payload = {
+            identidadCliente: selectedClientId,
+            tipoCompra: paymentType,
+            total: total,
+            isv: tax,
+            descuento: discount,
+            detalles: cart
+        };
+
+        let response;
+        if (isEditing && editingSaleId) {
+            response = await SalesService.updateVenta(editingSaleId, payload);
+        } else {
+            response = await SalesService.createVenta(payload);
+        }
         
         Swal.fire({
           title: 'Éxito',
-          text: 'Venta registrada',
+          text: isEditing ? 'Venta actualizada correctamente' : 'Venta registrada',
           icon: 'success',
           showCancelButton: true,
           confirmButtonText: 'Imprimir',
@@ -246,14 +296,29 @@ const POS: React.FC = () => {
           }
         });
 
+        // Reset
         setCart([]);
         setDiscount(0);
         setSelectedClientId('');
+        setIsEditing(false);
+        setEditingSaleId(null);
+        // Remove location state
+        window.history.replaceState({}, document.title);
+        
         loadInitialData();
       } catch (error: any) {
         Swal.fire('Error', error.message, 'error');
       }
     }
+  };
+
+  const cancelEdit = () => {
+      setIsEditing(false);
+      setEditingSaleId(null);
+      setCart([]);
+      setSelectedClientId('');
+      window.history.replaceState({}, document.title);
+      Swal.fire('Edición Cancelada', 'Se ha limpiado el punto de venta.', 'info');
   };
 
   const filteredProducts = products.filter(p => {
@@ -350,9 +415,15 @@ const POS: React.FC = () => {
         <div className={`w-full lg:w-[380px] xl:w-[420px] flex-col bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 h-full ${mobileTab === 'CART' ? 'flex' : 'hidden lg:flex'}`}>
           
           {/* Header: Sales Config */}
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3 shrink-0">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-               <Zap className="text-yellow-500 fill-yellow-500" size={18} /> VENTA
+          <div className={`p-4 border-b border-slate-100 space-y-3 shrink-0 ${isEditing ? 'bg-amber-50' : 'bg-slate-50/50'}`}>
+            <h3 className="font-bold text-slate-800 flex items-center justify-between gap-2">
+               <span className="flex items-center gap-2">
+                   <Zap className={isEditing ? 'text-amber-500' : 'text-yellow-500'} size={18} /> 
+                   {isEditing ? `EDITANDO #${editingSaleId}` : 'VENTA'}
+               </span>
+               {isEditing && (
+                   <button onClick={cancelEdit} className="text-xs bg-white border border-amber-200 text-amber-600 px-2 py-1 rounded">Cancelar</button>
+               )}
             </h3>
 
             <div className="flex gap-2">
@@ -446,11 +517,12 @@ const POS: React.FC = () => {
             </div>
 
             <button 
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-95"
+              className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-bold hover:opacity-90 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-95 ${isEditing ? 'bg-amber-600 shadow-amber-600/30' : 'bg-indigo-600 shadow-indigo-600/30'}`}
               disabled={cart.length === 0 || !selectedClientId}
               onClick={handleProcessSale}
             >
-              <CreditCard size={18} /> FACTURAR
+              {isEditing ? <Save size={18}/> : <CreditCard size={18} />} 
+              {isEditing ? 'ACTUALIZAR VENTA' : 'FACTURAR'}
             </button>
           </div>
         </div>

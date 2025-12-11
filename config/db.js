@@ -44,14 +44,15 @@ async function updateArqueoBalance(idCaja, client = pool) {
 
         // 2. Sumar Ingresos (desde apertura)
         const ingRes = await client.query(`SELECT COALESCE(SUM(monto), 0) as total FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2`, [idCaja, fechaApertura]);
-        const totalIngresos = Number(ingRes.rows[0].total);
+        const totalIngresos = parseFloat(ingRes.rows[0].total);
 
         // 3. Sumar Egresos (desde apertura)
         const egrRes = await client.query(`SELECT COALESCE(SUM(monto), 0) as total FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2`, [idCaja, fechaApertura]);
-        const totalEgresos = Number(egrRes.rows[0].total);
+        const totalEgresos = parseFloat(egrRes.rows[0].total);
 
-        // 4. Calcular Saldo Actual (Monto Inicial + Ingresos - Gastos)
-        const montoFinal = Number(montoInicial) + totalIngresos - totalEgresos;
+        // 4. Calcular Saldo Actual
+        const inicial = parseFloat(montoInicial);
+        const montoFinal = inicial + totalIngresos - totalEgresos;
 
         // 5. Actualizar registro
         await client.query(`UPDATE arqueo SET montoFinal = $1, fechaModificacion = NOW() WHERE idArqueo = $2`, [montoFinal.toFixed(2), idArqueo]);

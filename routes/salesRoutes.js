@@ -41,7 +41,7 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { identidadCliente, total, detalles } = req.body;
+    const { identidadCliente, tipoCompra, total, detalles } = req.body; // tipoCompra agregado
     const { codUsuario, idCaja } = req.user;
     
     // Validar Caja Abierta
@@ -52,7 +52,8 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     
     // 1. Crear Venta
     const codVenta = await generateNextId('ventas', 'codVenta', 'FAC', client);
-    // Usamos CURRENT_DATE de la BD para asegurar consistencia
+    // Asumimos columna 'tipocompra' en tabla ventas, si no existe, la ignora o daría error si esquema no actualizado
+    // Usaremos estructura basica existente
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado) VALUES ($1, CURRENT_DATE, $2, $3, $4, 'Completada')`,
       [codVenta, codUsuario, identidadCliente, total]
@@ -113,12 +114,106 @@ router.post('/ventas', authenticateToken, async (req, res) => {
   } catch (err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
+// EDITAR VENTA
+router.put('/ventas/:id', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const codVenta = req.params.id;
+        const { identidadCliente, total, detalles } = req.body;
+        const { idCaja } = req.user;
+
+        await client.query('BEGIN');
+
+        // 1. Validar venta existente
+        const ventaRes = await client.query("SELECT estado FROM ventas WHERE codVenta = $1", [codVenta]);
+        if (ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
+        if (ventaRes.rows[0].estado === 'Anulada') throw new Error("No se puede editar una venta anulada");
+
+        // 2. Revertir inventario de la venta anterior
+        const oldDetalles = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [codVenta]);
+        for (const det of oldDetalles.rows) {
+            if (det.idtelefono) {
+                await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
+            } else if (det.idaccesorio) {
+                // Devolver stock. Buscamos inventario activo de este accesorio para sumar.
+                // Si no existe uno especifico guardado en detalle (si esquema DB no lo tiene), buscamos uno disponible.
+                // Prioridad: buscar un registro de inventario para ese accesorio.
+                const stockRes = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1", [det.idaccesorio]);
+                if (stockRes.rows.length > 0) {
+                     await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, stockRes.rows[0].codinventario]);
+                }
+            }
+        }
+
+        // 3. Eliminar detalles anteriores
+        await client.query('DELETE FROM detalleventa WHERE idVenta = $1', [codVenta]);
+
+        // 4. Actualizar Cabecera de Venta
+        await client.query('UPDATE ventas SET identidadCliente = $1, total = $2 WHERE codVenta = $3', [identidadCliente, total, codVenta]);
+
+        // 5. Insertar Nuevos Detalles y Descontar Stock
+        let totalCostoVenta = 0;
+        const startIdStr = await generateNextId('detalleventa', 'codDetalleVenta', 'DET', client);
+        let currentDetailIdNum = parseInt(startIdStr.split('-')[1]);
+
+        for (const item of detalles) {
+             const codDetalle = `DET-${currentDetailIdNum.toString().padStart(4, '0')}`;
+             currentDetailIdNum++;
+             
+             let idAccesorio = null;
+             let idTelefono = null;
+             let itemCosto = 0;
+
+             if (item.tipoProducto === 'TELEFONO') {
+                idTelefono = item.idTelefono;
+                const telRes = await client.query("SELECT precioCompra FROM telefonos WHERE codigo = $1", [idTelefono]);
+                itemCosto = telRes.rows[0]?.preciocompra || 0;
+                await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [idTelefono]);
+             } else if (item.tipoProducto === 'ACCESORIO') {
+                // Se espera que el frontend envíe el idInventario correcto seleccionado
+                const invRes = await client.query('SELECT codAccesorio, precioCompra FROM inventario WHERE codInventario = $1', [item.idInventario]);
+                if(invRes.rows.length > 0) {
+                    idAccesorio = invRes.rows[0].codaccesorio;
+                    itemCosto = invRes.rows[0].preciocompra || 0;
+                }
+                await client.query("UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2", [item.cantidad, item.idInventario]);
+             }
+
+             totalCostoVenta += (Number(itemCosto) * Number(item.cantidad));
+
+             await client.query(
+                `INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idTelefono, cantidad, precioVenta, estado) 
+                 VALUES ($1, $2, $3, $4, $5, $6, 'Activo')`,
+                [codDetalle, codVenta, idAccesorio, idTelefono, item.cantidad, item.precioVenta]
+             );
+        }
+
+        // 6. Actualizar el Ingreso en Caja (Buscando por descripción típica)
+        const descSearch = `Venta Factura #${codVenta}`;
+        await client.query(
+            `UPDATE ingresos SET monto = $1, costo = $2 WHERE idCaja = $3 AND descripcion = $4`,
+            [total, totalCostoVenta, idCaja, descSearch]
+        );
+
+        // 7. Recalcular Saldo Caja
+        await updateArqueoBalance(idCaja, client);
+
+        await client.query('COMMIT');
+        res.json({ message: 'Venta actualizada correctamente', codVenta });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        handleDbError(res, err);
+    } finally {
+        client.release();
+    }
+});
+
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; // Espera formato YYYY-MM-DD
-        // Compara casteando a DATE para ignorar hora y zona horaria
         const result = await pool.query(`
-            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado,
+            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
@@ -126,6 +221,42 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
             ORDER BY v.codVenta DESC
         `, [fecha, req.user.codUsuario]);
         res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
+    try {
+        // Recuperar detalles para cargar en el POS
+        const query = `
+            SELECT 
+                dv.codDetalleVenta, dv.cantidad, dv.precioVenta, 
+                dv.idTelefono, dv.idAccesorio,
+                COALESCE(t.marca || ' ' || t.modelo, a.descripcion) as "descripcionProducto",
+                CASE WHEN dv.idTelefono IS NOT NULL THEN 'TELEFONO' ELSE 'ACCESORIO' END as "tipoProducto",
+                t.codigo as "telefonoId",
+                a.codAccesorio as "accesorioId"
+            FROM detalleventa dv
+            LEFT JOIN telefonos t ON dv.idTelefono = t.codigo
+            LEFT JOIN accesorios a ON dv.idAccesorio = a.codAccesorio
+            WHERE dv.idVenta = $1
+        `;
+        const result = await pool.query(query, [req.params.id]);
+        
+        // Intentar mapear idInventario para accesorios (best effort)
+        const mapped = await Promise.all(result.rows.map(async (row) => {
+             let idInventario = null;
+             if (row.tipoProducto === 'ACCESORIO') {
+                 // Busca el inventario más reciente de este accesorio
+                 const inv = await pool.query('SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1', [row.accesorioId]);
+                 if(inv.rows.length > 0) idInventario = inv.rows[0].codinventario;
+             }
+             return {
+                 ...row,
+                 idInventario
+             };
+        }));
+
+        res.json(mapped);
     } catch(e) { handleDbError(res, e); }
 });
 
@@ -150,25 +281,16 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
             if(det.idtelefono) {
                 await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
             } else if (det.idaccesorio) {
-                // Devolver al stock.
-                // Busca el inventario original si existe, o uno compatible
-                let targetInv = det.idinventario;
-                
-                // Si el ID especifico ya no existe o es nulo, buscar por accesorio y proveedor si es posible, o cualquiera del mismo tipo
-                const checkInv = await client.query("SELECT codInventario FROM inventario WHERE codInventario = $1", [targetInv]);
-                if (checkInv.rows.length === 0 && det.idaccesorio) {
-                     const anyInv = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 LIMIT 1", [det.idaccesorio]);
-                     if(anyInv.rows.length > 0) targetInv = anyInv.rows[0].codinventario;
-                }
-
-                if(targetInv) {
-                    await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, targetInv]);
-                }
+                 const anyInv = await client.query("SELECT codInventario FROM inventario WHERE codAccesorio = $1 ORDER BY fecha DESC LIMIT 1", [det.idaccesorio]);
+                 if(anyInv.rows.length > 0) {
+                    await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, anyInv.rows[0].codinventario]);
+                 }
             }
         }
 
         await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [codVenta]);
 
+        // Registrar Egreso por anulación
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Anulación Venta')`,

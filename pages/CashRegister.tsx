@@ -239,6 +239,15 @@ const CashRegister: React.FC = () => {
           } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
       }
   };
+  
+  const handleEditVenta = (venta: Venta) => {
+      navigate('/pos', {
+          state: {
+              editSaleId: venta.codVenta,
+              saleData: venta // Pasar datos básicos como cliente
+          }
+      });
+  };
 
   const handleBuySaldo = async () => {
       try {
@@ -294,6 +303,7 @@ const CashRegister: React.FC = () => {
   };
 
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
+  const totalGastos = egresos.reduce((a,b) => a + Number(b.monto), 0);
   
   const getSaldoRed = (red: string) => {
     // Buscar coincidencia exacta por red
@@ -407,7 +417,7 @@ const CashRegister: React.FC = () => {
              </button>
          </div>
 
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-slate-400 mb-1 font-bold uppercase">Efectivo en Caja</p>
                  {/* Se usa arqueo.montoFinal calculado por el backend */}
@@ -416,7 +426,10 @@ const CashRegister: React.FC = () => {
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-emerald-400 mb-1 font-bold uppercase">Total Ingresos Hoy</p>
                  <h3 className="text-xl font-bold">L. {totalIngresos.toFixed(2)}</h3>
-                 <p className="text-[10px] text-slate-400 mt-1">Incluye Ventas POS</p>
+              </div>
+              <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
+                 <p className="text-xs text-red-300 mb-1 font-bold uppercase">Total Gastos Hoy</p>
+                 <h3 className="text-xl font-bold text-red-200">L. {totalGastos.toFixed(2)}</h3>
               </div>
               <div className="bg-blue-600/20 border border-blue-500/30 p-4 rounded-xl">
                  <p className="text-xs text-blue-200 mb-1 font-bold uppercase">Saldo Tigo</p>
@@ -571,7 +584,12 @@ const CashRegister: React.FC = () => {
                             <td className="p-3 text-xs">{v.nombreCliente}</td>
                             <td className={`p-3 font-bold ${v.estado === 'Anulada' ? 'line-through text-slate-400' : ''}`}>L. {Number(v.total).toFixed(2)}</td>
                             <td className="p-3"><span className={`text-xs px-2 py-1 rounded-full ${v.estado === 'Anulada' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{v.estado}</span></td>
-                            <td className="p-3 text-right">
+                            <td className="p-3 text-right flex justify-end gap-2">
+                                {v.estado !== 'Anulada' && hasPermission('VER_POS') && (
+                                    <button onClick={() => handleEditVenta(v)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded text-xs font-bold border border-blue-200 flex items-center gap-1">
+                                        <Edit2 size={12}/> EDITAR
+                                    </button>
+                                )}
                                 {v.estado !== 'Anulada' && hasPermission('ANULAR_VENTA') && (
                                     <button onClick={() => handleAnularVenta(v.codVenta)} className="text-red-500 hover:bg-red-50 p-1.5 rounded text-xs font-bold border border-red-200">ANULAR</button>
                                 )}
