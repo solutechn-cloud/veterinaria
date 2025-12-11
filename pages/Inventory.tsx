@@ -249,33 +249,35 @@ const Inventory: React.FC = () => {
   // =====================================================================
   const handlePrintBarcode = (code: string, description: string) => {
     try {
-      // 1. CONFIGURACIÓN DEL PAPEL (50mm ancho x 80mm alto)
+      // 1. CONFIGURACIÓN DEL PAPEL
       const PAGE_WIDTH = 50;  
       const PAGE_HEIGHT = 80; 
-      const CENTER_Y = PAGE_HEIGHT / 2; // 40mm (Centro vertical del papel)
+      // CENTRO HORIZONTAL (Para alinear a la izquierda/derecha de la etiqueta visual)
+      const CENTER_Y = PAGE_HEIGHT / 2; 
 
       // 2. CONFIGURACIÓN VISUAL DEL CÓDIGO DE BARRAS
-      // El grosor visual determina cuánto espacio ocupa a lo ancho del papel
-      const BARCODE_VISUAL_WIDTH = 20; // 10mm de grosor total (MÁS FINO VISUALMENTE PARA DEJAR ESPACIO)
-      const BARCODE_VISUAL_HEIGHT = 65; // 65mm de largo (casi todo el alto del papel)
+      const BARCODE_THICKNESS = 12; // Grosor visual del bloque de barras (ancho en PDF)
+      const BARCODE_LENGTH = 65;    // Largo visual de las barras (alto en PDF)
 
-      // 3. POSICIONES X (Horizontal en el papel de 50mm)
-      // Recuerda: Al rotar texto 90°, se lee verticalmente.
-      // X=0 es la izquierda del papel (Arriba de la etiqueta final)
-      // X=50 es la derecha del papel (Abajo de la etiqueta final)
+      // 3. POSICIONES VERTICALES (Arriba/Abajo)
+      // *IMPORTANTE*: Al rotar 90°, el eje X del PDF controla la posición VERTICAL en la etiqueta física.
+      // - Valor PEQUEÑO (0-10) = Parte SUPERIOR de la etiqueta.
+      // - Valor GRANDE (40-50) = Parte INFERIOR de la etiqueta.
 
-      // -> POSICIÓN TÍTULO (Marca/Modelo)
-      // Si no lo ves, AUMENTA este valor (ej. de 5 a 8) para alejarlo del borde izquierdo.
-      // Si choca con el código, DISMINUYE el valor.
-      const POS_X_TITULO = 30; 
+      // -> TÍTULO (Marca/Modelo)
+      // Modifica este valor para subir o bajar el título.
+      // 4 = Muy arriba, 8 = Más abajo.
+      const POS_X_TITULO = 4; 
 
-      // -> POSICIÓN CÓDIGO BARRAS
-      // Calculamos para centrarlo aproximadamente
-      const POS_X_BARCODE = (PAGE_WIDTH - BARCODE_VISUAL_WIDTH) / 2; // (50 - 10)/2 = 20
+      // -> CÓDIGO DE BARRAS (Imagen)
+      // Se calcula para que esté centrado entre el título y el SKU.
+      // Puedes sumar o restar números aquí para mover todo el bloque de barras arriba/abajo.
+      const POS_X_BARCODE = (PAGE_WIDTH - BARCODE_THICKNESS) / 2; // Aprox 19mm
 
-      // -> POSICIÓN SKU (Texto del código)
-      // Si sale oculto, AUMENTA este valor (ej. de 42 a 45) para moverlo hacia la derecha (abajo de etiqueta).
-      const POS_X_SKU = 50; 
+      // -> SKU (Texto numérico abajo)
+      // Modifica este valor para subir o bajar el código numérico al pie.
+      // 42 = Más arriba, 48 = Muy al borde inferior.
+      const POS_X_SKU = 46; 
 
       // INICIO PDF
       const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
@@ -283,21 +285,23 @@ const Inventory: React.FC = () => {
       doc.setTextColor(0, 0, 0);
 
       // A. GENERAR Y COLOCAR IMAGEN BARRAS
+      // addImage(img, format, X, Y, W, H)
+      // Aquí Y se usa para centrar horizontalmente el largo del código.
       const barcodeImg = createRotatedBarcode(code);
-      doc.addImage(barcodeImg, 'PNG', POS_X_BARCODE, (PAGE_HEIGHT - BARCODE_VISUAL_HEIGHT) / 2, BARCODE_VISUAL_WIDTH, BARCODE_VISUAL_HEIGHT);
+      doc.addImage(barcodeImg, 'PNG', POS_X_BARCODE, (PAGE_HEIGHT - BARCODE_LENGTH) / 2, BARCODE_THICKNESS, BARCODE_LENGTH);
 
       // B. COLOCAR TÍTULO (ROTADO 90 GRADOS)
-      doc.setFontSize(8); // Tamaño letra título
-      // Dividir texto si es muy largo para que no se salga del alto del papel (80mm)
+      doc.setFontSize(8); 
       const maxTextWidth = PAGE_HEIGHT - 10; 
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxTextWidth);
       
-      // text(texto, x, y, opciones)
-      // align: 'center' usa 'y' como eje de rotación central.
+      // text(texto, X, Y, opciones)
+      // - X: Controla posición vertical visual (Arriba/Abajo)
+      // - Y: Controla posición horizontal visual (Izquierda/Derecha)
       doc.text(splitTitle, POS_X_TITULO, CENTER_Y, { align: "center", angle: 90 });
 
       // C. COLOCAR SKU (ROTADO 90 GRADOS)
-      doc.setFontSize(11); // Tamaño letra código SKU
+      doc.setFontSize(11); 
       doc.setFont("courier", "bold");
       doc.text(code, POS_X_SKU, CENTER_Y, { align: "center", angle: 90 });
 
