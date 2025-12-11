@@ -41,14 +41,25 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; // Espera formato YYYY-MM-DD
-        const result = await pool.query(`
+        
+        let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
-            WHERE TO_CHAR(v.fecha, 'YYYY-MM-DD') = $1 AND v.codVendedor = $2
-            ORDER BY v.codVenta DESC
-        `, [fecha, req.user.codUsuario]);
+            WHERE v.codVendedor = $1
+        `;
+        const params = [req.user.codUsuario];
+
+        if (fecha) {
+            // Filtro por cadena de fecha exacta para evitar problemas UTC
+            query += ` AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $2`;
+            params.push(fecha);
+        }
+
+        query += ` ORDER BY v.codVenta DESC`;
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch(e) { handleDbError(res, e); }
 });
@@ -152,6 +163,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     );
 
     // UPDATE BALANCE
+    console.log("Venta Registrada. Ejecutando updateArqueoBalance...");
     await updateArqueoBalance(idCaja, client);
 
     await client.query('COMMIT');

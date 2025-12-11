@@ -33,13 +33,16 @@ router.get('/arqueo/active', authenticateToken, async (req, res) => {
 
     let activeArqueo = result.rows[0] || null;
 
-    // 2. LOGICA DE DÍA NUEVO: Validar si el arqueo es de ayer
+    // 2. Validar cambio de día
     if (activeArqueo) {
+        // Usamos strings para comparar fechas locales y evitar problemas de UTC
         const dbDate = new Date(activeArqueo.fechaApertura).toISOString().split('T')[0];
+        // Ajuste manual de zona horaria local simple
         const now = new Date();
         const offset = now.getTimezoneOffset() * 60000;
         const todayLocal = new Date(now.getTime() - offset).toISOString().split('T')[0];
 
+        // Si la fecha de la base de datos es distinta a hoy localmente, cerrar caja
         if (dbDate !== todayLocal) {
              const idArqueo = activeArqueo.idArqueo;
              console.log(`Auto-closing expired box session ${idArqueo} (Date: ${dbDate} vs Today: ${todayLocal})`);
@@ -143,9 +146,12 @@ router.get('/ingresos', authenticateToken, async (req, res) => {
     const params = [queryCaja];
 
     if (fecha) {
+        // CORRECCIÓN: Usar casting directo a date en PostgreSQL para comparar solo la parte de la fecha,
+        // o comparar string contra string. Usamos string para ser agnósticos a la hora del servidor.
         query += ` AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2`;
         params.push(fecha);
     } else {
+        // Fallback a CURRENT_DATE si no envían fecha (Cuidado con UTC servers)
         query += ` AND fechaCreacion::date = CURRENT_DATE`;
     }
 
@@ -158,6 +164,7 @@ router.get('/ingresos', authenticateToken, async (req, res) => {
 
 router.post('/ingresos', authenticateToken, async (req, res) => {
   try {
+    console.log("POST /ingresos recibido:", req.body);
     const { descripcion, monto, costo } = req.body;
     const { idCaja } = req.user;
     
@@ -170,6 +177,8 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
         [idIngreso, idCaja, descripcion, monto, costo || 0]
     );
     
+    // Llamada explícita para actualizar arqueo
+    console.log("Ingreso insertado. Ejecutando updateArqueoBalance...");
     await updateArqueoBalance(idCaja, pool);
     
     res.status(201).json({ message: 'Ingreso registrado', idIngreso });
@@ -233,6 +242,7 @@ router.get('/egresos', authenticateToken, async (req, res) => {
 
 router.post('/egresos', authenticateToken, async (req, res) => {
   try {
+    console.log("POST /egresos recibido:", req.body);
     const { descripcion, monto } = req.body;
     const { idCaja } = req.user;
     
@@ -245,6 +255,7 @@ router.post('/egresos', authenticateToken, async (req, res) => {
         [idegresos, idCaja, descripcion, monto]
     );
     
+    console.log("Egreso insertado. Ejecutando updateArqueoBalance...");
     await updateArqueoBalance(idCaja, pool);
 
     res.status(201).json({ message: 'Egreso registrado', idegresos });
@@ -308,7 +319,6 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
         const { idCaja } = req.user;
         const today = fechaLocal || new Date().toISOString().split('T')[0];
         
-        // Validación manual ya que usamos transacción
         const checkArqueo = await client.query(`SELECT idArqueo FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
         if (checkArqueo.rows.length === 0) {
             return res.status(400).json({ error: 'La caja está CERRADA. No puede comprar saldo.' });
@@ -336,6 +346,7 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
             [montoRecibido, red, today]);
         }
         
+        console.log("Saldo comprado. Actualizando Arqueo...");
         await updateArqueoBalance(idCaja, client);
         await client.query('COMMIT');
         res.status(201).json({ message: 'Saldo comprado registrado' });
@@ -370,6 +381,7 @@ router.post('/recargas', authenticateToken, async (req, res) => {
 
     await client.query(`UPDATE saldos SET saldoFinal = COALESCE(saldoFinal, saldoInicio) - $1 WHERE red = $2 AND fecha = $3`, [precioPagado, red, today]);
 
+    console.log("Recarga vendida. Actualizando Arqueo...");
     await updateArqueoBalance(idCaja, client);
 
     await client.query('COMMIT');
