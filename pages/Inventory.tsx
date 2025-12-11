@@ -215,79 +215,64 @@ const Inventory: React.FC = () => {
 
   const handlePrintBarcode = (code: string, description: string) => {
     try {
-      // 1. Configuración de Página (CAMBIAR TAMAÑO AQUI SI SE REQUIERE)
-      // Formato: 50mm Ancho x 80mm Alto.
-      // Esta orientación es "portrait", pero pondremos todo rotado 90 grados para que quede "vertical" visualmente.
-      const pageWidth = 50;
-      const pageHeight = 80;
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [pageWidth, pageHeight] });
+      // --- CONFIGURACIÓN DE PÁGINA (Modificar aquí si cambia el rollo de etiquetas) ---
+      const PAGE_WIDTH = 50;  // Ancho del papel en mm
+      const PAGE_HEIGHT = 80; // Alto del papel en mm
+      
+      // --- CONFIGURACIÓN VISUAL DEL CÓDIGO ---
+      const BARCODE_LENGTH = 65; // Largo visual del código (vertical en el papel)
+      const BARCODE_THICKNESS = 22; // Grosor de las barras
+      
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
       const canvas = document.createElement('canvas');
       
-      // 2. Generación del Código de Barras (Horizontal por naturaleza)
-      // Lo generamos ancho y alto para que al rotar se vea grande.
+      // Generar código de barras en canvas con alta resolución
       JsBarcode(canvas, code, { 
           format: "CODE128", 
-          displayValue: false, // No mostrar texto automático, lo ponemos manualmente rotado
+          displayValue: false, 
           margin: 0,
-          width: 4,    // Barras bastante gruesas (antes 2) para facilitar escaneo
-          height: 100, // Altura en pixels (será el "largo" al rotar)
+          width: 4,    
+          height: 100, 
       });
       const barcodeImg = canvas.toDataURL("image/png");
 
       doc.setFont("helvetica", "bold");
       
-      // COORDENADAS:
-      // Queremos que el contenido esté centrado en el eje X (25mm) y eje Y (40mm).
-      // Al rotar 90 grados, el sistema de coordenadas cambia.
-      // Eje X original del PDF (0 a 50) se convierte en el eje vertical visual.
-      // Eje Y original del PDF (0 a 80) se convierte en el eje horizontal visual (pero invertido por la rotación).
+      // COORDENADAS PARA ROTACIÓN DE 90 GRADOS (Clockwise)
+      // Visualmente queremos:
+      // Arriba (Visual) -> Lado Izquierdo del PDF (X bajo) -> TÍTULO
+      // Centro (Visual) -> Centro del PDF (X medio) -> CÓDIGO BARRAS
+      // Abajo (Visual) -> Lado Derecho del PDF (X alto) -> CÓDIGO TEXTO
       
-      // ESTRATEGIA: Usar angle: 90 y coordenadas relativas al centro.
-      
-      // --- A. TITULO DEL PRODUCTO (Rotado 90) ---
-      // Posición visual: Izquierda (o Arriba si rotamos la cabeza).
-      // En PDF 50x80: x=10mm (margen izquierdo), y=40mm (centro vertical).
+      // Centros geométricos de la página
+      const centerX = PAGE_WIDTH / 2; // 25
+      const centerY = PAGE_HEIGHT / 2; // 40
+
+      // 1. TÍTULO (Arriba Visualmente)
+      // En PDF: X=8mm (Margen Izquierdo). Centrado verticalmente en Y=40.
       doc.setFontSize(9);
-      const maxWidth = 70; // Espacio disponible a lo largo (80mm - margenes)
+      const maxWidth = PAGE_HEIGHT - 10; // Margen de seguridad
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxWidth);
-      
-      // align: center hace que el texto se centre en el punto (x,y) respecto a la rotación.
-      // Con angle 90: El texto corre hacia arriba. El punto de anclaje es el centro de la linea base.
-      // x=8: Cerca del borde izquierdo del papel.
-      // y=40: Centro del papel (verticalmente).
-      doc.text(splitTitle, 8, 40, { align: "center", angle: 90 });
+      doc.text(splitTitle, 8, centerY, { align: "center", angle: 90 });
 
-      // --- B. CODIGO DE BARRAS (Rotado 90) ---
-      // addImage rota alrededor de la esquina superior izquierda de la imagen (x, y).
-      // Queremos que quede centrado.
-      // Ancho visual deseado (grosor de barras): 18mm
-      // Largo visual deseado (longitud del código): 60mm
-      // En addImage(img, format, x, y, w, h, alias, compression, rotation):
-      // w = 60 (largo), h = 18 (ancho) -> Esto dibuja horizontal.
-      // rotation = 90 -> Lo pone vertical.
-      // El punto (x,y) es la esquina inferior izquierda del rectángulo rotado.
+      // 2. CÓDIGO DE BARRAS (Centro Visualmente)
+      // Para centrar una imagen rotada 90 grados:
+      // Pivot X = CenterX + (Height / 2)
+      // Pivot Y = CenterY - (Width / 2)  (Donde Width es el largo visual)
       
-      // Queremos centrarlo en X=25 (aprox, un poco a la derecha del titulo).
-      // Centro X visual: 28mm (para dejar espacio al título).
-      // Centro Y visual: 40mm.
-      // Como rota desde la esquina, calculamos:
-      // x = 28.
-      // y = 40 + (60/2) = 70. (Porque dibujará hacia "arriba" desde y=70 hasta y=10).
+      const pivotX = centerX + (BARCODE_THICKNESS / 2) + 2; // +2 ajuste visual para separar del título
+      const pivotY = centerY - (BARCODE_LENGTH / 2);
       
-      const barWidth = 65; // Largo del código
-      const barHeight = 22; // Grosor del código
-      const barX = 22; // Posición horizontal (empieza después del título)
-      const barY = (pageHeight / 2) + (barWidth / 2); // 40 + 32.5 = 72.5
-      
-      doc.addImage(barcodeImg, 'PNG', barX, barY, barWidth, barHeight, undefined, 'FAST', 90);
+      // addImage(img, fmt, x, y, w, h, alias, compression, rotation)
+      // w = Largo del código (65), h = Grosor (22)
+      // Al rotar 90, ocupará 22 de ancho en X y 65 de alto en Y.
+      doc.addImage(barcodeImg, 'PNG', pivotX, pivotY, BARCODE_LENGTH, BARCODE_THICKNESS, undefined, 'FAST', 90);
 
-      // --- C. TEXTO DEL CODIGO (TEL-0001) (Rotado 90) ---
-      // Posición visual: Derecha del código de barras.
-      // x = 45mm (cerca del borde derecho).
-      // y = 40mm (centro vertical).
+      // 3. CÓDIGO TEXTO (Abajo Visualmente)
+      // En PDF: X=45mm (Margen Derecho). Centrado verticalmente en Y=40.
       doc.setFontSize(12);
       doc.setFont("courier", "bold");
-      doc.text(code, 46, 40, { align: "center", angle: 90 });
+      doc.text(code, 45, centerY, { align: "center", angle: 90 });
 
       doc.save(`etiqueta_${code}.pdf`);
     } catch (err) {
@@ -448,7 +433,7 @@ const Inventory: React.FC = () => {
                   <td className="p-4 text-sm text-right font-bold text-emerald-600">L. {Number(s.precioVenta).toFixed(2)}</td>
                   <td className="p-4 text-xs text-slate-500 truncate max-w-[150px]">{s.nombreUbicacion || s.idubicacion}</td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
-                    {/* Imprimir: Pasamos Categoria + Descripcion */}
+                    {/* Imprimir: Concatenación correcta Categoría + Descripción */}
                     <button onClick={() => handlePrintBarcode(s.codInventario, `${s.categoriaAccesorio || ''} ${s.descripcionAccesorio || ''}`)} className="text-slate-500 hover:text-indigo-600" title="Imprimir"><Printer size={16} /></button>
                     <button onClick={() => openEditModal(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(s.codInventario)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
@@ -462,6 +447,7 @@ const Inventory: React.FC = () => {
                   <td className="p-4 text-xs text-slate-500">{m.nombreCategoria || m.codCategoria}</td>
                   <td className="p-4 text-sm font-medium text-slate-800">{m.descripcion}</td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
+                    <button onClick={() => handlePrintBarcode(m.codAccesorio, `${m.nombreCategoria || ''} ${m.descripcion}`)} className="text-slate-500 hover:text-indigo-600" title="Imprimir"><Printer size={16} /></button>
                     <button onClick={() => openEditModal(m)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                   </td>
@@ -598,7 +584,6 @@ const Inventory: React.FC = () => {
                       </div>
                       <div>
                         <label className="text-xs font-bold text-slate-500 uppercase">Ubicación</label>
-                        {/* CORRECCIÓN: Mostrar ubicación concatenada */}
                         <select className="w-full p-2.5 border rounded-lg mt-1" value={phoneForm.idubicacion || ''} onChange={e => setPhoneForm({...phoneForm, idubicacion: e.target.value})} required>
                             <option value="">Seleccionar...</option>
                             {locations.map(l => (
@@ -643,7 +628,6 @@ const Inventory: React.FC = () => {
                       </div>
                       <div>
                          <label className="text-xs font-bold text-slate-500 uppercase">Ubicación</label>
-                         {/* CORRECCIÓN: Mostrar ubicación concatenada */}
                          <select className="w-full p-2.5 border rounded-lg mt-1" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})} required>
                             <option value="">Seleccionar...</option>
                             {locations.map(l => (
