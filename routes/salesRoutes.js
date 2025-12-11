@@ -38,6 +38,35 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 });
 
 // --- VENTAS ---
+router.get('/ventas/historial', authenticateToken, async (req, res) => {
+    try {
+        const { fecha } = req.query; // Espera formato YYYY-MM-DD
+        const result = await pool.query(`
+            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
+            c.nombre || ' ' || c.apellido as "nombreCliente"
+            FROM ventas v
+            JOIN clientes c ON v.identidadCliente = c.identidad
+            WHERE v.fecha::DATE = $1::DATE AND v.codVendedor = $2
+            ORDER BY v.codVenta DESC
+        `, [fecha, req.user.codUsuario]);
+        res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.get('/ventas/:id', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
+            c.nombre || ' ' || c.apellido as "nombreCliente"
+            FROM ventas v
+            LEFT JOIN clientes c ON v.identidadCliente = c.identidad
+            WHERE v.codVenta = $1
+        `, [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+        res.json(result.rows[0]);
+    } catch(e) { handleDbError(res, e); }
+});
+
 router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -207,21 +236,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
     } finally {
         client.release();
     }
-});
-
-router.get('/ventas/historial', authenticateToken, async (req, res) => {
-    try {
-        const { fecha } = req.query; // Espera formato YYYY-MM-DD
-        const result = await pool.query(`
-            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente,
-            c.nombre || ' ' || c.apellido as "nombreCliente"
-            FROM ventas v
-            JOIN clientes c ON v.identidadCliente = c.identidad
-            WHERE v.fecha::DATE = $1::DATE AND v.codVendedor = $2
-            ORDER BY v.codVenta DESC
-        `, [fecha, req.user.codUsuario]);
-        res.json(result.rows);
-    } catch(e) { handleDbError(res, e); }
 });
 
 router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {

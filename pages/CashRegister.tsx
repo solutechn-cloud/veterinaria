@@ -58,8 +58,13 @@ const CashRegister: React.FC = () => {
   }, []);
 
   const loadCatalogos = async () => {
-      const paqs = await PackagesService.getAll();
-      setPaquetes(paqs);
+      try {
+        const paqs = await PackagesService.getAll();
+        setPaquetes(paqs || []);
+      } catch(e) {
+        console.error("Error cargando paquetes:", e);
+        // No bloquear la interfaz si fallan los paquetes
+      }
   };
 
   const loadData = async () => {

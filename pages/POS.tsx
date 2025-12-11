@@ -58,7 +58,7 @@ const POS: React.FC = () => {
 
       // 2. Modo Edición (Edit Sale)
       if (state && state.editSaleId) {
-          loadSaleToEdit(state.editSaleId, state.saleData);
+          loadSaleToEdit(state.editSaleId);
       }
 
   }, [location]);
@@ -92,19 +92,29 @@ const POS: React.FC = () => {
       .finally(() => setIsLoading(false));
   };
 
-  const loadSaleToEdit = async (saleId: string, saleData?: any) => {
+  const loadSaleToEdit = async (saleId: string) => {
       try {
           setIsLoading(true);
           setIsEditing(true);
           setEditingSaleId(saleId);
           
-          if(saleData) {
-              setSelectedClientId(saleData.identidadCliente);
-              // Podríamos setear tipoCompra si viniera en saleData
-          }
-
+          // 1. Obtener detalles de productos (Items)
           const details = await SalesService.getDetallesVenta(saleId);
           setCart(details);
+
+          // 2. Obtener cabecera de la venta (Total, Cliente, Estado)
+          const header = await SalesService.getVenta(saleId);
+          
+          if (header) {
+              setSelectedClientId(header.identidadCliente);
+              // Calcular descuento inverso: (Suma Productos) - (Total Pagado)
+              const subtotalCalculado = details.reduce((sum, item) => sum + (Number(item.cantidad) * Number(item.precioVenta)), 0);
+              const totalGuardado = Number(header.total);
+              const descuentoAplicado = subtotalCalculado - totalGuardado;
+              
+              setDiscount(descuentoAplicado > 0 ? descuentoAplicado : 0);
+              // Podríamos setear tipoCompra si la API lo devolviera
+          }
           
           const Toast = Swal.mixin({
             toast: true,
@@ -317,6 +327,7 @@ const POS: React.FC = () => {
       setEditingSaleId(null);
       setCart([]);
       setSelectedClientId('');
+      setDiscount(0);
       window.history.replaceState({}, document.title);
       Swal.fire('Edición Cancelada', 'Se ha limpiado el punto de venta.', 'info');
   };

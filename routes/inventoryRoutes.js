@@ -280,4 +280,38 @@ router.delete('/proveedores/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
+// --- PAQUETES ---
+router.get('/paquetes', authenticateToken, async (req, res) => {
+    try {
+        const r = await pool.query('SELECT idPaquete as "idPaquete", red, nombre, precio, costo, estado FROM paquetes');
+        res.json(r.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.post('/paquetes', authenticateToken, async (req, res) => {
+    try {
+        const { red, nombre, precio, costo, estado } = req.body;
+        const id = await generateNextId('paquetes', 'idPaquete', 'PAQ');
+        await pool.query('INSERT INTO paquetes (idPaquete, red, nombre, precio, costo, estado) VALUES ($1,$2,$3,$4,$5,$6)', 
+            [id, red, nombre, precio, costo, estado]);
+        res.status(201).json({ message: 'Paquete creado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.put('/paquetes/:id', authenticateToken, async (req, res) => {
+    try {
+        const { red, nombre, precio, costo, estado } = req.body;
+        await pool.query('UPDATE paquetes SET red=$1, nombre=$2, precio=$3, costo=$4, estado=$5 WHERE idPaquete=$6', 
+            [red, nombre, precio, costo, estado, req.params.id]);
+        res.json({ message: 'Paquete actualizado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.delete('/paquetes/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM paquetes WHERE idPaquete=$1', [req.params.id]);
+        res.json({ message: 'Paquete eliminado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
 module.exports = router;

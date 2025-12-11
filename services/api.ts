@@ -72,6 +72,7 @@ export const SalesService = {
   createVenta: (payload: VentaPayload) => request<{message: string, codVenta: string}>('/ventas', { method: 'POST', body: JSON.stringify(payload) }),
   updateVenta: (id: string, payload: VentaPayload) => request<{message: string, codVenta: string}>(`/ventas/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   getVentasDiarias: (fecha: string) => request<Venta[]>(`/ventas/historial?fecha=${fecha}`),
+  getVenta: (id: string) => request<Venta>(`/ventas/${id}`),
   getDetallesVenta: (id: string) => request<DetalleVenta[]>(`/ventas/${id}/detalles`),
   anularVenta: (id: string) => request<{message: string}>(`/ventas/${id}/anular`, { method: 'PUT' }),
 };
