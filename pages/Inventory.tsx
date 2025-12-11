@@ -267,17 +267,17 @@ const Inventory: React.FC = () => {
       // -> TÍTULO (Marca/Modelo)
       // Modifica este valor para subir o bajar el título.
       // 4 = Muy arriba, 8 = Más abajo.
-      const POS_X_TITULO = 30; 
+      const POS_X_TITULO = 20; 
 
       // -> CÓDIGO DE BARRAS (Imagen)
       // Se calcula para que esté centrado entre el título y el SKU.
       // Puedes sumar o restar números aquí para mover todo el bloque de barras arriba/abajo.
-      const POS_X_BARCODE = (PAGE_WIDTH - BARCODE_THICKNESS) / 2; // Aprox 19mm
+      const POS_X_BARCODE = (PAGE_WIDTH - BARCODE_THICKNESS) / 1.8; // Aprox 19mm
 
       // -> SKU (Texto numérico abajo)
       // Modifica este valor para subir o bajar el código numérico al pie.
       // 42 = Más arriba, 48 = Muy al borde inferior.
-      const POS_X_SKU = 50; 
+      const POS_X_SKU = 45; 
 
       // INICIO PDF
       const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
@@ -291,7 +291,7 @@ const Inventory: React.FC = () => {
       doc.addImage(barcodeImg, 'PNG', POS_X_BARCODE, (PAGE_HEIGHT - BARCODE_LENGTH) / 2, BARCODE_THICKNESS, BARCODE_LENGTH);
 
       // B. COLOCAR TÍTULO (ROTADO 90 GRADOS)
-      doc.setFontSize(8); 
+      doc.setFontSize(12); 
       const maxTextWidth = PAGE_HEIGHT - 10; 
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxTextWidth);
       
@@ -301,7 +301,7 @@ const Inventory: React.FC = () => {
       doc.text(splitTitle, POS_X_TITULO, CENTER_Y, { align: "center", angle: 90 });
 
       // C. COLOCAR SKU (ROTADO 90 GRADOS)
-      doc.setFontSize(11); 
+      doc.setFontSize(14); 
       doc.setFont("courier", "bold");
       doc.text(code, POS_X_SKU, CENTER_Y, { align: "center", angle: 90 });
 
