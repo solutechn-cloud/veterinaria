@@ -99,7 +99,7 @@ export const MOCK_ARQUEO: Arqueo = {
   idUsuario: 'USER-01',
   fechaApertura: '2023-10-27T08:00:00',
   montoInicial: 1000.00,
-  estado: 'Abierta',
+  estado: 'Activo',
   totalVentas: 0
 };
 

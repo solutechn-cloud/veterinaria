@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
-  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity
+  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -61,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       subItems: [
         { name: 'Inventario General', path: '/inventory', icon: <Package size={18} />, permission: 'VER_INVENTARIO' },
         { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, permission: 'VER_PROVEEDORES' },
+        { name: 'Diseñador Etiquetas', path: '/label-designer', icon: <Tag size={18} />, permission: 'VER_INVENTARIO' },
       ]
     },
     {

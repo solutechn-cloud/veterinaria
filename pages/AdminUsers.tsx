@@ -143,8 +143,9 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
         if (!userForm.identidad || !userForm.idrol || !userForm.idCaja) {
            return Swal.fire('Error', 'Seleccione Empleado, Rol y Caja', 'warning');
         }
-        if(isEditing) await AdminService.updateUser(currentId!, userForm);
-        else await AdminService.createUser(userForm);
+        const userPayload = { ...userForm, estado: userForm.estado as EstadoGeneral };
+        if(isEditing) await AdminService.updateUser(currentId!, userPayload);
+        else await AdminService.createUser(userPayload);
       } else if (activeTab === 'EMPLOYEES') {
         const empPayload = { ...empForm, estado: empForm.estado as EstadoGeneral };
         if (isEditing) await AdminService.updateEmpleado(currentId!, empPayload);
