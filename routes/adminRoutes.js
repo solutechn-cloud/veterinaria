@@ -8,27 +8,56 @@ const { authenticateToken } = require('../middleware/auth');
 // --- ESQUEMA DE BASE DE DATOS (PARA DISEÑADOR) ---
 router.get('/schema', authenticateToken, async (req, res) => {
     try {
-        // Obtenemos tablas y columnas públicas relevantes
-        const query = `
+        // 1. Obtener Columnas
+        const colsQuery = `
             SELECT table_name, column_name, data_type 
             FROM information_schema.columns 
             WHERE table_schema = 'public' 
-            AND table_name IN ('ventas', 'detalleventa', 'clientes', 'telefonos', 'inventario', 'proveedores', 'usuarios', 'caja', 'ingresos', 'egresos')
+            AND table_name IN ('ventas', 'detalleventa', 'clientes', 'telefonos', 'inventario', 'proveedores', 'usuarios', 'caja', 'ingresos', 'egresos', 'accesorios', 'categoria', 'ubicacion')
             ORDER BY table_name, ordinal_position;
         `;
-        const result = await pool.query(query);
-        
-        // Agrupar por tabla
-        const schema = result.rows.reduce((acc, row) => {
+        const colsResult = await pool.query(colsQuery);
+
+        // 2. Obtener Relaciones (Foreign Keys)
+        const relsQuery = `
+            SELECT
+                tc.table_name, 
+                kcu.column_name, 
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name 
+            FROM information_schema.table_constraints AS tc 
+            JOIN information_schema.key_column_usage AS kcu
+              ON tc.constraint_name = kcu.constraint_name
+              AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+              AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema='public';
+        `;
+        const relsResult = await pool.query(relsQuery);
+
+        // 3. Estructurar Datos
+        const schema = colsResult.rows.reduce((acc, row) => {
             if (!acc[row.table_name]) {
-                acc[row.table_name] = [];
+                acc[row.table_name] = { columns: [], relations: [] };
             }
-            acc[row.table_name].push({
+            acc[row.table_name].columns.push({
                 name: row.column_name,
                 type: row.data_type
             });
             return acc;
         }, {});
+
+        // Integrar relaciones
+        relsResult.rows.forEach(rel => {
+            if (schema[rel.table_name]) {
+                schema[rel.table_name].relations.push({
+                    column: rel.column_name,
+                    foreignTable: rel.foreign_table_name,
+                    foreignColumn: rel.foreign_column_name
+                });
+            }
+        });
 
         res.json(schema);
     } catch(e) { handleDbError(res, e); }
