@@ -39,6 +39,9 @@ const initDB = async () => {
             CREATE TABLE IF NOT EXISTS label_templates (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name VARCHAR(100) NOT NULL,
+                category VARCHAR(50) DEFAULT 'GENERAL', 
+                type VARCHAR(50) DEFAULT 'LABEL', -- LABEL, REPORT, INVOICE
+                data_source VARCHAR(50) DEFAULT 'NONE', -- INVENTORY, SALES, CLIENTS
                 is_default BOOLEAN DEFAULT FALSE,
                 width NUMERIC(10,2) NOT NULL,
                 height NUMERIC(10,2) NOT NULL,
@@ -46,6 +49,22 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
+            
+            -- Migraciones seguras
+            DO $$ 
+            BEGIN 
+                BEGIN
+                    ALTER TABLE label_templates ADD COLUMN category VARCHAR(50) DEFAULT 'GENERAL';
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                BEGIN
+                    ALTER TABLE label_templates ADD COLUMN type VARCHAR(50) DEFAULT 'LABEL';
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                BEGIN
+                    ALTER TABLE label_templates ADD COLUMN data_source VARCHAR(50) DEFAULT 'NONE';
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+            END $$;
         `);
     } catch (err) { console.error("Error init DB:", err); }
 };

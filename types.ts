@@ -1,3 +1,4 @@
+
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
 export interface Usuario {
@@ -99,6 +100,7 @@ export interface Telefono {
   idubicacion: string;
   estado: EstadoGeneral;
   fecha: string;
+  nombreUbicacion?: string;
 }
 
 export interface Accesorio {
@@ -233,7 +235,7 @@ export interface Costo {
 
 // --- LABEL DESIGNER TYPES ---
 
-export type ElementType = 'TEXT' | 'BARCODE' | 'QR' | 'IMAGE' | 'SHAPE';
+export type ElementType = 'TEXT' | 'BARCODE' | 'QR' | 'IMAGE' | 'SHAPE' | 'DETAIL_TABLE';
 
 export interface LabelElement {
   id: string;
@@ -243,32 +245,43 @@ export interface LabelElement {
   width: number; // mm
   height: number; // mm
   rotation: number; // degrees
-  content: string; // Text content or Image Base64
   
-  // Style properties
+  // Content & Variables
+  content: string; // Puede contener texto estático y variables: "Precio: {{PRECIO}} {{MONEDA}}"
+  variableField?: string; // DEPRECATED: Use content template string instead
+  
+  // Text Styling
   fontFamily?: string;
   fontSize?: number; // pt
   fontWeight?: string; // 'bold', 'normal'
   color?: string; // hex
   textAlign?: 'left' | 'center' | 'right';
   
+  // Advanced Text Properties
+  isMultiline?: boolean; // Permitir salto de línea
+  lineHeight?: number; 
+  
   // Shape/Image specific
-  shapeType?: 'RECTANGLE' | 'LINE';
+  shapeType?: 'RECTANGLE' | 'LINE' | 'CIRCLE';
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
+  borderRadius?: number;
   
   // Barcode specific
   barcodeFormat?: string; // 'CODE128', 'EAN13'
   displayValue?: boolean;
-  
-  // Variable binding (e.g., 'product_name', 'price')
-  variableField?: string; 
 }
 
 export interface LabelTemplate {
   id: string; // UUID
   name: string;
+  
+  // Classification
+  category?: 'GENERAL' | 'TELEPHONE' | 'ACCESSORY'; 
+  type?: 'LABEL' | 'REPORT' | 'INVOICE'; // Tipo de uso
+  dataSource?: 'INVENTORY' | 'SALES' | 'CLIENTS' | 'NONE'; // De qué tabla saca datos
+  
   isDefault: boolean;
   width: number; // mm
   height: number; // mm

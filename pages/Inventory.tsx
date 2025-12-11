@@ -81,11 +81,15 @@ const Inventory: React.FC = () => {
   };
 
   // --- LOGICA DE IMPRESIÓN DIRECTA ---
-  const printLabel = async (code: string, description: string, price?: number, brand?: string, model?: string) => {
+  const printLabel = async (type: 'TELEPHONE' | 'ACCESSORY', data: any) => {
       try {
-          const tpl = await LabelService.getDefault();
+          // Fetch templates specifically for the category, fallback to General
+          const templates = await LabelService.getAll();
+          let tpl = templates.find(t => t.isDefault && t.category === type);
+          if (!tpl) tpl = templates.find(t => t.isDefault && t.category === 'GENERAL');
+          
           if (!tpl) {
-              return Swal.fire('Sin Plantilla', 'No hay una plantilla de etiqueta predeterminada. Ve al Diseñador de Etiquetas y marca una como default.', 'warning');
+              return Swal.fire('Sin Plantilla', `No hay plantilla predeterminada para ${type}. Configúrala en el Diseñador.`, 'warning');
           }
 
           // Generate PDF
@@ -96,13 +100,25 @@ const Inventory: React.FC = () => {
               // Variable Replacement
               let content = el.content || '';
               if (el.variableField) {
+                  // Common Replacements
                   content = el.variableField
-                      .replace('{{NOMBRE}}', description)
-                      .replace('{{SKU}}', code)
-                      .replace('{{BARCODE}}', code)
-                      .replace('{{PRECIO}}', `L. ${Number(price || 0).toFixed(2)}`)
-                      .replace('{{MARCA}}', brand || '')
-                      .replace('{{MODELO}}', model || '');
+                      .replace('{{PRECIO}}', `L. ${Number(data.precioVenta || 0).toFixed(2)}`)
+                      .replace('{{EMPRESA}}', 'SmartCloud');
+
+                  if (type === 'TELEPHONE') {
+                      content = content
+                          .replace('{{MARCA}}', data.marca || '')
+                          .replace('{{MODELO}}', data.modelo || '')
+                          .replace('{{IMEI1}}', data.imei1 || '')
+                          .replace('{{IMEI2}}', data.imei2 || '')
+                          .replace('{{PROVEEDOR}}', data.codProveedor || '');
+                  } else {
+                      content = content
+                          .replace('{{NOMBRE}}', data.descripcion || '')
+                          .replace('{{CODIGO}}', data.codigo || '')
+                          .replace('{{CATEGORIA}}', data.categoria || '')
+                          .replace('{{UBICACION}}', data.ubicacion || '');
+                  }
               }
 
               if (el.type === 'TEXT') {
@@ -110,13 +126,15 @@ const Inventory: React.FC = () => {
                   doc.setFont(el.fontFamily || 'helvetica', el.fontWeight || 'normal');
                   doc.setTextColor(el.color || '#000000');
                   
-                  // Rotación manual simple (jsPDF tiene soporte limitado para pivot text, usamos angle)
-                  // Nota: x, y en jsPDF text con angle son el punto de pivote.
-                  // Para centrar, ajustamos según textAlign
                   const options: any = { angle: el.rotation || 0 };
                   if (el.textAlign) options.align = el.textAlign;
                   
-                  doc.text(content, el.x, el.y + (el.height/2), options);
+                  // Correction for Text Align Pivot in jsPDF
+                  let x = el.x;
+                  if (el.textAlign === 'center') x += el.width / 2;
+                  if (el.textAlign === 'right') x += el.width;
+
+                  doc.text(content, x, el.y + (el.height/2), options);
 
               } else if (el.type === 'BARCODE') {
                   try {
@@ -130,10 +148,24 @@ const Inventory: React.FC = () => {
                       const imgData = canvas.toDataURL("image/png");
                       doc.addImage(imgData, 'PNG', el.x, el.y, el.width, el.height, undefined, 'FAST', el.rotation);
                   } catch (e) { console.error("Error barcode", e); }
+              } else if (el.type === 'SHAPE') {
+                  doc.setDrawColor(el.stroke || '#000000');
+                  doc.setLineWidth(el.strokeWidth || 0.1);
+                  if (el.fill && el.fill !== 'transparent') doc.setFillColor(el.fill);
+                  
+                  const style = (el.fill && el.fill !== 'transparent') ? 'FD' : 'S';
+
+                  if (el.shapeType === 'CIRCLE') {
+                      doc.ellipse(el.x + el.width/2, el.y + el.height/2, el.width/2, el.height/2, style);
+                  } else if (el.shapeType === 'LINE') {
+                      doc.line(el.x, el.y + el.height/2, el.x + el.width, el.y + el.height/2);
+                  } else {
+                      doc.rect(el.x, el.y, el.width, el.height, style);
+                  }
               }
           });
 
-          doc.save(`etiqueta_${code}.pdf`);
+          doc.save(`etiqueta_${data.codigo || data.imei1}.pdf`);
 
       } catch (err: any) {
           console.error(err);
@@ -141,7 +173,6 @@ const Inventory: React.FC = () => {
       }
   };
 
-  // ... (Resto de funciones CRUD: openNewModal, openEditModal, handleSubmit, handleDelete se mantienen igual) ...
   const openNewModal = () => {
     setIsEditing(false);
     setCurrentId(null);
@@ -218,7 +249,7 @@ const Inventory: React.FC = () => {
 
   return (
     <div className="space-y-6 h-full flex flex-col">
-      {/* HEADER & TABS */}
+      {/* HEADER & TABS (Same as before) */}
       <div>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
           <div>
@@ -258,7 +289,7 @@ const Inventory: React.FC = () => {
           ))}
         </div>
         
-        {/* SEARCH BAR & FILTERS */}
+        {/* SEARCH BAR & FILTERS (Same as before) */}
         <div className="bg-white border-x border-b border-slate-200 p-3 flex flex-col md:flex-row gap-3 rounded-b-xl mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -347,9 +378,9 @@ const Inventory: React.FC = () => {
                   </td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
                     <button 
-                        onClick={() => printLabel(p.codigo, `${p.marca} ${p.modelo}`, p.precioVenta, p.marca, p.modelo)}
+                        onClick={() => printLabel('TELEPHONE', p)}
                         className="text-slate-500 hover:text-indigo-600" 
-                        title="Imprimir Etiqueta (Default)"
+                        title="Imprimir Etiqueta"
                     ><Printer size={16} /></button>
                     <button onClick={() => openEditModal(p)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(p.codigo)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
@@ -369,9 +400,15 @@ const Inventory: React.FC = () => {
                   <td className="p-4 text-xs text-slate-500 truncate max-w-[150px]">{s.nombreUbicacion || s.idubicacion}</td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
                     <button 
-                        onClick={() => printLabel(s.codInventario, `${s.categoriaAccesorio || ''} ${s.descripcionAccesorio || ''}`, s.precioVenta)}
+                        onClick={() => printLabel('ACCESSORY', {
+                            codigo: s.codInventario,
+                            descripcion: s.descripcionAccesorio,
+                            precioVenta: s.precioVenta,
+                            categoria: s.categoriaAccesorio,
+                            ubicacion: s.nombreUbicacion
+                        })}
                         className="text-slate-500 hover:text-indigo-600" 
-                        title="Imprimir Etiqueta (Default)"
+                        title="Imprimir Etiqueta"
                     ><Printer size={16} /></button>
                     <button onClick={() => openEditModal(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(s.codInventario)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
@@ -379,17 +416,13 @@ const Inventory: React.FC = () => {
                 </tr>
               ))}
 
+              {/* ... Rest of tabs (Master, Categories, Locations) similar to previous ... */}
               {activeTab === 'MASTER' && master.filter(m => JSON.stringify(m).toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                 <tr key={m.codAccesorio} className="hover:bg-slate-50">
                   <td className="p-4 text-xs font-mono text-slate-500">{m.codAccesorio}</td>
                   <td className="p-4 text-xs text-slate-500">{m.nombreCategoria || m.codCategoria}</td>
                   <td className="p-4 text-sm font-medium text-slate-800">{m.descripcion}</td>
                   <td className="p-4 text-center flex items-center justify-center gap-2">
-                    <button 
-                        onClick={() => printLabel(m.codAccesorio, m.descripcion)}
-                        className="text-slate-500 hover:text-indigo-600" 
-                        title="Imprimir Etiqueta (Default)"
-                    ><Printer size={16} /></button>
                     <button onClick={() => openEditModal(m)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                     <button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                   </td>
@@ -603,7 +636,7 @@ const Inventory: React.FC = () => {
                  </>
                )}
 
-               {/* --- OTROS FORMULARIOS (SIN CAMBIOS) --- */}
+               {/* --- OTROS FORMULARIOS --- */}
                {activeTab === 'MASTER' && (
                  <>
                    <div>
