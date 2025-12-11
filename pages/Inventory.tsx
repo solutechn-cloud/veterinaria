@@ -221,8 +221,9 @@ const Inventory: React.FC = () => {
           format: "CODE128", 
           displayValue: false, 
           margin: 0,
-          width: 4, 
-          height: 120, // Altura original (será el largo vertical final)
+          width: 2, // Más fino para mejor escalado en rotación
+          height: 100, // Altura original (será el largo vertical final)
+          fontSize: 0
       });
 
       const w = canvas.width;
@@ -251,20 +252,20 @@ const Inventory: React.FC = () => {
       
       const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: [PAGE_WIDTH, PAGE_HEIGHT] });
       doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
 
       // 1. GENERAR CÓDIGO DE BARRAS VERTICAL (Rotado previamente en canvas)
-      // Esto evita problemas de pivote en jsPDF
       const barcodeImg = createRotatedBarcode(code);
       
       // Dimensiones visuales finales en el PDF
-      const BC_WIDTH_VISUAL = 14; // Grosor del código (Ancho en PDF)
-      const BC_HEIGHT_VISUAL = 65; // Largo del código (Alto en PDF)
+      const BC_WIDTH_VISUAL = 8; // MUCHO MÁS FINO para evitar solapamientos (Ancho en PDF)
+      const BC_HEIGHT_VISUAL = 60; // Largo del código (Alto en PDF)
       
       // Centrar geométricamente en X=25
-      const bcX = (PAGE_WIDTH - BC_WIDTH_VISUAL) / 2; // (50 - 14) / 2 = 18
-      const bcY = (PAGE_HEIGHT - BC_HEIGHT_VISUAL) / 2; // (80 - 65) / 2 = 7.5
+      const bcX = (PAGE_WIDTH - BC_WIDTH_VISUAL) / 2; // (50 - 8) / 2 = 21
+      const bcY = (PAGE_HEIGHT - BC_HEIGHT_VISUAL) / 2; // (80 - 60) / 2 = 10
 
-      // Insertar imagen vertical (sin rotation param, ya viene rotada)
+      // Insertar imagen vertical
       doc.addImage(barcodeImg, 'PNG', bcX, bcY, BC_WIDTH_VISUAL, BC_HEIGHT_VISUAL);
 
       // 2. TEXTOS ROTADOS (90 GRADOS)
@@ -272,17 +273,19 @@ const Inventory: React.FC = () => {
       const cy = PAGE_HEIGHT / 2;
 
       // A. TÍTULO (Marca/Modelo)
-      // Visualmente Arriba -> Izquierda del PDF (X=10)
-      doc.setFontSize(9);
-      const maxWidth = PAGE_HEIGHT - 6; 
+      // Visualmente Arriba -> Izquierda del PDF
+      // Posición X=8 para asegurar margen izquierdo
+      doc.setFontSize(8);
+      const maxWidth = PAGE_HEIGHT - 10; 
       const splitTitle = doc.splitTextToSize(description.toUpperCase(), maxWidth);
-      doc.text(splitTitle, 10, cy, { align: "center", angle: 90 });
+      doc.text(splitTitle, 8, cy, { align: "center", angle: 90 });
 
       // B. SKU (Código Texto)
-      // Visualmente Abajo -> Derecha del PDF (X=42)
-      doc.setFontSize(11);
+      // Visualmente Abajo -> Derecha del PDF
+      // Posición X=45. Con el código terminando en X=29 (21+8), hay 16mm de espacio libre.
+      doc.setFontSize(10);
       doc.setFont("courier", "bold");
-      doc.text(code, 42, cy, { align: "center", angle: 90 });
+      doc.text(code, 45, cy, { align: "center", angle: 90 });
 
       doc.save(`etiqueta_${code}.pdf`);
     } catch (err) {
