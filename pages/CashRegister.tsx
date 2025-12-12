@@ -53,9 +53,12 @@ const CashRegister: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-    loadCatalogos();
-  }, []);
+    // Solo cargar datos si el usuario está disponible (evita llamadas con idCaja undefined)
+    if (user) {
+        loadData();
+        loadCatalogos();
+    }
+  }, [user]); // Dependencia crítica: user
 
   const loadCatalogos = async () => {
       try {
@@ -67,6 +70,9 @@ const CashRegister: React.FC = () => {
   };
 
   const loadData = async () => {
+    // Si no hay usuario cargado, no intentar cargar datos
+    if (!user?.idCaja) return; 
+
     try {
       const active = await CashService.getActiveArqueo();
       const localDate = getLocalDate();
@@ -76,19 +82,24 @@ const CashRegister: React.FC = () => {
         // Check if balances exist for today (Local)
         const status = await CashService.getSaldosStatus(localDate);
         setExistingBalances(status);
+        // Limpiar datos visuales si la caja está cerrada
+        setIngresos([]);
+        setEgresos([]);
+        setVentas([]);
+        setSaldos([]);
       } else {
         setArqueo(active);
         // Pasar localDate a todos los servicios para garantizar filtro exacto
         const [ing, egr, vts, slds] = await Promise.all([
-           CashService.getIngresos(user?.idCaja || '', localDate),
-           CashService.getEgresos(user?.idCaja || '', localDate),
+           CashService.getIngresos(user.idCaja, localDate),
+           CashService.getEgresos(user.idCaja, localDate),
            SalesService.getVentasDiarias(localDate),
            CashService.getSaldosToday(localDate)
         ]);
-        setIngresos(ing);
-        setEgresos(egr);
-        setVentas(vts);
-        setSaldos(slds);
+        setIngresos(ing || []);
+        setEgresos(egr || []);
+        setVentas(vts || []);
+        setSaldos(slds || []);
       }
     } catch (error) {
       console.error(error);
@@ -592,7 +603,8 @@ const CashRegister: React.FC = () => {
                                         <Edit2 size={12}/> EDITAR
                                     </button>
                                 )}
-                                {v.estado !== 'Anulada' && hasPermission('ANULAR_VENTA') && (
+                                {/* Se agregó el permiso ANULAR_VENTA al backend para que sea asignable */}
+                                {v.estado !== 'Anulada' && (hasPermission('ANULAR_VENTA') || hasPermission('VER_ADMIN')) && (
                                     <button onClick={() => handleAnularVenta(v.codVenta)} className="text-red-500 hover:bg-red-50 p-1.5 rounded text-xs font-bold border border-red-200">ANULAR</button>
                                 )}
                             </td>
