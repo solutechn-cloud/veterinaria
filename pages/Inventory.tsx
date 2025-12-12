@@ -92,54 +92,69 @@ const Inventory: React.FC = () => {
               return Swal.fire('Sin Plantilla', `No hay plantilla predeterminada para ${type}. Configúrala en el Diseñador.`, 'warning');
           }
 
+          // Build context object explicitly for variable replacement
+          let contextData: any = {};
+          if (type === 'TELEPHONE') {
+              contextData = {
+                  telefonos: {
+                      ...data,
+                      precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
+                      fecha: data.fecha ? data.fecha.split('T')[0] : ''
+                  }
+              };
+          } else {
+              // For Accessories, we have Inventory data + Accessory Master data
+              // The passed 'data' object from table is flat, let's restructure or use it directly
+              // Assuming 'data' contains fields from both inventory and accesorios joined
+              contextData = {
+                  inventario: {
+                      ...data,
+                      codInventario: data.codInventario || data.codigo,
+                      cantidad: data.cantidad,
+                      precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
+                  },
+                  accesorios: {
+                      codAccesorio: data.codAccesorio,
+                      descripcion: data.descripcion || data.descripcionAccesorio,
+                      // Add other fields if available
+                  }
+              };
+          }
+
           // Generate PDF
           const orientation = tpl.width > tpl.height ? 'l' : 'p';
           const doc = new jsPDF({ orientation, unit: 'mm', format: [tpl.width, tpl.height] });
 
+          // Helper to get value from dot notation string (e.g. "telefonos.marca")
+          const getValue = (path: string, obj: any) => {
+              return path.split('.').reduce((prev, curr) => prev && prev[curr], obj) || '';
+          };
+
           tpl.elements.forEach(el => {
-              // Variable Replacement
+              // Variable Replacement Logic
               let content = el.content || '';
               
-              // Helper to safely replace both simple {{KEY}} and complex {{table.key}}
-              const safeReplace = (key: string, value: any) => {
-                  const valStr = value !== undefined && value !== null ? String(value) : '';
-                  // Replace {{KEY}}
-                  content = content.replace(new RegExp(`{{${key}}}`, 'g'), valStr);
-                  // Replace {{table.key}} (e.g., telefonos.marca)
-                  const tableKey = type === 'TELEPHONE' ? 'telefonos' : 'inventario';
-                  content = content.replace(new RegExp(`{{${tableKey}.${key}}}`, 'g'), valStr);
-                  // Also handle accesorios for inventory
-                  if (type === 'ACCESSORY') {
-                      content = content.replace(new RegExp(`{{accesorios.${key}}}`, 'g'), valStr);
-                  }
-              };
-
-              // --- MAPEO ESPECÍFICO DE VARIABLES ---
-              if (type === 'TELEPHONE') {
-                  // Mapeo para Teléfonos
-                  safeReplace('marca', data.marca);
-                  safeReplace('modelo', data.modelo);
-                  safeReplace('imei1', data.imei1);
-                  safeReplace('imei2', data.imei2);
-                  safeReplace('precioVenta', `L. ${Number(data.precioVenta || 0).toFixed(2)}`);
-                  safeReplace('precioCompra', data.precioCompra);
-                  safeReplace('codigo', data.codigo);
-                  safeReplace('codProveedor', data.codProveedor);
-                  safeReplace('fecha', data.fecha ? data.fecha.split('T')[0] : '');
-              } else {
-                  // Mapeo para Accesorios/Inventario
-                  // Nota: 'descripcion' viene de la tabla accesorios, 'cantidad' de inventario
-                  safeReplace('descripcion', data.descripcion || data.descripcionAccesorio); 
-                  safeReplace('codInventario', data.codInventario || data.codigo);
-                  safeReplace('codAccesorio', data.codAccesorio);
-                  safeReplace('cantidad', data.cantidad);
-                  safeReplace('precioVenta', `L. ${Number(data.precioVenta || 0).toFixed(2)}`);
-                  safeReplace('categoriaAccesorio', data.categoria || data.categoriaAccesorio);
-                  safeReplace('nombreUbicacion', data.ubicacion || data.nombreUbicacion);
+              // Find all {{variables}}
+              const matches = content.match(/{{(.*?)}}/g);
+              if (matches) {
+                  matches.forEach(match => {
+                      const key = match.replace(/{{|}}/g, ''); // e.g. "telefonos.marca" or "marca"
+                      
+                      // Try to find in context
+                      let val = getValue(key, contextData);
+                      
+                      // Fallback: If user used short names without table prefix (e.g. {{marca}})
+                      if (!val && !key.includes('.')) {
+                          if (type === 'TELEPHONE') val = getValue(`telefonos.${key}`, contextData);
+                          else {
+                              val = getValue(`inventario.${key}`, contextData);
+                              if (!val) val = getValue(`accesorios.${key}`, contextData);
+                          }
+                      }
+                      
+                      content = content.replace(match, String(val));
+                  });
               }
-              
-              // Variables Globales
-              safeReplace('EMPRESA', 'SmartCloud');
 
               if (el.type === 'TEXT') {
                   doc.setFontSize(el.fontSize || 10);
@@ -159,11 +174,9 @@ const Inventory: React.FC = () => {
               } else if (el.type === 'BARCODE') {
                   try {
                       const canvas = document.createElement('canvas');
-                      // Si el contenido sigue teniendo {{}}, intentar usar el ID principal como fallback
-                      let codeContent = content;
-                      if (codeContent.includes('{{')) {
-                          codeContent = type === 'TELEPHONE' ? (data.imei1 || data.codigo) : (data.codInventario || data.codigo);
-                      }
+                      // Ensure content is a clean value for barcode
+                      let codeContent = content.trim();
+                      if (!codeContent) codeContent = "000000"; // Fallback
 
                       JsBarcode(canvas, codeContent, {
                           format: (el.barcodeFormat as any) || "CODE128",
@@ -191,7 +204,7 @@ const Inventory: React.FC = () => {
               }
           });
 
-          doc.save(`etiqueta_${type}_${data.codigo || data.imei1 || Date.now()}.pdf`);
+          doc.save(`etiqueta_${type}_${data.codigo || data.codInventario || Date.now()}.pdf`);
 
       } catch (err: any) {
           console.error(err);

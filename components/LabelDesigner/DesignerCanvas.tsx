@@ -1,5 +1,5 @@
 
-import React, { memo } from 'react';
+import React, { memo, useRef, useEffect } from 'react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
@@ -88,10 +88,71 @@ const CanvasElement = memo(({ el, isSelected, zoom, onPointerDown, onSelect }: a
 });
 
 const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, zoom, setZoom, setSelectedId, onPointerDown }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const lastDist = useRef<number | null>(null);
+
+    // --- GESTURE LOGIC ---
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY * -0.01;
+                setZoom(z => Math.max(0.5, Math.min(5, z + delta)));
+            }
+        };
+
+        // Touch Pinch Logic
+        const handleTouchStart = (e: TouchEvent) => {
+            if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                lastDist.current = dist;
+            }
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (e.touches.length === 2 && lastDist.current) {
+                e.preventDefault(); // Prevent page scroll
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                
+                const delta = dist - lastDist.current;
+                const zoomFactor = delta * 0.005; // Sensitivity
+                
+                setZoom(z => Math.max(0.5, Math.min(5, z + zoomFactor)));
+                lastDist.current = dist;
+            }
+        };
+
+        const handleTouchEnd = () => {
+            lastDist.current = null;
+        };
+
+        container.addEventListener('wheel', handleWheel, { passive: false });
+        container.addEventListener('touchstart', handleTouchStart, { passive: false });
+        container.addEventListener('touchmove', handleTouchMove, { passive: false });
+        container.addEventListener('touchend', handleTouchEnd);
+
+        return () => {
+            container.removeEventListener('wheel', handleWheel);
+            container.removeEventListener('touchstart', handleTouchStart);
+            container.removeEventListener('touchmove', handleTouchMove);
+            container.removeEventListener('touchend', handleTouchEnd);
+        };
+    }, [setZoom]);
+
     return (
-        <div className="flex-1 bg-slate-200/50 overflow-hidden relative flex items-center justify-center p-8 touch-none"
-                onClick={() => setSelectedId(null)}
-                onWheel={(e) => { if(e.ctrlKey) { e.preventDefault(); setZoom(z => Math.max(0.5, Math.min(5, z - e.deltaY * 0.01))); } }}
+        <div 
+            ref={containerRef}
+            className="flex-1 bg-slate-200/50 overflow-hidden relative flex items-center justify-center p-8 touch-none"
+            onClick={() => setSelectedId(null)}
         >
             {/* Zoom Controls */}
             <div className="absolute bottom-6 left-6 flex flex-col gap-2 bg-white p-1 rounded-xl shadow-lg border border-slate-200 z-10">
@@ -101,21 +162,25 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, z
             </div>
 
             <div 
-                className="bg-white shadow-2xl relative transition-all duration-75 ease-out ring-1 ring-slate-900/5"
+                className="bg-white shadow-2xl relative transition-transform duration-75 ease-out ring-1 ring-slate-900/5 origin-center"
                 style={{
-                    width: `${template.width * MM_TO_PX * zoom}px`,
-                    height: `${template.height * MM_TO_PX * zoom}px`,
+                    width: `${template.width * MM_TO_PX}px`,
+                    height: `${template.height * MM_TO_PX}px`,
+                    transform: `scale(${zoom})`,
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Size Label */}
-                <div className="absolute -top-8 left-0 bg-slate-800 text-white text-[10px] px-2 py-1 rounded font-bold shadow-sm opacity-50 hover:opacity-100 transition-opacity">
+                <div 
+                    className="absolute -top-8 left-0 bg-slate-800 text-white text-[10px] px-2 py-1 rounded font-bold shadow-sm opacity-50 hover:opacity-100 transition-opacity"
+                    style={{ transform: `scale(${1/zoom})`, transformOrigin: 'bottom left' }}
+                >
                     {template.width}mm x {template.height}mm
                 </div>
 
                 {/* Grid Pattern */}
                 <div className="absolute inset-0 pointer-events-none opacity-20" 
-                    style={{backgroundImage: `radial-gradient(#cbd5e1 1px, transparent 1px)`, backgroundSize: `${10*zoom}px ${10*zoom}px`}}>
+                    style={{backgroundImage: `radial-gradient(#cbd5e1 1px, transparent 1px)`, backgroundSize: `10px 10px`}}>
                 </div>
 
                 {/* ELEMENTS RENDER */}
@@ -124,7 +189,7 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, z
                         key={el.id} 
                         el={el} 
                         isSelected={selectedId === el.id} 
-                        zoom={zoom}
+                        zoom={1} // Elements inside handled by container scale, but we pass 1 to reuse component math
                         onPointerDown={onPointerDown}
                         onSelect={setSelectedId}
                     />

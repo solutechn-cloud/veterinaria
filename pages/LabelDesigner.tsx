@@ -387,26 +387,38 @@ const LabelDesigner: React.FC = () => {
                                                     </button>
                                                 ))}
                                                 
-                                                {/* Relations (Foreign Keys) */}
-                                                {rels.map((rel: any) => (
-                                                    <div key={rel.foreignTable} className="col-span-2 bg-amber-50 rounded-lg border border-amber-100 p-2 mt-1">
-                                                        <div className="flex items-center gap-2 text-xs font-bold text-amber-700 mb-2">
-                                                            <Key size={12}/> Relación: {rel.foreignTable}
+                                                {/* Relations (Foreign Keys) with Recursive Columns */}
+                                                {rels.map((rel: any) => {
+                                                    // Find related table schema
+                                                    const foreignSchema = (dbSchema as any)[rel.foreignTable];
+                                                    if (!foreignSchema) return null;
+
+                                                    return (
+                                                        <div key={rel.foreignTable} className="col-span-2 bg-amber-50 rounded-lg border border-amber-100 p-2 mt-1">
+                                                            <div className="flex items-center gap-2 text-xs font-bold text-amber-700 mb-2">
+                                                                <Key size={12}/> Relación: {rel.foreignTable}
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2 pl-2 border-l-2 border-amber-200">
+                                                                {foreignSchema.columns.map((fCol: any) => (
+                                                                    <button 
+                                                                        key={fCol.name}
+                                                                        onClick={() => {
+                                                                            // Uses relatedTable.column format
+                                                                            if(selectedId) updateElement(selectedId, { content: template.elements.find(e => e.id === selectedId)?.content + `{{${rel.foreignTable}.${fCol.name}}}` });
+                                                                            setShowVarModal(false);
+                                                                        }}
+                                                                        className="flex items-center gap-2 p-1.5 hover:bg-white rounded text-left group transition-all"
+                                                                    >
+                                                                        <div className="w-4 h-4 rounded bg-amber-200 text-amber-800 flex items-center justify-center text-[8px] font-bold">
+                                                                            {fCol.type === 'integer' || fCol.type === 'numeric' ? '#' : 'T'}
+                                                                        </div>
+                                                                        <span className="text-[10px] font-medium text-amber-900 group-hover:underline">{fCol.name}</span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-2 pl-2 border-l-2 border-amber-200">
-                                                            {/* We allow selecting basic fields from related tables if fetched recursively, simplified here to show intent */}
-                                                            <button 
-                                                                onClick={() => {
-                                                                    if(selectedId) updateElement(selectedId, { content: template.elements.find(e => e.id === selectedId)?.content + `{{${rel.foreignTable}.nombre}}` }); // Simplified assumption
-                                                                    setShowVarModal(false);
-                                                                }}
-                                                                className="text-left text-[10px] text-amber-800 hover:underline"
-                                                            >
-                                                                + {rel.foreignTable} data
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
