@@ -25,10 +25,11 @@ router.get('/reports/sales-trend', authenticateToken, async (req, res) => {
 router.get('/reports/top-products', authenticateToken, async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        // Une detalleventa con telefonos y accesorios para obtener nombres
+        // CORRECCION: Se eliminó dv.descripcionProducto porque no existe en la tabla.
+        // Se usa COALESCE para obtener el nombre desde las tablas relacionadas o un fallback.
         const query = `
             SELECT 
-                COALESCE(t.marca || ' ' || t.modelo, a.descripcion, dv.descripcionProducto) as producto,
+                COALESCE(t.marca || ' ' || t.modelo, a.descripcion, 'Producto/Servicio General') as producto,
                 SUM(dv.cantidad) as cantidad,
                 SUM(dv.cantidad * dv.precioVenta) as total_vendido
             FROM detalleventa dv

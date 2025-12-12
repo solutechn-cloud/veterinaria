@@ -5,18 +5,17 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { 
-  Smartphone, Plug, Users, Store, TrendingUp, ArrowRight, DollarSign, Activity, Loader2
+  Smartphone, Plug, Users, Store, TrendingUp, ArrowRight, DollarSign, Activity, Loader2, AlertCircle
 } from 'lucide-react';
 import { 
   InventoryService, 
   ClientService, 
   ReportsService, 
-  SalesService,
-  InventoryService as ProviderService 
+  SalesService
 } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
-// Colores para el Pie Chart
+// Colores para el Pie Chart (Productos Top)
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 const StatCard: React.FC<{
@@ -43,6 +42,7 @@ const StatCard: React.FC<{
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Data States
   const [kpiData, setKpiData] = useState({
@@ -66,15 +66,19 @@ const Dashboard: React.FC = () => {
 
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
+    // Helper to format YYYY-MM-DD
+    const fmt = (d: Date) => d.toISOString().split('T')[0];
+    
     return {
-      today: today.toISOString().split('T')[0],
-      sevenDaysAgo: lastWeek.toISOString().split('T')[0],
-      firstDayMonth: startOfMonth.toISOString().split('T')[0]
+      today: fmt(today),
+      sevenDaysAgo: fmt(lastWeek),
+      firstDayMonth: fmt(startOfMonth)
     };
   };
 
   const loadDashboardData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const dates = getDates();
 
@@ -106,7 +110,7 @@ const Dashboard: React.FC = () => {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
-        const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' });
+        const dayName = d.toLocaleDateString('es-ES', { weekday: 'long' }); // Lunes, Martes...
         
         // Find existing data or default to 0
         const found = dailyData.find((item: any) => item.fecha && item.fecha.startsWith(dateStr));
@@ -121,17 +125,18 @@ const Dashboard: React.FC = () => {
       // 3. Fetch Top Products (This Month)
       const topProds = await ReportsService.getTopProducts(dates.firstDayMonth, dates.today);
       const pieData = topProds.slice(0, 5).map(item => ({
-        name: item.producto,
+        name: item.producto || 'Producto General',
         value: Number(item.cantidad)
       }));
       setTopProductsData(pieData);
 
       // 4. Fetch Recent Activity
-      const recent = await SalesService.getVentasDiarias(); // Gets history (limit on backend usually or slice here)
+      const recent = await SalesService.getVentasDiarias(); 
       setRecentSales(recent.slice(0, 5)); // Take top 5
 
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
+    } catch (err: any) {
+      console.error("Error loading dashboard data:", err);
+      setError("No se pudieron cargar algunos datos del dashboard. Verifique la conexión.");
     } finally {
       setLoading(false);
     }
@@ -141,7 +146,7 @@ const Dashboard: React.FC = () => {
     return (
       <div className="flex h-[80vh] items-center justify-center flex-col gap-4 text-slate-400">
         <Loader2 className="animate-spin" size={40} />
-        <p>Cargando métricas...</p>
+        <p>Cargando métricas en tiempo real...</p>
       </div>
     );
   }
@@ -155,11 +160,17 @@ const Dashboard: React.FC = () => {
           <p className="text-slate-500 mt-1">Resumen general de SmartCloud ERP</p>
         </div>
         <div className="flex gap-2">
-           <span className="bg-white px-4 py-2 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 shadow-sm">
+           <span className="bg-white px-4 py-2 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 shadow-sm capitalize">
              {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
            </span>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-2 border border-red-100">
+          <AlertCircle size={20}/> {error}
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -227,7 +238,7 @@ const Dashboard: React.FC = () => {
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{fill: '#64748b', fontSize: 12}} 
+                  tick={{fill: '#64748b', fontSize: 11}} 
                   dy={10}
                 />
                 <YAxis 
@@ -287,12 +298,6 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center justify-center h-full text-slate-400 text-sm">
                    Sin datos de ventas este mes.
                 </div>
-             )}
-             {/* Center Text */}
-             {topProductsData.length > 0 && (
-                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
-                    <span className="text-xs font-bold text-slate-400">TOP 5</span>
-                 </div>
              )}
           </div>
         </div>
