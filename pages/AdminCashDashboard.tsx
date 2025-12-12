@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { CashService } from '../services/api';
 import { Arqueo, Ingreso, Egreso } from '../types';
@@ -27,6 +28,9 @@ const AdminCashDashboard: React.FC = () => {
   const [sessionDetails, setSessionDetails] = useState<{arqueo: Arqueo, ingresos: Ingreso[], egresos: Egreso[]} | null>(null);
   const [activeTab, setActiveTab] = useState<'MOVIMIENTOS' | 'CONFIG'>('MOVIMIENTOS');
   
+  // Calculated Totals (Local State to avoid NaN)
+  const [localTotals, setLocalTotals] = useState({ totalIngresos: 0, totalEgresos: 0, finalCalculado: 0 });
+
   // Edit States
   const [editingItem, setEditingItem] = useState<{id: string, type: 'INGRESO'|'EGRESO'|null}>({id:'', type: null});
   const [editForm, setEditForm] = useState({ descripcion: '', monto: '', costo: '' });
@@ -35,6 +39,21 @@ const AdminCashDashboard: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Efecto para calcular totales cuando cambian los detalles
+  useEffect(() => {
+      if (sessionDetails) {
+          const ingresos = sessionDetails.ingresos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
+          const egresos = sessionDetails.egresos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
+          const inicial = Number(sessionDetails.arqueo.montoInicial || 0);
+          
+          setLocalTotals({
+              totalIngresos: ingresos,
+              totalEgresos: egresos,
+              finalCalculado: (inicial + ingresos) - egresos
+          });
+      }
+  }, [sessionDetails]);
 
   const loadData = async () => {
     setLoading(true);
@@ -231,7 +250,12 @@ const AdminCashDashboard: React.FC = () => {
                            
                            <div className="mt-auto bg-indigo-900 rounded-xl p-4 text-white">
                                <p className="text-xs text-indigo-300 uppercase font-bold mb-1">Efectivo Calculado</p>
-                               <p className="text-2xl font-bold">L. {Number(sessionDetails.arqueo.montoFinal).toFixed(2)}</p>
+                               <p className="text-2xl font-bold">L. {localTotals.finalCalculado.toFixed(2)}</p>
+                               <div className="mt-2 text-xs opacity-70 flex justify-between">
+                                   <span>Ini: {Number(sessionDetails.arqueo.montoInicial).toFixed(0)}</span>
+                                   <span>Ing: {localTotals.totalIngresos.toFixed(0)}</span>
+                                   <span>Egr: {localTotals.totalEgresos.toFixed(0)}</span>
+                               </div>
                            </div>
                        </div>
 
@@ -243,14 +267,14 @@ const AdminCashDashboard: React.FC = () => {
                                    {/* Ingresos */}
                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-3 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center">
-                                           <h3 className="font-bold text-emerald-800 flex items-center gap-2"><ArrowUpCircle size={18}/> Ingresos y Ventas</h3>
+                                           <h3 className="font-bold text-emerald-800 flex items-center gap-2"><ArrowUpCircle size={18}/> Ingresos y Ventas ({sessionDetails.ingresos.length})</h3>
                                        </div>
                                        <table className="w-full text-sm text-left">
                                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead>
                                            <tbody>
                                                {sessionDetails.ingresos.map(ing => (
                                                    <tr key={ing.idIngreso} className="border-b hover:bg-slate-50">
-                                                       <td className="p-3 text-xs text-slate-400 font-mono">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
+                                                       <td className="p-3 text-xs text-slate-400 font-mono">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleString() : '-'}</td>
                                                        <td className="p-3">
                                                            {editingItem.id === ing.idIngreso ? (
                                                                <input className="border p-1 rounded w-full" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} />
@@ -283,14 +307,14 @@ const AdminCashDashboard: React.FC = () => {
                                    {/* Egresos */}
                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-3 bg-red-50 border-b border-red-100 flex justify-between items-center">
-                                           <h3 className="font-bold text-red-800 flex items-center gap-2"><ArrowDownCircle size={18}/> Gastos y Salidas</h3>
+                                           <h3 className="font-bold text-red-800 flex items-center gap-2"><ArrowDownCircle size={18}/> Gastos y Salidas ({sessionDetails.egresos.length})</h3>
                                        </div>
                                        <table className="w-full text-sm text-left">
                                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead>
                                            <tbody>
                                                {sessionDetails.egresos.map(egr => (
                                                    <tr key={egr.idegresos} className="border-b hover:bg-slate-50 group">
-                                                       <td className="p-3 text-xs text-slate-400 font-mono">{egr.fechaCreacion ? new Date(egr.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
+                                                       <td className="p-3 text-xs text-slate-400 font-mono">{egr.fechaCreacion ? new Date(egr.fechaCreacion).toLocaleString() : '-'}</td>
                                                        <td className="p-3">
                                                            {editingItem.id === egr.idegresos ? (
                                                                <input className="border p-1 rounded w-full" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} />

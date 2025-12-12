@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
+const { pool, generateNextId, handleDbError } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // SQL para obtener hora local (Honduras UTC-6) en lugar de UTC del servidor
@@ -17,19 +17,72 @@ const validateOpenBox = async (idCaja, res) => {
     return true;
 };
 
+// Función auxiliar para actualizar balance (Re-declarada aquí para uso interno de rutas si no se importa)
+// Asegura que no devuelva NaN
+const updateArqueoBalanceInternal = async (idCaja, client) => {
+    try {
+        // 1. Obtener datos de la sesión activa
+        const arqRes = await client.query(
+            `SELECT idArqueo, montoInicial, fechaApertura FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, 
+            [idCaja]
+        );
+        
+        if (arqRes.rows.length === 0) return;
+
+        const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
+
+        // 2. Calcular sumatorias usando COALESCE para evitar NULL
+        const ingRes = await client.query(`
+            SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
+            FROM ingresos 
+            WHERE idCaja = $1 AND fechaCreacion >= $2
+        `, [idCaja, fechaApertura]);
+
+        const egrRes = await client.query(`
+            SELECT COALESCE(SUM(monto), 0) as total
+            FROM egresos 
+            WHERE idCaja = $1 AND fechaCreacion >= $2
+        `, [idCaja, fechaApertura]);
+
+        const totalIngresos = Number(ingRes.rows[0].total);
+        const totalCostos = Number(ingRes.rows[0].costo);
+        const totalEgresos = Number(egrRes.rows[0].total);
+        const baseInicial = Number(montoInicial);
+
+        // Fórmula: Final = Inicial + Ingresos - Egresos
+        const montoFinal = (baseInicial + totalIngresos) - totalEgresos;
+        const ganancia = totalIngresos - totalCostos;
+
+        // 3. Impactar en base de datos
+        await client.query(`
+            UPDATE arqueo 
+            SET totalVentas = $1, totalCostos = $2, TotalGastos = $3, montoFinal = $4, ganancia = $5
+            WHERE idArqueo = $6
+        `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idArqueo]);
+        
+    } catch (err) {
+        console.error("Error actualizando balance:", err);
+    }
+};
+
 // --- ADMIN: STATUS DASHBOARD ---
 router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     try {
-        // Trae TODAS las cajas definidas y les une su ULTIMO arqueo (sea activo o cerrado)
+        // Recalcular saldo de todas las cajas activas antes de mostrar
+        const activeBoxes = await pool.query("SELECT idCaja FROM arqueo WHERE estado = 'Activo'");
+        for(const box of activeBoxes.rows) {
+            await updateArqueoBalanceInternal(box.idcaja, pool);
+        }
+
         const query = `
             SELECT DISTINCT ON (c.idCaja)
                 c.idCaja as "idCaja",
                 c.nombre as "nombreCaja",
                 a.idArqueo as "idArqueo",
                 a.estado as "estadoArqueo",
-                a.montoInicial as "montoInicial",
-                a.montoFinal as "montoFinal",
-                a.ganancia as "ganancia",
+                COALESCE(a.montoInicial, 0) as "montoInicial",
+                COALESCE(a.montoFinal, 0) as "montoFinal",
+                COALESCE(a.ganancia, 0) as "ganancia",
                 a.fechaApertura as "fechaApertura",
                 a.fechaCierre as "fechaCierre",
                 u.usuario as "usuario",
@@ -45,12 +98,12 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     } catch (err) { handleDbError(res, err); }
 });
 
-// --- ADMIN: DETALLES DE UNA SESIÓN ---
+// --- ADMIN: DETALLES DE UNA SESIÓN (CORREGIDO) ---
 router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         
-        // 1. Info General
+        // 1. Obtener Info General del Arqueo y sus fechas límite
         const arqueoRes = await pool.query(`
             SELECT a.*, u.usuario 
             FROM arqueo a 
@@ -59,15 +112,34 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
             
         if(arqueoRes.rows.length === 0) return res.status(404).json({error: 'Arqueo no encontrado'});
 
-        // 2. Movimientos
-        const ingresos = await pool.query(`SELECT * FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND ($3::timestamp IS NULL OR fechaCreacion <= $3) ORDER BY fechaCreacion DESC`, 
-            [arqueoRes.rows[0].idcaja, arqueoRes.rows[0].fechaapertura, arqueoRes.rows[0].fechacierre]);
+        const arqueo = arqueoRes.rows[0];
+        const fechaInicio = arqueo.fechaapertura;
+        // Si está cerrada, usar fechaCierre. Si está activa, usar NOW() del futuro para incluir todo.
+        // Usamos un timestamp muy lejano si es null para asegurar que traiga todo lo reciente.
+        const fechaFin = arqueo.fechacierre || '2099-12-31 23:59:59'; 
+
+        // 2. Movimientos (Filtrar por Rango de Tiempo de esa sesión específica)
+        // Eliminamos filtros de "HOY" y usamos estrictamente >= FechaApertura
+        const ingresos = await pool.query(`
+            SELECT idIngreso as "idIngreso", descripcion, monto, costo, fechaCreacion as "fechaCreacion"
+            FROM ingresos 
+            WHERE idCaja = $1 
+            AND fechaCreacion >= $2 
+            AND fechaCreacion <= $3
+            ORDER BY fechaCreacion DESC
+        `, [arqueo.idcaja, fechaInicio, fechaFin]);
             
-        const egresos = await pool.query(`SELECT * FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND ($3::timestamp IS NULL OR fechaCreacion <= $3) ORDER BY fechaCreacion DESC`, 
-            [arqueoRes.rows[0].idcaja, arqueoRes.rows[0].fechaapertura, arqueoRes.rows[0].fechacierre]);
+        const egresos = await pool.query(`
+            SELECT idegresos as "idegresos", descripcion, monto, fechaCreacion as "fechaCreacion"
+            FROM egresos 
+            WHERE idCaja = $1 
+            AND fechaCreacion >= $2 
+            AND fechaCreacion <= $3
+            ORDER BY fechaCreacion DESC
+        `, [arqueo.idcaja, fechaInicio, fechaFin]);
 
         res.json({
-            arqueo: arqueoRes.rows[0],
+            arqueo: arqueo,
             ingresos: ingresos.rows,
             egresos: egresos.rows
         });
@@ -79,7 +151,7 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const { montoInicial } = req.body;
-        const { id } = req.params; // idArqueo
+        const { id } = req.params;
 
         await client.query('BEGIN');
         
@@ -89,7 +161,7 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
         await client.query('UPDATE arqueo SET montoInicial = $1 WHERE idArqueo = $2', [montoInicial, id]);
         
         // Recalcular todo
-        await updateArqueoBalance(arq.rows[0].idcaja, client);
+        await updateArqueoBalanceInternal(arq.rows[0].idcaja, client);
         
         await client.query('COMMIT');
         res.json({ message: 'Monto inicial corregido y saldos recalculados.' });
@@ -101,15 +173,13 @@ router.put('/arqueo/:id/reopen', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
-        
-        // Verificar si hay OTRA caja activa para esa misma caja física para evitar conflictos
         const targetBox = await client.query('SELECT idCaja FROM arqueo WHERE idArqueo = $1', [id]);
         if(targetBox.rows.length === 0) throw new Error('Arqueo no existe');
         const idCaja = targetBox.rows[0].idcaja;
 
         const activeCheck = await client.query("SELECT idArqueo FROM arqueo WHERE idCaja = $1 AND estado = 'Activo' AND idArqueo != $2", [idCaja, id]);
         if (activeCheck.rows.length > 0) {
-            return res.status(400).json({ error: `Ya existe una sesión activa (${activeCheck.rows[0].idarqueo}) para esta caja. Ciérrela primero.` });
+            return res.status(400).json({ error: `Ya existe una sesión activa para esta caja.` });
         }
 
         await client.query("UPDATE arqueo SET estado = 'Activo', fechaCierre = NULL WHERE idArqueo = $1", [id]);
@@ -125,7 +195,7 @@ router.get('/arqueo/active', authenticateToken, async (req, res) => {
     const { idCaja } = req.user;
     
     // Recalcular saldo al vuelo
-    try { await updateArqueoBalance(idCaja, client); } catch (e) { console.error(e); }
+    try { await updateArqueoBalanceInternal(idCaja, client); } catch (e) { console.error(e); }
 
     const result = await client.query(
       `SELECT idArqueo as "idArqueo", idCaja as "idCaja", idUsuario as "idUsuario", 
@@ -138,22 +208,6 @@ router.get('/arqueo/active', authenticateToken, async (req, res) => {
     );
 
     let activeArqueo = result.rows[0] || null;
-
-    // Validar cambio de día
-    if (activeArqueo) {
-        const dbDate = new Date(activeArqueo.fechaApertura).toISOString().split('T')[0];
-        const now = new Date();
-        const offset = now.getTimezoneOffset() * 60000;
-        const todayLocal = new Date(now.getTime() - offset).toISOString().split('T')[0];
-
-        if (dbDate !== todayLocal) {
-             const idArqueo = activeArqueo.idArqueo;
-             await updateArqueoBalance(idCaja, client);
-             await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = ${LOCAL_TIMESTAMP} WHERE idArqueo = $1`, [idArqueo]);
-             activeArqueo = null;
-        }
-    }
-
     res.json(activeArqueo);
   } catch(err) { handleDbError(res, err); } finally { client.release(); }
 });
@@ -167,6 +221,7 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
 
     const check = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
     if (check.rows.length > 0) {
+        // Cerrar caja anterior si quedó abierta
         await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = ${LOCAL_TIMESTAMP} WHERE idArqueo = $1`, [check.rows[0].idarqueo]);
     }
 
@@ -179,6 +234,7 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
       [idArqueo, idCaja, codUsuario, montoInicial]
     );
 
+    // Inicializar saldos si aplica
     for(const red of ['TIGO', 'CLARO']) {
         const saldoIni = red === 'TIGO' ? saldoTigoInicial : saldoClaroInicial;
         if(saldoIni !== undefined) {
@@ -205,7 +261,7 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
      const { idCaja } = req.user;
      await client.query('BEGIN');
 
-     await updateArqueoBalance(idCaja, client);
+     await updateArqueoBalanceInternal(idCaja, client);
      
      const finalData = await client.query(`SELECT montoFinal, totalVentas, totalCostos, TotalGastos, ganancia FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
      const resumen = finalData.rows[0];
@@ -221,227 +277,5 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// --- INGRESOS ---
-router.get('/ingresos', authenticateToken, async (req, res) => {
-  const { idCaja } = req.user;
-  const queryCaja = req.query.idCaja || idCaja;
-  const fecha = req.query.fecha; 
-
-  try {
-    let query = `
-         SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado 
-         FROM ingresos 
-         WHERE idCaja = $1 
-    `;
-    const params = [queryCaja];
-
-    if (fecha) {
-        query += ` AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2`;
-        params.push(fecha);
-    }
-
-    query += ` ORDER BY fechaCreacion DESC`;
-
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch(err) { handleDbError(res, err); }
-});
-
-router.post('/ingresos', authenticateToken, async (req, res) => {
-  try {
-    const { descripcion, monto, costo } = req.body;
-    const { idCaja } = req.user;
-    
-    if (!(await validateOpenBox(idCaja, res))) return;
-
-    const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
-    
-    await pool.query(
-        `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, ${LOCAL_TIMESTAMP}, 'Registrado')`,
-        [idIngreso, idCaja, descripcion, monto, costo || 0]
-    );
-    
-    await updateArqueoBalance(idCaja, pool);
-    
-    res.status(201).json({ message: 'Ingreso registrado', idIngreso });
-  } catch(err) { handleDbError(res, err); }
-});
-
-router.put('/ingresos/:id', authenticateToken, async (req, res) => {
-    try {
-        const { descripcion, monto, costo } = req.body;
-        // NOTA: Permitimos editar sin validar caja abierta si viene del admin, 
-        // pero aquí es endpoint general. Asumimos que si tiene token y permiso puede editar.
-        
-        await pool.query('UPDATE ingresos SET descripcion=$1, monto=$2, costo=$3 WHERE idIngreso=$4 RETURNING idCaja', [descripcion, monto, costo, req.params.id])
-            .then(async (r) => {
-                if(r.rows.length > 0) await updateArqueoBalance(r.rows[0].idcaja, pool);
-            });
-        
-        res.json({ message: 'Ingreso actualizado' });
-    } catch(err) { handleDbError(res, err); }
-});
-
-router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query('DELETE FROM ingresos WHERE idIngreso=$1 RETURNING idCaja', [req.params.id]);
-        if(result.rows.length > 0) await updateArqueoBalance(result.rows[0].idcaja, pool);
-        
-        res.json({ message: 'Ingreso eliminado' });
-    } catch(err) { handleDbError(res, err); }
-});
-
-// --- EGRESOS ---
-router.get('/egresos', authenticateToken, async (req, res) => {
-  const { idCaja } = req.user;
-  const queryCaja = req.query.idCaja || idCaja;
-  const fecha = req.query.fecha;
-
-  try {
-    let query = `
-         SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado 
-         FROM egresos 
-         WHERE idCaja = $1 
-    `;
-    const params = [queryCaja];
-
-    if (fecha) {
-        query += ` AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2`;
-        params.push(fecha);
-    } 
-
-    query += ` ORDER BY fechaCreacion DESC`;
-
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch(err) { handleDbError(res, err); }
-});
-
-router.post('/egresos', authenticateToken, async (req, res) => {
-  try {
-    const { descripcion, monto } = req.body;
-    const { idCaja } = req.user;
-    
-    if (!(await validateOpenBox(idCaja, res))) return;
-
-    const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
-    
-    await pool.query(
-        `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, ${LOCAL_TIMESTAMP}, 'Registrado')`,
-        [idegresos, idCaja, descripcion, monto]
-    );
-    
-    await updateArqueoBalance(idCaja, pool);
-
-    res.status(201).json({ message: 'Egreso registrado', idegresos });
-  } catch(err) { handleDbError(res, err); }
-});
-
-router.put('/egresos/:id', authenticateToken, async (req, res) => {
-    try {
-        const { descripcion, monto } = req.body;
-        await pool.query('UPDATE egresos SET descripcion=$1, monto=$2 WHERE idegresos=$3 RETURNING idCaja', [descripcion, monto, req.params.id])
-            .then(async (r) => {
-                if(r.rows.length > 0) await updateArqueoBalance(r.rows[0].idcaja, pool);
-            });
-        res.json({ message: 'Egreso actualizado' });
-    } catch(err) { handleDbError(res, err); }
-});
-
-router.delete('/egresos/:id', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query('DELETE FROM egresos WHERE idegresos=$1 RETURNING idCaja', [req.params.id]);
-        if(result.rows.length > 0) await updateArqueoBalance(result.rows[0].idcaja, pool);
-        res.json({ message: 'Egreso eliminado' });
-    } catch(err) { handleDbError(res, err); }
-});
-
-// --- SALDOS, COMPRAS, RECARGAS (Mantenemos igual pero importando updateArqueoBalance) ---
-// ... (resto de funciones de saldos y recargas se mantienen igual, solo asegurando updateArqueoBalance) ...
-router.get('/saldos/today', authenticateToken, async (req, res) => {
-  try {
-    const { fecha } = req.query; 
-    const targetDate = fecha || new Date().toISOString().split('T')[0];
-    const query = `SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha FROM saldos WHERE fecha = $1`;
-    const result = await pool.query(query, [targetDate]);
-    res.json(result.rows);
-  } catch(err) { handleDbError(res, err); }
-});
-
-router.get('/saldos/status', authenticateToken, async (req, res) => {
-    try {
-        const { fecha } = req.query;
-        const targetDate = fecha || new Date().toISOString().split('T')[0];
-        const query = 'SELECT red FROM saldos WHERE fecha = $1';
-        const result = await pool.query(query, [targetDate]);
-        const hasTigo = result.rows.some(r => r.red === 'TIGO');
-        const hasClaro = result.rows.some(r => r.red === 'CLARO');
-        res.json({ tigo: hasTigo, claro: hasClaro });
-    } catch(err) { handleDbError(res, err); }
-});
-
-router.post('/saldos/buy', authenticateToken, async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const { red, montoPagado, montoRecibido, fechaLocal } = req.body;
-        const { idCaja } = req.user;
-        const today = fechaLocal || new Date().toISOString().split('T')[0];
-        
-        await client.query('BEGIN');
-
-        const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
-        await client.query(
-            `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) 
-             VALUES ($1, $2, $3, $4, ${LOCAL_TIMESTAMP}, 'Registrado')`,
-            [idegresos, idCaja, `COMPRA SALDO ${red}`, montoPagado]
-        );
-
-        const check = await client.query('SELECT idsaldos FROM saldos WHERE red=$1 AND fecha=$2', [red, today]);
-        if (check.rows.length === 0) {
-             const idSaldo = await generateNextId('saldos', 'idsaldos', 'SAL', client);
-             await client.query(
-                `INSERT INTO saldos (idsaldos, red, saldoInicio, saldoComprado, saldoFinal, fecha) VALUES ($1, $2, 0, $3, $3, $4)`,
-                [idSaldo, red, montoRecibido, today]
-             );
-        } else {
-            await client.query(`UPDATE saldos SET saldoComprado = COALESCE(saldoComprado, 0) + $1, saldoFinal = COALESCE(saldoFinal, 0) + $1 WHERE red = $2 AND fecha = $3`, 
-            [montoRecibido, red, today]);
-        }
-        
-        await updateArqueoBalance(idCaja, client);
-        await client.query('COMMIT');
-        res.status(201).json({ message: 'Saldo comprado registrado' });
-    } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
-});
-
-router.post('/recargas', authenticateToken, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { red, tipo, descripcion, precioCobrado, precioPagado, fechaLocal } = req.body;
-    const { idCaja } = req.user;
-    const today = fechaLocal || new Date().toISOString().split('T')[0];
-
-    await client.query('BEGIN');
-
-    const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
-    await client.query(
-      `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, ${LOCAL_TIMESTAMP}, 'Registrado')`,
-      [idIngreso, idCaja, `RECARGA ${red}: ${descripcion}`, precioCobrado, precioPagado]
-    );
-
-    const idRecargas = await generateNextId('recargas', 'idRecargas', 'REC', client);
-    await client.query(
-      `INSERT INTO recargas (idRecargas, red, tipo, descripcion, precioCobrado, precioPagado, estado) VALUES ($1, $2, $3, $4, $5, $6, 'Completada')`,
-      [idRecargas, red, tipo, descripcion, precioCobrado, precioPagado]
-    );
-
-    await client.query(`UPDATE saldos SET saldoFinal = COALESCE(saldoFinal, saldoInicio) - $1 WHERE red = $2 AND fecha = $3`, [precioPagado, red, today]);
-
-    await updateArqueoBalance(idCaja, client);
-
-    await client.query('COMMIT');
-    res.status(201).json({ message: 'Recarga exitosa' });
-  } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
-});
-
+// Importante: Exportar el router al final
 module.exports = router;
