@@ -89,18 +89,18 @@ async function updateArqueoBalance(idCaja, client = pool) {
 
         const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
 
-        // 2. Calcular sumatorias (Ingresos)
+        // 2. Calcular sumatorias (Ingresos) - CORREGIDO CASTING TIMESTAMP
         const ingRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
             FROM ingresos 
-            WHERE idCaja = $1 AND fechaCreacion >= $2
+            WHERE idCaja = $1 AND fechaCreacion::timestamp >= $2::timestamp
         `, [idCaja, fechaApertura]);
 
-        // 3. Calcular sumatorias (Egresos)
+        // 3. Calcular sumatorias (Egresos) - CORREGIDO CASTING TIMESTAMP
         const egrRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total
             FROM egresos 
-            WHERE idCaja = $1 AND fechaCreacion >= $2
+            WHERE idCaja = $1 AND fechaCreacion::timestamp >= $2::timestamp
         `, [idCaja, fechaApertura]);
 
         const totalIngresos = Number(ingRes.rows[0].total);

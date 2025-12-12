@@ -338,6 +338,10 @@ const CashRegister: React.FC = () => {
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
   const totalGastos = egresos.reduce((a,b) => a + Number(b.monto), 0);
   
+  // CALCULO EXPLÍCITO EN FRONTEND PARA UI (Monto Inicial + Ingresos - Egresos)
+  // Esto asegura que el valor se vea correcto incluso si el backend tarda en actualizar el arqueo.montoFinal
+  const cashInBoxCalculated = arqueo ? (Number(arqueo.montoInicial) + totalIngresos) - totalGastos : 0;
+
   const getSaldoRed = (red: string) => {
     const s = saldos.find(x => x.red === red);
     if (!s) return 0;
@@ -450,8 +454,8 @@ const CashRegister: React.FC = () => {
          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-slate-400 mb-1 font-bold uppercase">Efectivo en Caja</p>
-                 {/* Se usa arqueo.montoFinal calculado por el backend */}
-                 <h3 className="text-3xl font-bold tracking-tight">L. {Number(arqueo.montoFinal).toFixed(2)}</h3>
+                 {/* USAMOS EL VALOR CALCULADO EN FRONTEND PARA MAYOR PRECISIÓN VISUAL */}
+                 <h3 className="text-3xl font-bold tracking-tight">L. {cashInBoxCalculated.toFixed(2)}</h3>
               </div>
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/5">
                  <p className="text-xs text-emerald-400 mb-1 font-bold uppercase">Total Ingresos Hoy</p>

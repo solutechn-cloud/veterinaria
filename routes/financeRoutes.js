@@ -69,13 +69,13 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
         const fechaInicio = arqueo.fechaapertura;
         const fechaFin = arqueo.fechacierre || '2099-12-31 23:59:59'; 
 
-        // 2. Movimientos
+        // 2. Movimientos (CORREGIDO: Casting explícito a timestamp)
         const ingresos = await pool.query(`
             SELECT idIngreso as "idIngreso", descripcion, monto, costo, fechaCreacion as "fechaCreacion"
             FROM ingresos 
             WHERE idCaja = $1 
-            AND fechaCreacion >= $2 
-            AND fechaCreacion <= $3
+            AND fechaCreacion::timestamp >= $2::timestamp 
+            AND fechaCreacion::timestamp <= $3::timestamp
             ORDER BY fechaCreacion DESC
         `, [arqueo.idcaja, fechaInicio, fechaFin]);
             
@@ -83,8 +83,8 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
             SELECT idegresos as "idegresos", descripcion, monto, fechaCreacion as "fechaCreacion"
             FROM egresos 
             WHERE idCaja = $1 
-            AND fechaCreacion >= $2 
-            AND fechaCreacion <= $3
+            AND fechaCreacion::timestamp >= $2::timestamp 
+            AND fechaCreacion::timestamp <= $3::timestamp
             ORDER BY fechaCreacion DESC
         `, [arqueo.idcaja, fechaInicio, fechaFin]);
 
