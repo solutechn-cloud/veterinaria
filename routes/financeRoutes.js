@@ -24,6 +24,7 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
         // Recalcular saldo de todas las cajas activas antes de mostrar
         const activeBoxes = await pool.query("SELECT idCaja FROM arqueo WHERE estado = 'Activo'");
         for(const box of activeBoxes.rows) {
+            // Usamos idcaja (minúscula) que es como pg devuelve por defecto si no hay alias
             await updateArqueoBalance(box.idcaja, pool);
         }
 
@@ -56,9 +57,19 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         
-        // 1. Info General
+        // 1. Info General (CORREGIDO: Alias explícitos para evitar errores de undefined)
         const arqueoRes = await pool.query(`
-            SELECT a.*, u.usuario 
+            SELECT 
+                a.idArqueo as "idArqueo",
+                a.idCaja as "idCaja",
+                a.idUsuario as "idUsuario",
+                a.fechaApertura as "fechaApertura",
+                a.fechaCierre as "fechaCierre",
+                a.montoInicial as "montoInicial",
+                a.montoFinal as "montoFinal",
+                a.ganancia as "ganancia",
+                a.estado as "estado",
+                u.usuario as "usuario"
             FROM arqueo a 
             LEFT JOIN usuarios u ON a.idUsuario = u.codUsuario 
             WHERE a.idArqueo = $1`, [id]);
@@ -66,10 +77,11 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
         if(arqueoRes.rows.length === 0) return res.status(404).json({error: 'Arqueo no encontrado'});
 
         const arqueo = arqueoRes.rows[0];
-        const fechaInicio = arqueo.fechaapertura;
-        const fechaFin = arqueo.fechacierre || '2099-12-31 23:59:59'; 
+        const fechaInicio = arqueo.fechaApertura; // Usar el alias camelCase
+        const fechaFin = arqueo.fechaCierre || '2099-12-31 23:59:59'; 
+        const targetCaja = arqueo.idCaja; // Usar el alias camelCase
 
-        // 2. Movimientos (CORREGIDO: Casting explícito a timestamp)
+        // 2. Movimientos
         const ingresos = await pool.query(`
             SELECT idIngreso as "idIngreso", descripcion, monto, costo, fechaCreacion as "fechaCreacion"
             FROM ingresos 
@@ -77,7 +89,7 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
             AND fechaCreacion::timestamp >= $2::timestamp 
             AND fechaCreacion::timestamp <= $3::timestamp
             ORDER BY fechaCreacion DESC
-        `, [arqueo.idcaja, fechaInicio, fechaFin]);
+        `, [targetCaja, fechaInicio, fechaFin]);
             
         const egresos = await pool.query(`
             SELECT idegresos as "idegresos", descripcion, monto, fechaCreacion as "fechaCreacion"
@@ -86,7 +98,7 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
             AND fechaCreacion::timestamp >= $2::timestamp 
             AND fechaCreacion::timestamp <= $3::timestamp
             ORDER BY fechaCreacion DESC
-        `, [arqueo.idcaja, fechaInicio, fechaFin]);
+        `, [targetCaja, fechaInicio, fechaFin]);
 
         res.json({
             arqueo: arqueo,
@@ -105,12 +117,12 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
         
-        const arq = await client.query('SELECT idCaja FROM arqueo WHERE idArqueo = $1', [id]);
+        const arq = await client.query('SELECT idCaja as "idCaja" FROM arqueo WHERE idArqueo = $1', [id]);
         if(arq.rows.length === 0) throw new Error('Arqueo no encontrado');
 
         await client.query('UPDATE arqueo SET montoInicial = $1 WHERE idArqueo = $2', [montoInicial, id]);
         
-        await updateArqueoBalance(arq.rows[0].idcaja, client);
+        await updateArqueoBalance(arq.rows[0].idCaja, client);
         
         await client.query('COMMIT');
         res.json({ message: 'Monto inicial corregido y saldos recalculados.' });
@@ -122,9 +134,9 @@ router.put('/arqueo/:id/reopen', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
-        const targetBox = await client.query('SELECT idCaja FROM arqueo WHERE idArqueo = $1', [id]);
+        const targetBox = await client.query('SELECT idCaja as "idCaja" FROM arqueo WHERE idArqueo = $1', [id]);
         if(targetBox.rows.length === 0) throw new Error('Arqueo no existe');
-        const idCaja = targetBox.rows[0].idcaja;
+        const idCaja = targetBox.rows[0].idCaja;
 
         const activeCheck = await client.query("SELECT idArqueo FROM arqueo WHERE idCaja = $1 AND estado = 'Activo' AND idArqueo != $2", [idCaja, id]);
         if (activeCheck.rows.length > 0) {
@@ -264,7 +276,6 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
     
-    // USAR FECHA DEL CLIENTE SI SE ENVIA, SINO FALLBACK AL SERVIDOR
     const timestampToUse = fechaCreacion || getLocalTimestamp();
     
     await pool.query(
@@ -333,8 +344,6 @@ router.post('/egresos', authenticateToken, async (req, res) => {
     if (!(await validateOpenBox(idCaja, res))) return;
 
     const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
-    
-    // USAR FECHA DEL CLIENTE SI SE ENVIA, SINO FALLBACK AL SERVIDOR
     const timestampToUse = fechaCreacion || getLocalTimestamp();
     
     await pool.query(
@@ -367,7 +376,8 @@ router.delete('/egresos/:id', authenticateToken, async (req, res) => {
     } catch(err) { handleDbError(res, err); }
 });
 
-// --- SALDOS, COMPRAS, RECARGAS ---
+// --- SALDOS Y OTROS ---
+// (Se mantienen igual pero asegurando importaciones correctas si fuera necesario)
 router.get('/saldos/today', authenticateToken, async (req, res) => {
   try {
     const { fecha } = req.query; 
@@ -396,9 +406,6 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
         const { red, montoPagado, montoRecibido, fechaLocal } = req.body;
         const { idCaja } = req.user;
         const today = fechaLocal || new Date().toISOString().split('T')[0];
-        
-        // El cliente envía "fechaLocal" que es solo fecha (YYYY-MM-DD), necesitamos timestamp
-        // Usar hora actual del servidor (ya ajustada) o construirla
         const localTimestamp = getLocalTimestamp();
         
         await client.query('BEGIN');

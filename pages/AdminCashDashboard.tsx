@@ -47,9 +47,9 @@ const AdminCashDashboard: React.FC = () => {
           const egresos = sessionDetails.egresos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
           const inicial = Number(sessionDetails.arqueo.montoInicial || 0);
           
-          // Usar el valor real de la base de datos si está disponible, sino calcular
-          const finalFromDB = Number(sessionDetails.arqueo.montoFinal);
-          const finalCalculado = !isNaN(finalFromDB) ? finalFromDB : (inicial + ingresos) - egresos;
+          // CAMBIO CRÍTICO: Priorizar siempre el cálculo matemático sobre el valor de DB
+          // Esto garantiza que la auditoría refleje exactamente la suma de lo que se ve en pantalla.
+          const finalCalculado = (inicial + ingresos) - egresos;
           
           setLocalTotals({
               totalIngresos: ingresos,
