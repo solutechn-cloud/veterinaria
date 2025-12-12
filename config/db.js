@@ -6,14 +6,23 @@ const pool = new Pool({
   ssl: process.env.DB_INTERNAL_URL ? false : { rejectUnauthorized: false }
 });
 
-// --- SOLUCIÓN ROBUSTA TIMEZONE ---
-// Forzamos la sesión de base de datos a usar la hora de Honduras.
-// Esto asegura que NOW(), CURRENT_DATE y los INSERTs tengan la hora correcta
-// sin importar si el servidor físico está en UTC o cualquier otra zona.
-pool.on('connect', (client) => {
-    client.query("SET TIME ZONE 'America/Tegucigalpa'")
-        .catch(err => console.error('Error setting timezone', err));
-});
+// --- HELPER TIMEZONE HONDURAS ---
+// Genera un string de fecha/hora exacta en Honduras para insertar en BD
+const getLocalTimestamp = () => {
+    const d = new Date();
+    // Convertir a tiempo de Tegucigalpa
+    const tzDate = new Date(d.toLocaleString("en-US", {timeZone: "America/Tegucigalpa"}));
+    
+    // Formatear manualmente a YYYY-MM-DD HH:mm:ss para PostgreSQL
+    const year = tzDate.getFullYear();
+    const month = String(tzDate.getMonth() + 1).padStart(2, '0');
+    const day = String(tzDate.getDate()).padStart(2, '0');
+    const hours = String(tzDate.getHours()).padStart(2, '0');
+    const minutes = String(tzDate.getMinutes()).padStart(2, '0');
+    const seconds = String(tzDate.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
 
 // Función auxiliar para generar IDs consecutivos (ej: FACT-0001)
 async function generateNextId(table, column, prefix, client = pool) {
@@ -116,4 +125,4 @@ const handleDbError = (res, err) => {
   res.status(500).json({ error: err.message || 'Error interno del servidor' });
 };
 
-module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance };
+module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp };

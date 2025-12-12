@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
+const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // --- CLIENTES ---
@@ -97,6 +97,8 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     await client.query('BEGIN');
     
+    const localTimestamp = getLocalTimestamp();
+
     // 1. Generar Código Factura
     const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
 
@@ -116,12 +118,13 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) 
-       VALUES ($1, $2, $3, $4, $5, NOW(), 'Venta POS')`,
-      [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCostoVenta]
+       VALUES ($1, $2, $3, $4, $5, $6, 'Venta POS')`,
+      [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCostoVenta, localTimestamp]
     );
 
     // 4. Registrar VENTA (Cabecera)
-    const fechaVenta = fecha ? `'${fecha}'` : 'NOW()';
+    // Si la fecha manual viene en payload, úsala, si no, usa la hora de Honduras calculada
+    const fechaVenta = fecha ? `'${fecha}'` : `'${localTimestamp}'`;
     
     await client.query(
       `INSERT INTO ventas (
@@ -336,6 +339,8 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
         
+        const localTimestamp = getLocalTimestamp();
+
         const ventaRes = await client.query('SELECT total, estado FROM ventas WHERE codVenta = $1', [codVenta]);
         if(ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
         if(ventaRes.rows[0].estado === 'Anulada') throw new Error("Venta ya anulada");
@@ -361,8 +366,8 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
         // Registrar Egreso por devolución
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
-            `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Anulación Venta')`,
-            [idegresos, idCaja, `Devolución/Anulación Fac #${codVenta}`, totalDevolver]
+            `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, 'Anulación Venta')`,
+            [idegresos, idCaja, `Devolución/Anulación Fac #${codVenta}`, totalDevolver, localTimestamp]
         );
 
         await updateArqueoBalance(idCaja, client);

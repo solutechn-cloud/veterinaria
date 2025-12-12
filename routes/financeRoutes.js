@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
+const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // Middleware interno para validar caja abierta
@@ -170,10 +170,11 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
     const { montoInicial, saldoTigoInicial, saldoClaroInicial, fechaLocal } = req.body;
     const { codUsuario, idCaja } = req.user;
     const today = fechaLocal || new Date().toISOString().split('T')[0];
+    const localTimestamp = getLocalTimestamp();
 
     const check = await client.query(`SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
     if (check.rows.length > 0) {
-        await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = NOW() WHERE idArqueo = $1`, [check.rows[0].idarqueo]);
+        await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = $2 WHERE idArqueo = $1`, [check.rows[0].idarqueo, localTimestamp]);
     }
 
     await client.query('BEGIN');
@@ -181,8 +182,8 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
     
     await client.query(
       `INSERT INTO arqueo (idArqueo, idCaja, idUsuario, fechaApertura, montoInicial, montoFinal, estado)
-       VALUES ($1, $2, $3, NOW(), $4, $4, 'Activo')`,
-      [idArqueo, idCaja, codUsuario, montoInicial]
+       VALUES ($1, $2, $3, $4, $5, $5, 'Activo')`,
+      [idArqueo, idCaja, codUsuario, localTimestamp, montoInicial]
     );
 
     for(const red of ['TIGO', 'CLARO']) {
@@ -209,6 +210,7 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
   try {
      const { idArqueo } = req.body;
      const { idCaja } = req.user;
+     const localTimestamp = getLocalTimestamp();
      await client.query('BEGIN');
 
      await updateArqueoBalance(idCaja, client);
@@ -218,9 +220,9 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
 
      await client.query(`
         UPDATE arqueo 
-        SET estado = 'Cerrada', fechaCierre = NOW()
+        SET estado = 'Cerrada', fechaCierre = $2
         WHERE idArqueo = $1
-     `, [idArqueo]);
+     `, [idArqueo, localTimestamp]);
 
      await client.query('COMMIT');
      res.json({ message: 'Caja Cerrada', resumen });
@@ -261,10 +263,11 @@ router.post('/ingresos', authenticateToken, async (req, res) => {
     if (!(await validateOpenBox(idCaja, res))) return;
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
+    const localTimestamp = getLocalTimestamp();
     
     await pool.query(
-        `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Registrado')`,
-        [idIngreso, idCaja, descripcion, monto, costo || 0]
+        `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, $6, 'Registrado')`,
+        [idIngreso, idCaja, descripcion, monto, costo || 0, localTimestamp]
     );
     
     await updateArqueoBalance(idCaja, pool);
@@ -328,10 +331,11 @@ router.post('/egresos', authenticateToken, async (req, res) => {
     if (!(await validateOpenBox(idCaja, res))) return;
 
     const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
+    const localTimestamp = getLocalTimestamp();
     
     await pool.query(
-        `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Registrado')`,
-        [idegresos, idCaja, descripcion, monto]
+        `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, 'Registrado')`,
+        [idegresos, idCaja, descripcion, monto, localTimestamp]
     );
     
     await updateArqueoBalance(idCaja, pool);
@@ -388,14 +392,15 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
         const { red, montoPagado, montoRecibido, fechaLocal } = req.body;
         const { idCaja } = req.user;
         const today = fechaLocal || new Date().toISOString().split('T')[0];
+        const localTimestamp = getLocalTimestamp();
         
         await client.query('BEGIN');
 
         const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) 
-             VALUES ($1, $2, $3, $4, NOW(), 'Registrado')`,
-            [idegresos, idCaja, `COMPRA SALDO ${red}`, montoPagado]
+             VALUES ($1, $2, $3, $4, $5, 'Registrado')`,
+            [idegresos, idCaja, `COMPRA SALDO ${red}`, montoPagado, localTimestamp]
         );
 
         const check = await client.query('SELECT idsaldos FROM saldos WHERE red=$1 AND fecha=$2', [red, today]);
@@ -422,13 +427,14 @@ router.post('/recargas', authenticateToken, async (req, res) => {
     const { red, tipo, descripcion, precioCobrado, precioPagado, fechaLocal } = req.body;
     const { idCaja } = req.user;
     const today = fechaLocal || new Date().toISOString().split('T')[0];
+    const localTimestamp = getLocalTimestamp();
 
     await client.query('BEGIN');
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
-      `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Registrado')`,
-      [idIngreso, idCaja, `RECARGA ${red}: ${descripcion}`, precioCobrado, precioPagado]
+      `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, $6, 'Registrado')`,
+      [idIngreso, idCaja, `RECARGA ${red}: ${descripcion}`, precioCobrado, precioPagado, localTimestamp]
     );
 
     const idRecargas = await generateNextId('recargas', 'idRecargas', 'REC', client);
