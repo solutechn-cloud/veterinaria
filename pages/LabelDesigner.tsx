@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
   Layers, Search, Database, Table, ChevronRight, Key, GripVertical, FileText, Tag, ChevronUp, Image as ImageIcon, Hand, Trash2, MousePointer2
@@ -67,7 +67,7 @@ const SchemaNode = ({ table, path, schema, onSelect, level = 0 }: any) => {
 
 // --- MAIN COMPONENT ---
 const LabelDesigner: React.FC = () => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const [view, setView] = useState<'GALLERY' | 'DESIGNER'>('GALLERY');
   const [savedTemplates, setSavedTemplates] = useState<LabelTemplate[]>([]);
   

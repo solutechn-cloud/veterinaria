@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter, Switch, Route, Redirect } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -22,77 +22,58 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <HashRouter>
-        <Switch>
-          <Route path="/login">
-             <Login />
-          </Route>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
           {/* Ruta protegida principal que envuelve el Layout */}
-          <Route path="/">
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout /> {/* Layout ahora renderiza el Outlet internamente si se usa Outlet, o envuelve children */}
+            </ProtectedRoute>
+          }>
+             {/* 
+                NOTA: En v6 con Layout envolvente, las rutas hijas se definen anidadas o se manejan como aquí si Layout renderiza {children}.
+                Dado que Layout.tsx usa {children}, envolvemos cada ruta individualmente con el Layout en la estructura visual, 
+                o ajustamos el Router. Para mantener compatibilidad con tu Layout.tsx actual:
+             */}
+          </Route>
+          
+          {/* Estructura corregida para v6 manteniendo Layout.tsx como wrapper manual o layout route */}
+          <Route path="*" element={
             <ProtectedRoute>
               <Layout>
-                <Switch>
-                  <Route exact path="/">
-                     <Dashboard />
-                  </Route>
+                <Routes>
+                  <Route index element={<Dashboard />} />
                   
                   {/* Rutas Protegidas por Permisos Específicos */}
-                  <Route path="/pos">
-                    <ProtectedRoute requiredPermission="VER_POS"><POS /></ProtectedRoute>
-                  </Route>
-                  <Route path="/clients">
-                    <ProtectedRoute requiredPermission="VER_CLIENTES"><Clients /></ProtectedRoute>
-                  </Route>
-                  <Route path="/packages">
-                    <ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO"><Packages /></ProtectedRoute>
-                  </Route>
+                  <Route path="pos" element={<ProtectedRoute requiredPermission="VER_POS"><POS /></ProtectedRoute>} />
+                  <Route path="clients" element={<ProtectedRoute requiredPermission="VER_CLIENTES"><Clients /></ProtectedRoute>} />
+                  <Route path="packages" element={<ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO"><Packages /></ProtectedRoute>} />
                   
-                  <Route path="/providers">
-                    <ProtectedRoute requiredPermission="VER_PROVEEDORES"><Providers /></ProtectedRoute>
-                  </Route>
-                  <Route path="/inventory">
-                    <ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>
-                  </Route>
-                  <Route path="/label-designer">
-                    <ProtectedRoute requiredPermission="DISEÑAR_ETIQUETAS"><LabelDesigner /></ProtectedRoute>
-                  </Route>
+                  <Route path="providers" element={<ProtectedRoute requiredPermission="VER_PROVEEDORES"><Providers /></ProtectedRoute>} />
+                  <Route path="inventory" element={<ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>} />
+                  <Route path="label-designer" element={<ProtectedRoute requiredPermission="DISEÑAR_ETIQUETAS"><LabelDesigner /></ProtectedRoute>} />
                   
-                  <Route path="/cash">
-                    <ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>
-                  </Route>
-                  <Route path="/costs">
-                    <ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>
-                  </Route>
+                  <Route path="cash" element={<ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>} />
+                  <Route path="costs" element={<ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>} />
 
-                  <Route path="/reports">
-                    <ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>
-                  </Route>
+                  <Route path="reports" element={<ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>} />
                   
                   {/* Rutas de Administración */}
-                  <Route path="/admin/cash-dashboard">
-                    <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS"><AdminCashDashboard /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/users">
-                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="USERS" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/employees">
-                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="EMPLOYEES" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/roles">
-                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="ROLES" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/boxes">
-                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="CAJAS" /></ProtectedRoute>
-                  </Route>
+                  <Route path="admin/cash-dashboard" element={<ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS"><AdminCashDashboard /></ProtectedRoute>} />
+                  <Route path="admin/users" element={<ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="USERS" /></ProtectedRoute>} />
+                  <Route path="admin/employees" element={<ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="EMPLOYEES" /></ProtectedRoute>} />
+                  <Route path="admin/roles" element={<ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="ROLES" /></ProtectedRoute>} />
+                  <Route path="admin/boxes" element={<ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="CAJAS" /></ProtectedRoute>} />
 
                   {/* Redirección por defecto */}
-                  <Redirect to="/" />
-                </Switch>
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
               </Layout>
             </ProtectedRoute>
-          </Route>
+          } />
 
-        </Switch>
+        </Routes>
       </HashRouter>
     </AuthProvider>
   );

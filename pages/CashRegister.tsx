@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
@@ -30,7 +30,7 @@ const CashRegister: React.FC = () => {
   const [openForm, setOpenForm] = useState({ monto: '', tigo: '', claro: '' });
   
   const { user, hasPermission } = useAuth();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   // Modals Forms
   const [showIngresoModal, setShowIngresoModal] = useState(false);
@@ -357,8 +357,7 @@ const CashRegister: React.FC = () => {
          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
      } else {
          if (ingresoForm.irAPos) {
-             history.push({
-                 pathname: '/pos',
+             navigate('/pos', { 
                  state: { 
                      customItem: {
                          descripcion: ingresoForm.descripcion,
@@ -445,8 +444,7 @@ const CashRegister: React.FC = () => {
   };
   
   const handleEditVenta = (venta: Venta) => {
-      history.push({
-          pathname: '/pos',
+      navigate('/pos', {
           state: {
               editSaleId: venta.codVenta,
               saleData: venta // Pasar datos básicos como cliente
