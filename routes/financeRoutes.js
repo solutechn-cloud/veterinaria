@@ -239,7 +239,18 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
 
      await updateArqueoBalance(idCaja, client);
      
-     const finalData = await client.query(`SELECT montoInicial, montoFinal, totalVentas, totalCostos, TotalGastos, ganancia FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
+     // FIXED: Added aliases to columns to ensure correct camelCase in JSON response (avoiding NaN in frontend)
+     const finalData = await client.query(`
+        SELECT 
+            montoInicial as "montoInicial", 
+            montoFinal as "montoFinal", 
+            totalVentas as "totalVentas", 
+            totalCostos as "totalCostos", 
+            TotalGastos as "TotalGastos", 
+            ganancia as "ganancia" 
+        FROM arqueo WHERE idArqueo = $1
+     `, [idArqueo]);
+     
      let resumen = finalData.rows[0];
 
      // Obtener Saldos Finales de Recargas para el reporte
@@ -265,6 +276,7 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
   } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
+// ... (Rest of the file remains unchanged)
 // --- INGRESOS ---
 router.get('/ingresos', authenticateToken, async (req, res) => {
   const { idCaja } = req.user;

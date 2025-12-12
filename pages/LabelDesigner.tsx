@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
   Layers, Search, Database, Table, ChevronRight, Key, GripVertical, FileText, Tag, ChevronUp, Image as ImageIcon, Hand, Trash2, MousePointer2
@@ -67,7 +67,7 @@ const SchemaNode = ({ table, path, schema, onSelect, level = 0 }: any) => {
 
 // --- MAIN COMPONENT ---
 const LabelDesigner: React.FC = () => {
-  const navigate = useNavigate();
+  const history = useHistory();
   const [view, setView] = useState<'GALLERY' | 'DESIGNER'>('GALLERY');
   const [savedTemplates, setSavedTemplates] = useState<LabelTemplate[]>([]);
   
@@ -82,7 +82,7 @@ const LabelDesigner: React.FC = () => {
       selectedId, setSelectedId,
       zoom, setZoom,
       tool, setTool, pan, setPan,
-      history, historyIndex,
+      history: editHistory, historyIndex,
       dbSchema,
       loadTemplate, createNew,
       undo, redo,
@@ -302,8 +302,8 @@ const LabelDesigner: React.FC = () => {
             <div className="flex items-center gap-2 w-1/3">
                 <button onClick={() => setView('GALLERY')} className="hover:bg-slate-100 p-2 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20}/></button>
                 <div className="hidden md:flex gap-1 border-l pl-3 ml-2">
-                    <button onClick={undo} disabled={historyIndex <= 0} className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-30"><Undo2 size={18}/></button>
-                    <button onClick={redo} disabled={historyIndex >= history.length - 1} className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-30"><Redo2 size={18}/></button>
+                    <button onClick={undo} disabled={editHistory.length <= 0 || historyIndex <= 0} className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-30"><Undo2 size={18}/></button>
+                    <button onClick={redo} disabled={historyIndex >= editHistory.length - 1} className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-30"><Redo2 size={18}/></button>
                 </div>
             </div>
             

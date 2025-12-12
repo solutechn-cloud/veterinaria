@@ -13,7 +13,7 @@ import {
   ReportsService, 
   SalesService
 } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 
 // Colores para el Pie Chart (Productos Top)
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -40,7 +40,7 @@ const StatCard: React.FC<{
 );
 
 const Dashboard: React.FC = () => {
-  const navigate = useNavigate();
+  const history = useHistory();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -312,7 +312,7 @@ const Dashboard: React.FC = () => {
                 </h3>
                 <p className="text-sm text-slate-500">Últimas transacciones registradas</p>
              </div>
-             <button onClick={() => navigate('/cash')} className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline">
+             <button onClick={() => history.push('/cash')} className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline">
                 Ver todo <ArrowRight size={16}/>
              </button>
           </div>
