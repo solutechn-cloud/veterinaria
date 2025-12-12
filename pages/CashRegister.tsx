@@ -52,6 +52,18 @@ const CashRegister: React.FC = () => {
     return new Date(d.getTime() - offset).toISOString().split('T')[0];
   };
 
+  // Obtener Timestamp exacto (YYYY-MM-DD HH:mm:ss) para enviar a BD
+  const getFullLocalTimestamp = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const secs = String(d.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+  };
+
   useEffect(() => {
     // Solo cargar datos si el usuario está disponible (evita llamadas con idCaja undefined)
     if (user) {
@@ -186,10 +198,12 @@ const CashRegister: React.FC = () => {
              return;
          }
          try {
+             // Enviar timestamp local explícito
              await CashService.createIngreso({
                  descripcion: ingresoForm.descripcion,
                  monto: Number(ingresoForm.monto),
-                 costo: Number(ingresoForm.costo)
+                 costo: Number(ingresoForm.costo),
+                 fechaCreacion: getFullLocalTimestamp()
              });
              setShowIngresoModal(false);
              setIngresoForm({ id: '', descripcion: '', monto: '', costo: '', irAPos: true });
@@ -208,9 +222,11 @@ const CashRegister: React.FC = () => {
              });
              Swal.fire('Actualizado', 'Gasto modificado', 'success');
          } else {
+             // Enviar timestamp local explícito
              await CashService.createEgreso({
                  descripcion: egresoForm.descripcion,
-                 monto: Number(egresoForm.monto)
+                 monto: Number(egresoForm.monto),
+                 fechaCreacion: getFullLocalTimestamp()
              });
              Swal.fire('Guardado', 'Gasto registrado', 'success');
          }

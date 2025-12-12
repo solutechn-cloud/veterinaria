@@ -257,17 +257,19 @@ router.get('/ingresos', authenticateToken, async (req, res) => {
 
 router.post('/ingresos', authenticateToken, async (req, res) => {
   try {
-    const { descripcion, monto, costo } = req.body;
+    const { descripcion, monto, costo, fechaCreacion } = req.body;
     const { idCaja } = req.user;
     
     if (!(await validateOpenBox(idCaja, res))) return;
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR');
-    const localTimestamp = getLocalTimestamp();
+    
+    // USAR FECHA DEL CLIENTE SI SE ENVIA, SINO FALLBACK AL SERVIDOR
+    const timestampToUse = fechaCreacion || getLocalTimestamp();
     
     await pool.query(
         `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, $6, 'Registrado')`,
-        [idIngreso, idCaja, descripcion, monto, costo || 0, localTimestamp]
+        [idIngreso, idCaja, descripcion, monto, costo || 0, timestampToUse]
     );
     
     await updateArqueoBalance(idCaja, pool);
@@ -325,17 +327,19 @@ router.get('/egresos', authenticateToken, async (req, res) => {
 
 router.post('/egresos', authenticateToken, async (req, res) => {
   try {
-    const { descripcion, monto } = req.body;
+    const { descripcion, monto, fechaCreacion } = req.body;
     const { idCaja } = req.user;
     
     if (!(await validateOpenBox(idCaja, res))) return;
 
     const idegresos = await generateNextId('egresos', 'idegresos', 'EGRE');
-    const localTimestamp = getLocalTimestamp();
+    
+    // USAR FECHA DEL CLIENTE SI SE ENVIA, SINO FALLBACK AL SERVIDOR
+    const timestampToUse = fechaCreacion || getLocalTimestamp();
     
     await pool.query(
         `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, 'Registrado')`,
-        [idegresos, idCaja, descripcion, monto, localTimestamp]
+        [idegresos, idCaja, descripcion, monto, timestampToUse]
     );
     
     await updateArqueoBalance(idCaja, pool);
@@ -392,6 +396,9 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
         const { red, montoPagado, montoRecibido, fechaLocal } = req.body;
         const { idCaja } = req.user;
         const today = fechaLocal || new Date().toISOString().split('T')[0];
+        
+        // El cliente envía "fechaLocal" que es solo fecha (YYYY-MM-DD), necesitamos timestamp
+        // Usar hora actual del servidor (ya ajustada) o construirla
         const localTimestamp = getLocalTimestamp();
         
         await client.query('BEGIN');

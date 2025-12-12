@@ -6,23 +6,42 @@ const pool = new Pool({
   ssl: process.env.DB_INTERNAL_URL ? false : { rejectUnauthorized: false }
 });
 
-// --- HELPER TIMEZONE HONDURAS ---
-// Genera un string de fecha/hora exacta en Honduras para insertar en BD
+// --- HELPER TIMEZONE HONDURAS (ROBUSTO) ---
+// Genera un string de fecha/hora exacta en Honduras independiente del servidor.
 const getLocalTimestamp = () => {
-    const d = new Date();
-    // Convertir a tiempo de Tegucigalpa
-    const tzDate = new Date(d.toLocaleString("en-US", {timeZone: "America/Tegucigalpa"}));
-    
-    // Formatear manualmente a YYYY-MM-DD HH:mm:ss para PostgreSQL
-    const year = tzDate.getFullYear();
-    const month = String(tzDate.getMonth() + 1).padStart(2, '0');
-    const day = String(tzDate.getDate()).padStart(2, '0');
-    const hours = String(tzDate.getHours()).padStart(2, '0');
-    const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-    const seconds = String(tzDate.getSeconds()).padStart(2, '0');
-    
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    try {
+        const now = new Date();
+        const options = {
+            timeZone: 'America/Tegucigalpa',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(now);
+        
+        const getPart = (type) => parts.find(p => p.type === type).value;
+        
+        // Retorna formato compatible con PostgreSQL: YYYY-MM-DD HH:mm:ss
+        return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+    } catch (err) {
+        console.error("Error generando fecha local:", err);
+        // Fallback básico restando 6 horas si falla Intl (raro)
+        const d = new Date();
+        d.setHours(d.getHours() - 6);
+        return d.toISOString().replace('T', ' ').substring(0, 19);
+    }
 };
+
+// Forzamos la sesión de base de datos a usar la hora de Honduras por si acaso
+pool.on('connect', (client) => {
+    client.query("SET TIME ZONE 'America/Tegucigalpa'")
+        .catch(err => console.error('Error setting timezone', err));
+});
 
 // Función auxiliar para generar IDs consecutivos (ej: FACT-0001)
 async function generateNextId(table, column, prefix, client = pool) {
@@ -53,7 +72,7 @@ async function generateNextId(table, column, prefix, client = pool) {
 
 // Función CRÍTICA: Actualizar balance en tiempo real
 async function updateArqueoBalance(idCaja, client = pool) {
-    console.log(`--- INICIO RECALCULO SALDO CAJA: ${idCaja} ---`);
+    // console.log(`--- INICIO RECALCULO SALDO CAJA: ${idCaja} ---`);
     try {
         // 1. Obtener datos de la sesión activa
         const arqRes = await client.query(
@@ -64,12 +83,11 @@ async function updateArqueoBalance(idCaja, client = pool) {
         );
         
         if (arqRes.rows.length === 0) {
-            console.error(`[ERROR] No se pudo actualizar: La Caja ${idCaja} NO tiene una sesión activa.`);
+            // console.error(`[ERROR] No se pudo actualizar: La Caja ${idCaja} NO tiene una sesión activa.`);
             return; 
         }
 
         const { idArqueo, montoInicial, fechaApertura } = arqRes.rows[0];
-        console.log(`1. Sesión Activa: ${idArqueo} | Inicio: ${montoInicial} | Apertura: ${fechaApertura}`);
 
         // 2. Calcular sumatorias (Ingresos)
         const ingRes = await client.query(`
@@ -90,13 +108,9 @@ async function updateArqueoBalance(idCaja, client = pool) {
         const totalEgresos = Number(egrRes.rows[0].total);
         const baseInicial = Number(montoInicial);
 
-        console.log(`2. Movimientos: Ingresos(+): ${totalIngresos} | Egresos(-): ${totalEgresos}`);
-
         // Fórmula: Caja Final = Lo que había al inicio + Lo que entró - Lo que salió
         const montoFinal = (baseInicial + totalIngresos) - totalEgresos;
         const ganancia = totalIngresos - totalCostos;
-
-        console.log(`3. Resultado Final: (${baseInicial} + ${totalIngresos}) - ${totalEgresos} = ${montoFinal}`);
 
         // 3. Impactar en base de datos
         await client.query(`
@@ -109,8 +123,6 @@ async function updateArqueoBalance(idCaja, client = pool) {
                 ganancia = $5
             WHERE idArqueo = $6
         `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idArqueo]);
-        
-        console.log(`[EXITO] Balance actualizado correctamente para ${idArqueo}`);
         
     } catch (err) {
         console.error("[CRITICAL ERROR] Fallo actualizando balance:", err);

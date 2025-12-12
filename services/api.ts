@@ -86,12 +86,12 @@ export const CashService = {
   closeCaja: (idArqueo: string) => request<{resumen: any}>('/arqueo/close', { method: 'POST', body: JSON.stringify({ idArqueo }) }),
 
   getIngresos: (idCaja: string, fecha?: string) => request<Ingreso[]>(`/ingresos?idCaja=${idCaja}${fecha ? `&fecha=${fecha}` : ''}`),
-  createIngreso: (data: { descripcion: string, monto: number, costo?: number }) => request('/ingresos', { method: 'POST', body: JSON.stringify(data) }),
+  createIngreso: (data: { descripcion: string, monto: number, costo?: number, fechaCreacion?: string }) => request('/ingresos', { method: 'POST', body: JSON.stringify(data) }),
   updateIngreso: (id: string, data: { descripcion: string, monto: number, costo?: number }) => request(`/ingresos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteIngreso: (id: string) => request(`/ingresos/${id}`, { method: 'DELETE' }),
 
   getEgresos: (idCaja: string, fecha?: string) => request<Egreso[]>(`/egresos?idCaja=${idCaja}${fecha ? `&fecha=${fecha}` : ''}`),
-  createEgreso: (data: { descripcion: string, monto: number }) => request('/egresos', { method: 'POST', body: JSON.stringify(data) }),
+  createEgreso: (data: { descripcion: string, monto: number, fechaCreacion?: string }) => request('/egresos', { method: 'POST', body: JSON.stringify(data) }),
   updateEgreso: (id: string, data: { descripcion: string, monto: number }) => request(`/egresos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteEgreso: (id: string) => request(`/egresos/${id}`, { method: 'DELETE' }),
 
