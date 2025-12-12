@@ -109,7 +109,6 @@ const LabelDesigner: React.FC = () => {
   };
 
   const initCreation = () => {
-      console.log('Intentando crear diseño:', { selectedType, newDesignName });
       if(!newDesignName || newDesignName.trim() === '' || !selectedType) return;
       
       createNew(selectedType, newDesignName);
@@ -148,8 +147,10 @@ const LabelDesigner: React.FC = () => {
     dragItem.current = null; dragOverItem.current = null;
   };
 
-  // Validación del Formulario de Creación
-  const isFormValid = (selectedType !== null) && (newDesignName.trim().length > 0);
+  // Validación
+  const hasName = newDesignName.trim().length > 0;
+  const hasType = selectedType !== null;
+  const isFormValid = hasName && hasType;
 
   // --- VIEWS ---
 
@@ -205,19 +206,21 @@ const LabelDesigner: React.FC = () => {
                   <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                       <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-fade-in">
                           <h3 className="text-xl font-bold text-slate-800 mb-4">Crear Nuevo Diseño</h3>
-                          <input 
-                              className="w-full p-3 border border-slate-200 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-indigo-500" 
-                              placeholder="Nombre del diseño..."
-                              value={newDesignName}
-                              onChange={e => {
-                                  setNewDesignName(e.target.value);
-                                  console.log('Nombre diseño:', e.target.value);
-                              }}
-                              autoFocus
-                          />
+                          
+                          <div className="mb-6">
+                              <input 
+                                  className={`w-full p-3 border rounded-xl outline-none focus:ring-2 transition-all ${(!hasName && newDesignName !== '') ? 'border-red-300 focus:ring-red-200' : 'border-slate-200 focus:ring-indigo-500'}`} 
+                                  placeholder="Nombre del diseño..."
+                                  value={newDesignName}
+                                  onChange={e => setNewDesignName(e.target.value)}
+                                  autoFocus
+                              />
+                              {!hasName && newDesignName === '' && <p className="text-xs text-slate-400 mt-1 ml-1">* Requerido</p>}
+                          </div>
+
                           <div className="grid grid-cols-2 gap-4 mb-6">
                               <button 
-                                  onClick={() => { setSelectedType('LABEL'); console.log('Seleccionado: LABEL'); }} 
+                                  onClick={() => setSelectedType('LABEL')} 
                                   className={`p-4 border-2 rounded-xl transition-all group text-left ${selectedType === 'LABEL' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-300'}`}
                               >
                                   <Tag className={`${selectedType === 'LABEL' ? 'text-indigo-600' : 'text-slate-400'} mb-2`} size={28}/>
@@ -225,7 +228,7 @@ const LabelDesigner: React.FC = () => {
                                   <p className="text-xs text-slate-500 mt-1">Códigos de barra, precios (mm).</p>
                               </button>
                               <button 
-                                  onClick={() => { setSelectedType('DOCUMENT'); console.log('Seleccionado: DOCUMENT'); }} 
+                                  onClick={() => setSelectedType('DOCUMENT')} 
                                   className={`p-4 border-2 rounded-xl transition-all group text-left ${selectedType === 'DOCUMENT' ? 'border-purple-600 bg-purple-50' : 'border-slate-100 hover:border-purple-300'}`}
                               >
                                   <FileText className={`${selectedType === 'DOCUMENT' ? 'text-purple-600' : 'text-slate-400'} mb-2`} size={28}/>
@@ -239,7 +242,7 @@ const LabelDesigner: React.FC = () => {
                               disabled={!isFormValid}
                               className={`w-full py-3 font-bold rounded-xl shadow-lg transition-all mb-3 ${!isFormValid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                           >
-                              CREAR DISEÑO
+                              {isFormValid ? 'CREAR DISEÑO' : (!hasName ? 'Escriba un nombre' : 'Seleccione Tipo')}
                           </button>
                           
                           <button onClick={() => setShowCreateModal(false)} className="w-full py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Cancelar</button>
@@ -345,8 +348,7 @@ const LabelDesigner: React.FC = () => {
         </div>
 
         {/* --- MOBILE UI --- */}
-        
-        {/* MOBILE BOTTOM TOOLBAR */}
+        {/* Same as before */}
         <div className="md:hidden bg-white border-t px-4 py-3 flex justify-between items-center z-40 pb-safe shrink-0">
             <button onClick={() => addElement('TEXT')} className="p-3 bg-slate-50 rounded-lg text-slate-600"><Type size={20}/></button>
             <button onClick={() => addElement('BARCODE')} className="p-3 bg-slate-50 rounded-lg text-slate-600"><ScanLine size={20}/></button>
@@ -399,6 +401,7 @@ const LabelDesigner: React.FC = () => {
         </div>
 
         {/* --- MODALS --- */}
+        {/* Same as before */}
         {showVarModal && (
             <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
                 <div className="bg-white rounded-2xl w-full max-w-lg h-[80vh] shadow-2xl flex flex-col overflow-hidden">

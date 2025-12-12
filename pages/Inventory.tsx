@@ -89,7 +89,6 @@ const Inventory: React.FC = () => {
 
           const templates = await LabelService.getAll();
           
-          // 1. Buscar Plantilla
           const targetCategory = type === 'TELEPHONE' ? 'TELEPHONE' : 'ACCESSORY';
           let tpl = templates.find(t => t.isDefault && t.category === targetCategory);
           if (!tpl) tpl = templates.find(t => t.isDefault && t.category === 'GENERAL');
@@ -98,11 +97,10 @@ const Inventory: React.FC = () => {
               return Swal.fire('Sin Plantilla', `No hay plantilla predeterminada para ${type === 'TELEPHONE' ? 'TELÉFONOS' : 'ACCESORIOS'}.`, 'warning');
           }
 
-          // 2. Construcción Robusta de Datos (Sanitization)
-          // Helper to force simple type or empty string. NEVER return object.
+          // --- HELPER: Limpieza de datos (Evitar [object Object]) ---
           const sanitizeValue = (val: any) => {
               if (val === null || val === undefined) return '';
-              if (typeof val === 'object') return ''; // CRITICAL: Stop [object Object]
+              if (typeof val === 'object') return ''; 
               return String(val);
           };
 
@@ -119,8 +117,7 @@ const Inventory: React.FC = () => {
                   }
               };
           } else {
-              // ACCESORIOS - Lógica Defensiva
-              // Primero intentamos sacar los valores planos del objeto data
+              // --- MAPEO DE ACCESORIOS MEJORADO ---
               let desc = sanitizeValue(data.descripcionAccesorio);
               if(!desc) desc = sanitizeValue(data.descripcion);
               
@@ -133,37 +130,39 @@ const Inventory: React.FC = () => {
 
               const price = `L. ${Number(data.precioVenta || 0).toFixed(2)}`;
 
-              console.log("Valores Extraídos:", { desc, cat, code, price });
+              const accesoriosObj = { 
+                  codAccesorio: code,
+                  descripcion: desc, 
+                  nombreCategoria: cat,
+                  categoria: cat
+              };
 
               contextData = {
-                  // Nivel Raíz (Plano)
-                  ...data, // Copiamos todo, pero sobrescribimos con versiones saneadas
+                  // Nivel Raíz
+                  ...data,
                   descripcion: desc,
                   nombre: desc,
                   codigo: code,
                   precio: price,
                   categoria: cat,
                   
-                  // Objetos anidados simulados (Saneados)
+                  // Nivel Anidado (Estructura correcta para plantillas)
                   inventario: {
                       codInventario: code,
                       descripcion: desc,
                       categoria: cat,
                       cantidad: sanitizeValue(data.cantidad),
                       precioVenta: price,
+                      // IMPORTANTE: Anidar 'accesorios' dentro de 'inventario' si la plantilla lo pide así
+                      accesorios: accesoriosObj
                   },
-                  accesorios: { 
-                      codAccesorio: code,
-                      descripcion: desc, 
-                      nombreCategoria: cat,
-                      categoria: cat
-                  }
+                  accesorios: accesoriosObj
               };
           }
 
-          console.log("CONTEXTO FINAL PARA PDF:", contextData);
+          console.log("CONTEXTO FINAL:", contextData);
 
-          // 3. Generación PDF
+          // Generación PDF
           const scale = tpl.type === 'DOCUMENT' ? 10 : 1;
           const docWidth = tpl.width * scale;
           const docHeight = tpl.height * scale;
@@ -171,10 +170,19 @@ const Inventory: React.FC = () => {
           
           const doc = new jsPDF({ orientation, unit: 'mm', format: [docWidth, docHeight] });
 
+          // --- HELPER: Búsqueda Insensible a Mayúsculas/Minúsculas ---
           const getValue = (path: string, obj: any) => {
               try {
-                  const result = path.split('.').reduce((prev, curr) => prev ? prev[curr] : null, obj);
-                  return sanitizeValue(result); // Sanitizamos al salir también
+                  const keys = path.split('.');
+                  let current = obj;
+                  for (const key of keys) {
+                      if (!current) return '';
+                      // Buscar clave ignorando case
+                      const actualKey = Object.keys(current).find(k => k.toLowerCase() === key.toLowerCase());
+                      if (!actualKey) return '';
+                      current = current[actualKey];
+                  }
+                  return sanitizeValue(current);
               } catch (e) { return ''; }
           };
 
@@ -185,26 +193,22 @@ const Inventory: React.FC = () => {
               if (matches) {
                   matches.forEach(match => {
                       const key = match.replace(/{{|}}/g, '').trim(); 
-                      console.log(`Procesando variable: ${key}`);
-
                       let val = getValue(key, contextData);
                       
-                      // Estrategia de Fallback si devuelve vacío
                       if (!val) {
                           if (key.includes('.')) {
-                              const cleanKey = key.split('.')[1];
+                              // Intento de recuperación si la ruta directa falla (ej: inventario.descripcion)
+                              const cleanKey = key.split('.').pop() || '';
                               val = getValue(cleanKey, contextData);
                           } else {
                               if (type === 'ACCESSORY') {
-                                  // Probar rutas alternativas comunes
-                                  val = getValue(`inventario.${key}`, contextData) || getValue(`accesorios.${key}`, contextData);
+                                  val = getValue(`inventario.${key}`, contextData);
                               } else {
                                   val = getValue(`telefonos.${key}`, contextData);
                               }
                           }
                       }
                       
-                      console.log(`   -> Valor encontrado: "${val}"`);
                       content = content.replace(match, val);
                   });
               }
@@ -272,7 +276,7 @@ const Inventory: React.FC = () => {
       }
   };
 
-  // ... (Resto del código del componente se mantiene igual, lógica de modales, etc.)
+  // ... (Resto del código del componente se mantiene igual)
   const openNewModal = () => {
     setIsEditing(false);
     setCurrentId(null);
