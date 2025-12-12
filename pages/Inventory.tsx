@@ -98,21 +98,71 @@ const Inventory: React.FC = () => {
               return String(val);
           };
 
+          // --- Hydration: Enriquecer datos con catálogos en memoria ---
+          // Usamos los arrays loaded (providers, locations, categories, master) para llenar relaciones completas
           let contextData: any = {};
+
           if (type === 'TELEPHONE') {
+              // Buscar relaciones
+              const prov = providers.find(p => p.codProveedor === data.codProveedor) || ({} as Proveedor);
+              const loc = locations.find(l => l.idUbicacion === data.idubicacion) || ({} as Ubicacion);
+
               contextData = {
-                  ...data,
+                  ...data, // Fallback flat data
                   precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
-                  telefonos: { ...data, precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`, fecha: data.fecha ? String(data.fecha).split('T')[0] : '' }
+                  
+                  telefonos: {
+                      ...data,
+                      precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
+                      precioCompra: `L. ${Number(data.precioCompra || 0).toFixed(2)}`,
+                      fecha: data.fecha ? String(data.fecha).split('T')[0] : '',
+                      
+                      ubicacion: { ...loc },
+                      proveedores: { ...prov }
+                  }
               };
           } else {
-              let desc = sanitizeValue(data.descripcionAccesorio || data.descripcion);
-              let cat = sanitizeValue(data.categoriaAccesorio || data.categoria || data.nombreCategoria);
-              let code = sanitizeValue(data.codInventario || data.codAccesorio);
-              const price = `L. ${Number(data.precioVenta || 0).toFixed(2)}`;
-              const accObj = { codAccesorio: code, descripcion: desc, nombreCategoria: cat, categoria: cat };
-              contextData = { ...data, descripcion: desc, nombre: desc, codigo: code, precio: price, categoria: cat, inventario: { codInventario: code, descripcion: desc, categoria: cat, cantidad: sanitizeValue(data.cantidad), precioVenta: price, accesorios: accObj }, accesorios: accObj };
+              // ACCESSORY
+              const precioFormatted = `L. ${Number(data.precioVenta || 0).toFixed(2)}`;
+              
+              // Buscar Master y Categoría
+              const masterItem = master.find(m => m.codAccesorio === data.codAccesorio) || ({} as Accesorio);
+              const categoryItem = categories.find(c => c.codCategoria === masterItem.codCategoria) || ({} as Categoria);
+              const prov = providers.find(p => p.codProveedor === data.codProveedor) || ({} as Proveedor);
+              const loc = locations.find(l => l.idUbicacion === data.idubicacion) || ({} as Ubicacion);
+
+              // Combinar datos planos para fallback
+              const catName = categoryItem.tipo || data.categoriaAccesorio || '';
+              const desc = masterItem.descripcion || data.descripcionAccesorio || data.descripcion;
+
+              contextData = {
+                  ...data, 
+                  descripcion: desc,
+                  precio: precioFormatted,
+                  categoria: catName,
+
+                  inventario: {
+                      ...data,
+                      codInventario: data.codInventario,
+                      cantidad: String(data.cantidad),
+                      precioVenta: precioFormatted,
+                      precioCompra: `L. ${Number(data.precioCompra || 0).toFixed(2)}`,
+                      fecha: data.fecha ? String(data.fecha).split('T')[0] : '',
+                      
+                      accesorios: {
+                          ...masterItem,
+                          descripcion: desc,
+                          // Relación completa a Categoria
+                          categoria: { ...categoryItem }
+                      },
+                      
+                      ubicacion: { ...loc },
+                      proveedores: { ...prov }
+                  }
+              };
           }
+
+          console.log("Context Data Built:", contextData);
 
           // --- Configuración Documento ---
           const scale = tpl.type === 'DOCUMENT' ? 10 : 1;
@@ -128,18 +178,23 @@ const Inventory: React.FC = () => {
                   let current = obj;
                   for (const key of keys) {
                       if (current === null || current === undefined) return '';
-                      if (current[key] !== undefined) { current = current[key]; continue; }
-                      const lowerKey = key.toLowerCase();
-                      const foundKey = Object.keys(current).find(k => k.toLowerCase() === lowerKey);
-                      if (foundKey) current = current[foundKey];
-                      else return ''; 
+                      let foundKey = Object.keys(current).find(k => k.toLowerCase() === key.toLowerCase());
+                      
+                      if (foundKey) {
+                          current = current[foundKey];
+                      } else {
+                          if (current[key] !== undefined) { 
+                              current = current[key]; 
+                          } else {
+                              return ''; 
+                          }
+                      }
                   }
                   return sanitizeValue(current);
               } catch (e) { return ''; }
           };
 
           // --- PRE-PROCESAMIENTO: Sustitución de Variables ---
-          // Clonamos los elementos para no mutar el template original
           let processElements: LabelElement[] = JSON.parse(JSON.stringify(tpl.elements));
           
           processElements.forEach(el => {
@@ -147,9 +202,14 @@ const Inventory: React.FC = () => {
                   el.content = el.content.replace(/{{(.*?)}}/g, (match, key) => {
                       key = key.trim();
                       let val = getValue(key, contextData);
+                      
+                      // Fallback a raíz
                       if (!val && key.includes('.')) {
-                          const cleanKey = key.split('.').pop();
-                          if (cleanKey) val = getValue(cleanKey, contextData);
+                          const cleanKey = key.split('.').pop(); 
+                          if (cleanKey) {
+                              if(contextData.inventario?.accesorios?.[cleanKey]) val = sanitizeValue(contextData.inventario.accesorios[cleanKey]);
+                              else if(contextData[cleanKey]) val = sanitizeValue(contextData[cleanKey]);
+                          }
                       }
                       return val || '';
                   });
@@ -157,20 +217,16 @@ const Inventory: React.FC = () => {
           });
 
           // --- ALGORITMO: STRETCH WITH OVERFLOW ---
-          // 1. Ordenar por posición Y para procesar de arriba a abajo
           processElements.sort((a, b) => a.y - b.y);
 
-          // 2. Calcular desplazamientos
           for (let i = 0; i < processElements.length; i++) {
               let el = processElements[i];
               
               if (el.type === 'TEXT' && el.isStretchWithOverflow && el.isMultiline) {
-                  // Calcular dimensiones reales
                   doc.setFontSize(el.fontSize || 10);
                   doc.setFont(el.fontFamily || 'helvetica', el.fontWeight || 'normal');
                   
                   const textLines = doc.splitTextToSize(el.content, el.width * scale);
-                  // Altura aproximada en mm (1pt approx 0.3527mm) * lineHeight factor
                   const ptToMm = 0.352778;
                   const lineHeightFactor = el.lineHeight || 1.15;
                   const singleLineHeight = (el.fontSize || 10) * ptToMm * lineHeightFactor;
@@ -178,30 +234,16 @@ const Inventory: React.FC = () => {
                   const actualHeight = textLines.length * singleLineHeight;
                   const designHeight = el.height * scale;
                   
-                  // Si el contenido es más grande que el diseño
                   if (actualHeight > designHeight) {
                       const diff = actualHeight - designHeight;
-                      
-                      // Actualizar altura del elemento actual
-                      // (Nota: dividimos por scale si quisiéramos guardar el valor original, pero aquí ya operamos en unidades de renderizado si aplicamos scale en el loop final, 
-                      // PERO aquí estamos modificando las propiedades base que luego se multiplicarán.
-                      // CORRECCIÓN: el.height es en unidades base. actualHeight y diff están en mm reales (scaled).
-                      // Debemos convertir diff a unidades base para ajustar Y de los siguientes.
-                      
                       const diffBase = diff / scale;
                       
-                      // Ajustar altura del elemento actual en unidades base para que el renderizado final use la nueva altura
                       el.height = actualHeight / scale;
-                      
-                      const bottomEdge = el.y + (designHeight / scale); // Borde inferior original en unidades base
+                      const bottomEdge = el.y + (designHeight / scale);
 
-                      // Desplazar elementos que estén DEBAJO
                       for (let j = 0; j < processElements.length; j++) {
                           if (i === j) continue;
                           const other = processElements[j];
-                          
-                          // Si el elemento empieza visualmente debajo del borde inferior original del elemento que creció
-                          // Usamos un pequeño margen de error (0.01) para float comparison
                           if (other.y >= bottomEdge - 0.01) {
                               other.y += diffBase;
                           }
@@ -225,18 +267,12 @@ const Inventory: React.FC = () => {
                   const options: any = { angle: el.rotation || 0 };
                   if (el.textAlign) options.align = el.textAlign;
                   
-                  // Para multilinea, usamos text con maxWidth
                   if (el.isMultiline) {
                       options.maxWidth = elW;
-                      // jsPDF .text() x,y es la linea base o esquina? Depende. baseline default es alphabetic.
-                      // Ajustamos Y un poco para simular padding top básico si es necesario, pero jsPDF text suele pintar desde Y hacia abajo.
-                      // Si hay rotación, es complejo. Asumimos rotación 0 para stretch overflow por simplicidad.
                       let x = elX;
                       if (el.textAlign === 'center') x += elW / 2;
                       if (el.textAlign === 'right') x += elW;
                       
-                      // Posición Y para texto multiline suele ser la parte superior + altura de linea
-                      // doc.text pinta desde la linea base de la primera linea.
                       const ptToMm = 0.352778;
                       const offsetY = (el.fontSize || 10) * ptToMm; 
                       
