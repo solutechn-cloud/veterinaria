@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { InventoryService } from '../services/api';
 import { 
@@ -9,7 +10,7 @@ import {
   Proveedor 
 } from '../types';
 import { 
-  Search, PlusCircle, Package, Smartphone, Layers, MapPin, Tag, Edit2, Trash2, X, RefreshCw, Box
+  Search, PlusCircle, Package, Smartphone, Layers, MapPin, Tag, Edit2, Trash2, X, RefreshCw, Box, Filter
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -19,6 +20,9 @@ const Inventory: React.FC = () => {
   const [activeTab, setActiveTab] = useState<InventoryTab>('TELEPHONES');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // NEW: Filter for Phones Status
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   // Data Arrays
   const [phones, setPhones] = useState<Telefono[]>([]);
@@ -107,39 +111,16 @@ const Inventory: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // --- VALIDACIÓN DE DUPLICADOS ---
     if (!isEditing) {
         if (activeTab === 'TELEPHONES') {
-            // Validar IMEI único
             const imeiExists = phones.some(p => p.imei1 === phoneForm.imei1);
             if (imeiExists) {
-                return Swal.fire({
-                    title: 'IMEI Duplicado',
-                    text: `El IMEI ${phoneForm.imei1} ya se encuentra registrado en el sistema.`,
-                    icon: 'warning'
-                });
+                return Swal.fire({ title: 'IMEI Duplicado', text: `El IMEI ${phoneForm.imei1} ya existe.`, icon: 'warning' });
             }
         } else if (activeTab === 'STOCK') {
-            // Validar Combinación Producto + Ubicación
-            const stockExists = stock.some(s => 
-                s.codAccesorio === stockForm.codAccesorio && 
-                s.idubicacion === stockForm.idubicacion
-            );
-            
+            const stockExists = stock.some(s => s.codAccesorio === stockForm.codAccesorio && s.idubicacion === stockForm.idubicacion);
             if (stockExists) {
-                return Swal.fire({
-                    title: 'Producto ya en Inventario',
-                    text: 'Este accesorio ya existe en la ubicación seleccionada. Por favor, busque el registro existente y edite la cantidad (sumar) en lugar de crear uno nuevo.',
-                    icon: 'warning'
-                });
-            }
-        } else if (activeTab === 'MASTER') {
-            // Validar Nombre/Descripción para evitar maestros duplicados
-            const masterExists = master.some(m => 
-                m.descripcion.toLowerCase().trim() === masterForm.descripcion?.toLowerCase().trim()
-            );
-            if (masterExists) {
-                return Swal.fire('Duplicado', 'Ya existe un producto maestro con esta descripción.', 'warning');
+                return Swal.fire({ title: 'Producto ya en Inventario', text: 'Edite la cantidad existente.', icon: 'warning' });
             }
         }
     }
@@ -168,15 +149,7 @@ const Inventory: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-      const result = await Swal.fire({
-          title: '¿Eliminar registro?',
-          text: "Esta acción no se puede deshacer.",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#d33',
-          confirmButtonText: 'Sí, eliminar'
-      });
-
+      const result = await Swal.fire({ title: '¿Eliminar registro?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Sí, eliminar' });
       if (result.isConfirmed) {
           try {
             if (activeTab === 'TELEPHONES') await InventoryService.deleteTelefono(id);
@@ -184,12 +157,9 @@ const Inventory: React.FC = () => {
             else if (activeTab === 'MASTER') await InventoryService.deleteAccesorioMaster(id);
             else if (activeTab === 'CATEGORIES') await InventoryService.deleteCategoria(id);
             else if (activeTab === 'LOCATIONS') await InventoryService.deleteUbicacion(id);
-            
-            Swal.fire('Eliminado', 'Registro eliminado.', 'success');
+            Swal.fire('Eliminado', '', 'success');
             loadData();
-          } catch (error: any) {
-             Swal.fire('Error', error.message, 'error');
-          }
+          } catch (error: any) { Swal.fire('Error', error.message, 'error'); }
       }
   };
 
@@ -197,11 +167,13 @@ const Inventory: React.FC = () => {
       if (loading) return <div className="p-8 text-center text-slate-500">Cargando datos...</div>;
 
       if (activeTab === 'TELEPHONES') {
-          const filtered = phones.filter(p => 
-              p.marca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-              p.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              p.imei1.includes(searchTerm)
-          );
+          const filtered = phones.filter(p => {
+              const matchesSearch = p.marca.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    p.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    p.imei1.includes(searchTerm);
+              const matchesStatus = statusFilter === 'ALL' || p.estado === statusFilter;
+              return matchesSearch && matchesStatus;
+          });
           return (
               <table className="w-full text-left">
                   <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0">
@@ -223,7 +195,7 @@ const Inventory: React.FC = () => {
                               <td className="p-3 font-mono">{p.imei1}</td>
                               <td className="p-3 font-bold text-emerald-600">L. {Number(p.precioVenta).toFixed(2)}</td>
                               <td className="p-3 text-xs">{p.nombreUbicacion || p.idubicacion}</td>
-                              <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{p.estado}</span></td>
+                              <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : p.estado === 'Vendido' ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-600'}`}>{p.estado}</span></td>
                               <td className="p-3 text-right">
                                   <button onClick={() => openModal(p)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded mr-1"><Edit2 size={16}/></button>
                                   <button onClick={() => handleDelete(p.codigo)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
@@ -259,7 +231,11 @@ const Inventory: React.FC = () => {
                             <td className="p-3 font-mono text-slate-500 text-xs">{s.codInventario}</td>
                             <td className="p-3 font-bold text-slate-700">{s.descripcionAccesorio}</td>
                             <td className="p-3 text-xs">{s.categoriaAccesorio}</td>
-                            <td className="p-3 text-center font-bold bg-slate-50">{s.cantidad}</td>
+                            <td className="p-3 text-center">
+                                <span className={`px-2 py-1 rounded-md font-bold text-xs ${s.cantidad > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                    {s.cantidad}
+                                </span>
+                            </td>
                             <td className="p-3 text-right font-bold text-emerald-600">L. {Number(s.precioVenta).toFixed(2)}</td>
                             <td className="p-3 text-xs">{s.nombreUbicacion || s.idubicacion}</td>
                             <td className="p-3 text-right">
@@ -399,6 +375,22 @@ const Inventory: React.FC = () => {
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
                     />
                 </div>
+                
+                {activeTab === 'TELEPHONES' && (
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <Filter size={16} className="text-slate-400"/>
+                        <select 
+                            value={statusFilter} 
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="bg-transparent text-sm font-bold text-slate-700 outline-none"
+                        >
+                            <option value="ALL">Todos</option>
+                            <option value="Disponible">Disponibles</option>
+                            <option value="Vendido">Vendidos</option>
+                        </select>
+                    </div>
+                )}
+
                 <button onClick={loadData} className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg border border-slate-200 bg-white">
                     <RefreshCw size={20} />
                 </button>
@@ -410,167 +402,208 @@ const Inventory: React.FC = () => {
           </div>
       </div>
 
+      {/* --- MODAL FORM --- */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
-             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                <h3 className="text-xl font-bold text-slate-800">
-                    {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'TELEPHONES' ? 'Teléfono' : activeTab === 'STOCK' ? 'Item Inventario' : activeTab === 'MASTER' ? 'Producto Maestro' : activeTab === 'CATEGORIES' ? 'Categoría' : 'Ubicación'}
-                </h3>
-                <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
+          <div className={`bg-white rounded-3xl w-full ${activeTab === 'TELEPHONES' || activeTab === 'STOCK' ? 'max-w-4xl' : 'max-w-md'} shadow-2xl p-0 overflow-hidden animate-fade-in flex flex-col max-h-[90vh]`}>
+             
+             {/* Header Modal */}
+             <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                <div>
+                    <h3 className="text-2xl font-bold text-slate-800">
+                        {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'TELEPHONES' ? 'Teléfono' : activeTab === 'STOCK' ? 'Inventario' : activeTab === 'MASTER' ? 'Maestro' : activeTab === 'CATEGORIES' ? 'Categoría' : 'Ubicación'}
+                    </h3>
+                    <p className="text-slate-500 text-sm mt-1">Complete la información requerida</p>
+                </div>
+                <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
              </div>
              
-             <form onSubmit={handleSubmit} className="space-y-4">
+             <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
+             <form onSubmit={handleSubmit} className="space-y-8">
                 
-                {/* FORMULARIO TELEFONOS */}
+                {/* FORMULARIO TELEFONOS (DISEÑO ANTIGUO) */}
                 {activeTab === 'TELEPHONES' && (
-                    <>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Marca</label>
-                                <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.marca || ''} onChange={e => setPhoneForm({...phoneForm, marca: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Modelo</label>
-                                <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.modelo || ''} onChange={e => setPhoneForm({...phoneForm, modelo: e.target.value})} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">IMEI 1</label>
-                                <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.imei1 || ''} onChange={e => setPhoneForm({...phoneForm, imei1: e.target.value})} placeholder="Requerido" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">IMEI 2 (Opcional)</label>
-                                <input className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.imei2 || ''} onChange={e => setPhoneForm({...phoneForm, imei2: e.target.value})} />
+                    <div className="space-y-8">
+                        {/* 1. Identificadores */}
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Tag size={16}/> Identificadores</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">IMEI 1 (Principal)</label>
+                                    <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono" value={phoneForm.imei1 || ''} onChange={e => setPhoneForm({...phoneForm, imei1: e.target.value})} placeholder="Escanear o escribir..." />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">IMEI 2 (Opcional)</label>
+                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono" value={phoneForm.imei2 || ''} onChange={e => setPhoneForm({...phoneForm, imei2: e.target.value})} placeholder="Dual SIM" />
+                                </div>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Precio Compra</label>
-                                <input required type="number" className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.precioCompra || ''} onChange={e => setPhoneForm({...phoneForm, precioCompra: Number(e.target.value)})} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Precio Venta</label>
-                                <input required type="number" className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1 font-bold text-emerald-600" value={phoneForm.precioVenta || ''} onChange={e => setPhoneForm({...phoneForm, precioVenta: Number(e.target.value)})} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                             <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Proveedor</label>
-                                <select required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.codProveedor || ''} onChange={e => setPhoneForm({...phoneForm, codProveedor: e.target.value})}>
-                                    <option value="">-- Seleccionar --</option>
-                                    {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Ubicación</label>
-                                <select required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={phoneForm.idubicacion || ''} onChange={e => setPhoneForm({...phoneForm, idubicacion: e.target.value})}>
-                                    <option value="">-- Seleccionar --</option>
-                                    {locations.map(l => <option key={l.idUbicacion} value={l.idUbicacion}>{l.nombre}</option>)}
-                                </select>
+
+                        {/* 2. Detalles del Producto */}
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Smartphone size={16}/> Dispositivo</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Marca</label>
+                                    <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.marca || ''} onChange={e => setPhoneForm({...phoneForm, marca: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Modelo</label>
+                                    <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.modelo || ''} onChange={e => setPhoneForm({...phoneForm, modelo: e.target.value})} />
+                                </div>
                             </div>
                         </div>
-                    </>
+
+                        {/* 3. Precios y Logística */}
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Layers size={16}/> Finanzas y Logística</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Precio Compra</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.precioCompra || ''} onChange={e => setPhoneForm({...phoneForm, precioCompra: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Precio Venta</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-emerald-600 text-lg" value={phoneForm.precioVenta || ''} onChange={e => setPhoneForm({...phoneForm, precioVenta: Number(e.target.value)})} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Fecha Compra</label>
+                                    <input type="date" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.fecha ? phoneForm.fecha.split('T')[0] : ''} onChange={e => setPhoneForm({...phoneForm, fecha: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Ubicación</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.idubicacion || ''} onChange={e => setPhoneForm({...phoneForm, idubicacion: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {locations.map(l => (
+                                            <option key={l.idUbicacion} value={l.idUbicacion}>
+                                                {l.nombre} - Estante: {l.estante} - Nivel: {l.nivel}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Proveedor</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.codProveedor || ''} onChange={e => setPhoneForm({...phoneForm, codProveedor: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 )}
 
-                {/* FORMULARIO STOCK ACCESORIOS */}
+                {/* FORMULARIO STOCK ACCESORIOS (DISEÑO ANTIGUO) */}
                 {activeTab === 'STOCK' && (
-                    <>
-                        <div>
-                             <label className="text-xs font-bold text-slate-500 uppercase">Producto Maestro</label>
-                             <select required disabled={isEditing} className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1 disabled:bg-slate-200" value={stockForm.codAccesorio || ''} onChange={e => setStockForm({...stockForm, codAccesorio: e.target.value})}>
-                                <option value="">-- Seleccionar Accesorio --</option>
-                                {master.map(m => <option key={m.codAccesorio} value={m.codAccesorio}>{m.descripcion}</option>)}
-                             </select>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-8">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Box size={16}/> Producto</h4>
                             <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Cantidad</label>
-                                <input required type="number" className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1 font-bold" value={stockForm.cantidad || ''} onChange={e => setStockForm({...stockForm, cantidad: Number(e.target.value)})} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">P. Compra</label>
-                                <input required type="number" className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={stockForm.precioCompra || ''} onChange={e => setStockForm({...stockForm, precioCompra: Number(e.target.value)})} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">P. Venta</label>
-                                <input required type="number" className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1 font-bold text-emerald-600" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})} />
+                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Accesorio (Maestro)</label>
+                                 <select required disabled={isEditing} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none disabled:bg-slate-100" value={stockForm.codAccesorio || ''} onChange={e => setStockForm({...stockForm, codAccesorio: e.target.value})}>
+                                    <option value="">Seleccionar Accesorio...</option>
+                                    {master.map(m => <option key={m.codAccesorio} value={m.codAccesorio}>{m.descripcion}</option>)}
+                                 </select>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                             <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Proveedor</label>
-                                <select required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={stockForm.codProveedor || ''} onChange={e => setStockForm({...stockForm, codProveedor: e.target.value})}>
-                                    <option value="">-- Seleccionar --</option>
-                                    {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
-                                </select>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Layers size={16}/> Detalle Inventario</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Cantidad</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-lg" value={stockForm.cantidad || ''} onChange={e => setStockForm({...stockForm, cantidad: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">P. Compra</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.precioCompra || ''} onChange={e => setStockForm({...stockForm, precioCompra: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">P. Venta</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-emerald-600 text-lg" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})} />
+                                </div>
                             </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase">Ubicación</label>
-                                <select required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}>
-                                    <option value="">-- Seleccionar --</option>
-                                    {locations.map(l => <option key={l.idUbicacion} value={l.idUbicacion}>{l.nombre}</option>)}
-                                </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Ubicación</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {locations.map(l => (
+                                            <option key={l.idUbicacion} value={l.idUbicacion}>
+                                                {l.nombre} - Estante: {l.estante} - Nivel: {l.nivel}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Proveedor</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.codProveedor || ''} onChange={e => setStockForm({...stockForm, codProveedor: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </>
+                    </div>
                 )}
 
                 {/* FORMULARIO MAESTRO */}
                 {activeTab === 'MASTER' && (
-                    <>
+                    <div className="space-y-4">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Descripción</label>
-                            <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={masterForm.descripcion || ''} onChange={e => setMasterForm({...masterForm, descripcion: e.target.value})} placeholder="Ej: Cargador Samsung Tipo C" />
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={masterForm.descripcion || ''} onChange={e => setMasterForm({...masterForm, descripcion: e.target.value})} placeholder="Ej: Cargador Samsung Tipo C" />
                         </div>
                         <div>
                              <label className="text-xs font-bold text-slate-500 uppercase">Categoría</label>
-                             <select required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={masterForm.codCategoria || ''} onChange={e => setMasterForm({...masterForm, codCategoria: e.target.value})}>
+                             <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={masterForm.codCategoria || ''} onChange={e => setMasterForm({...masterForm, codCategoria: e.target.value})}>
                                 <option value="">-- Seleccionar --</option>
                                 {categories.map(c => <option key={c.codCategoria} value={c.codCategoria}>{c.tipo}</option>)}
                              </select>
                         </div>
-                    </>
+                    </div>
                 )}
 
                 {/* FORMULARIO CATEGORIAS */}
                 {activeTab === 'CATEGORIES' && (
                      <div>
                         <label className="text-xs font-bold text-slate-500 uppercase">Nombre Categoría</label>
-                        <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={catForm.tipo || ''} onChange={e => setCatForm({...catForm, tipo: e.target.value})} />
+                        <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={catForm.tipo || ''} onChange={e => setCatForm({...catForm, tipo: e.target.value})} />
                     </div>
                 )}
 
                 {/* FORMULARIO UBICACIONES */}
                 {activeTab === 'LOCATIONS' && (
-                    <>
+                    <div className="space-y-4">
                          <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Nombre</label>
-                            <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={locForm.nombre || ''} onChange={e => setLocForm({...locForm, nombre: e.target.value})} placeholder="Ej: Estante A1" />
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.nombre || ''} onChange={e => setLocForm({...locForm, nombre: e.target.value})} placeholder="Ej: Estante A1" />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Descripción</label>
-                            <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={locForm.descripcion || ''} onChange={e => setLocForm({...locForm, descripcion: e.target.value})} />
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.descripcion || ''} onChange={e => setLocForm({...locForm, descripcion: e.target.value})} />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase">Estante</label>
-                                <input className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={locForm.estante || ''} onChange={e => setLocForm({...locForm, estante: e.target.value})} />
+                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.estante || ''} onChange={e => setLocForm({...locForm, estante: e.target.value})} />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase">Nivel</label>
-                                <input className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={locForm.nivel || ''} onChange={e => setLocForm({...locForm, nivel: e.target.value})} />
+                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.nivel || ''} onChange={e => setLocForm({...locForm, nivel: e.target.value})} />
                             </div>
                         </div>
-                    </>
+                    </div>
                 )}
 
-                <div className="pt-4 flex gap-3">
-                    <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200">Cancelar</button>
-                    <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20">{isEditing ? 'Actualizar' : 'Guardar'}</button>
+                <div className="pt-6 flex gap-4 border-t border-slate-100">
+                    <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
+                    <button type="submit" className="flex-1 px-4 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-colors">{isEditing ? 'Actualizar' : 'Guardar'}</button>
                 </div>
              </form>
+             </div>
           </div>
         </div>
       )}

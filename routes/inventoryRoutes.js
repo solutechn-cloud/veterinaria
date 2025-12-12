@@ -201,7 +201,8 @@ router.get('/inventory/categorias', authenticateToken, async (req, res) => {
 
 router.post('/inventory/categorias', authenticateToken, async (req, res) => {
     try {
-        const id = await generateNextId('categoria', 'codCategoria', 'CAT');
+        // CAMBIO SOLICITADO: Prefijo CATG
+        const id = await generateNextId('categoria', 'codCategoria', 'CATG');
         await pool.query('INSERT INTO categoria VALUES ($1, $2)', [id, req.body.tipo]);
         res.status(201).json({ message: 'Categoría creada' });
     } catch(e) { handleDbError(res, e); }
