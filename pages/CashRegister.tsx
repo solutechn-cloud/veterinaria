@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, PackagesService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete } from '../types';
 import { 
-  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X, CloudLightning
+  Lock, PlusCircle, Smartphone, Ban, ShoppingCart, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X, CloudLightning, FileText
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 type TabType = 'INGRESOS' | 'EGRESOS' | 'VENTAS' | 'RECARGAS';
 
@@ -138,9 +140,130 @@ const CashRegister: React.FC = () => {
      }
   };
 
+  // --- PDF REPORT GENERATOR ---
+  const generateClosingReportPDF = (resumen: any, ingresosList: Ingreso[], egresosList: Egreso[], user: any) => {
+      const doc = new jsPDF();
+      const isAdmin = user.rol === 'Administrador' || hasPermission('VER_ADMIN');
+      const date = new Date().toLocaleString();
+
+      // HEADER
+      doc.setFillColor(30, 41, 59); // Slate 800
+      doc.rect(0, 0, 210, 30, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text("REPORTE DE CIERRE DE CAJA", 105, 12, { align: 'center' });
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Fecha: ${date} | Cajero: ${user.nombreEmpleado} | Caja: ${user.idCaja}`, 105, 22, { align: 'center' });
+
+      // SUMMARY SECTION
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text("RESUMEN FINANCIERO", 14, 40);
+      
+      const summaryData = [
+          ['Monto Inicial', `L. ${Number(resumen.montoInicial).toFixed(2)}`],
+          ['(+) Total Ingresos', `L. ${Number(resumen.totalVentas).toFixed(2)}`],
+          ['(-) Total Gastos', `L. ${Number(resumen.TotalGastos).toFixed(2)}`],
+          ['(=) Efectivo Calculado', `L. ${Number(resumen.montoFinal).toFixed(2)}`]
+      ];
+      
+      if(isAdmin) {
+          summaryData.push(['Ganancia Estimada', `L. ${Number(resumen.ganancia).toFixed(2)}`]);
+      }
+
+      // @ts-ignore
+      doc.autoTable({
+          startY: 45,
+          head: [['Concepto', 'Monto']],
+          body: summaryData,
+          theme: 'grid',
+          headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+          columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
+          margin: { right: 110 } // Left side table
+      });
+
+      // SALDOS SECTION (Right Side)
+      // @ts-ignore
+      doc.autoTable({
+          startY: 45,
+          head: [['Plataforma', 'Saldo Final']],
+          body: [
+              ['TIGO', `L. ${Number(resumen.saldoTigoFinal).toFixed(2)}`],
+              ['CLARO', `L. ${Number(resumen.saldoClaroFinal).toFixed(2)}`]
+          ],
+          theme: 'grid',
+          headStyles: { fillColor: [15, 23, 42], textColor: 255 }, // Darker header
+          columnStyles: { 1: { halign: 'right', textColor: [0, 100, 0], fontStyle: 'bold' } },
+          margin: { left: 110 } // Right side table
+      });
+
+      let finalY = (doc as any).lastAutoTable.finalY + 10;
+
+      // DETAILED INCOMES
+      doc.setFontSize(11);
+      doc.text("DETALLE DE INGRESOS", 14, finalY);
+      
+      const incomeColumns = isAdmin ? ['Hora', 'Descripción', 'Costo', 'Monto'] : ['Hora', 'Descripción', 'Monto'];
+      const incomeRows = ingresosList.map(i => {
+          const time = i.fechaCreacion ? new Date(i.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-';
+          return isAdmin 
+            ? [time, i.descripcion, `L. ${Number(i.costo).toFixed(2)}`, `L. ${Number(i.monto).toFixed(2)}`]
+            : [time, i.descripcion, `L. ${Number(i.monto).toFixed(2)}`];
+      });
+
+      // @ts-ignore
+      doc.autoTable({
+          startY: finalY + 3,
+          head: [incomeColumns],
+          body: incomeRows,
+          theme: 'striped',
+          headStyles: { fillColor: [16, 185, 129] }, // Emerald
+          columnStyles: { 
+              2: { halign: 'right' }, 
+              3: isAdmin ? { halign: 'right', fontStyle: 'bold' } : undefined 
+          }
+      });
+
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+
+      // DETAILED EXPENSES
+      doc.setFontSize(11);
+      doc.text("DETALLE DE GASTOS / SALIDAS", 14, finalY);
+      
+      const expenseRows = egresosList.map(e => {
+          const time = e.fechaCreacion ? new Date(e.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-';
+          return [time, e.descripcion, `L. ${Number(e.monto).toFixed(2)}`];
+      });
+
+      // @ts-ignore
+      doc.autoTable({
+          startY: finalY + 3,
+          head: [['Hora', 'Descripción', 'Monto']],
+          body: expenseRows,
+          theme: 'striped',
+          headStyles: { fillColor: [239, 68, 68] }, // Red
+          columnStyles: { 2: { halign: 'right', fontStyle: 'bold' } }
+      });
+
+      // FOOTER
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.text("__________________________", 30, pageHeight - 30);
+      doc.text("Firma Cajero", 40, pageHeight - 25);
+      
+      doc.text("__________________________", 130, pageHeight - 30);
+      doc.text("Firma Supervisor", 140, pageHeight - 25);
+
+      doc.save(`Cierre_Caja_${user.idCaja}_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   // --- ACTIONS HANDLERS ---
   const handleCloseBox = async () => {
      if(!arqueo) return;
+     
      const result = await Swal.fire({ 
          title: '¿Cerrar Caja?', 
          text: 'Se calcularán ganancias y se cerrará el turno.', 
@@ -154,20 +277,60 @@ const CashRegister: React.FC = () => {
        try {
          const response = await CashService.closeCaja(arqueo.idArqueo);
          const { resumen } = response;
+         const isAdmin = user?.rol === 'Administrador' || hasPermission('VER_ADMIN');
+
+         // Construir HTML del resumen
+         let htmlContent = `
+            <div class="text-left space-y-2 text-sm">
+                <div class="bg-slate-50 p-3 rounded border border-slate-200 mb-3">
+                    <p class="flex justify-between"><span>Efectivo Inicial:</span> <strong>L. ${Number(resumen.montoInicial).toFixed(2)}</strong></p>
+                    <p class="flex justify-between text-emerald-600"><span>(+) Total Ingresos:</span> <strong>L. ${Number(resumen.totalVentas).toFixed(2)}</strong></p>
+                    <p class="flex justify-between text-red-600"><span>(-) Total Gastos:</span> <strong>L. ${Number(resumen.TotalGastos).toFixed(2)}</strong></p>
+                </div>
+                <div class="flex justify-between items-center text-lg font-bold border-t pt-2">
+                    <span>Efectivo Esperado en Caja:</span>
+                    <span class="text-indigo-600">L. ${Number(resumen.montoFinal).toFixed(2)}</span>
+                </div>
+         `;
+
+         if (isAdmin) {
+             htmlContent += `
+                <div class="flex justify-between items-center text-sm font-bold text-slate-500 mt-1">
+                    <span>Ganancia Estimada:</span>
+                    <span class="text-slate-800">L. ${Number(resumen.ganancia).toFixed(2)}</span>
+                </div>
+             `;
+         }
+
+         htmlContent += `
+                <hr class="my-3"/>
+                <div class="grid grid-cols-2 gap-2 text-xs text-center">
+                    <div class="bg-blue-50 p-2 rounded">
+                        <p class="font-bold text-blue-800">Saldo TIGO</p>
+                        <p>L. ${Number(resumen.saldoTigoFinal).toFixed(2)}</p>
+                    </div>
+                    <div class="bg-red-50 p-2 rounded">
+                        <p class="font-bold text-red-800">Saldo CLARO</p>
+                        <p>L. ${Number(resumen.saldoClaroFinal).toFixed(2)}</p>
+                    </div>
+                </div>
+            </div>
+         `;
+
          await Swal.fire({
              title: 'Cierre Exitoso',
-             html: `
-                <div class="text-left space-y-2">
-                    <p><strong>Total Ingresos:</strong> L. ${Number(resumen.totalIngresos).toFixed(2)}</p>
-                    <p><strong>Total Costos:</strong> L. ${Number(resumen.totalCostos).toFixed(2)}</p>
-                    <p><strong>Total Gastos:</strong> L. ${Number(resumen.totalEgresos).toFixed(2)}</p>
-                    <hr/>
-                    <p class="text-xl text-indigo-600 font-bold">Ganancia: L. ${Number(resumen.ganancia).toFixed(2)}</p>
-                    <p class="text-lg text-emerald-600 font-bold">Efectivo Final en Caja: L. ${Number(resumen.montoFinal).toFixed(2)}</p>
-                </div>
-             `,
-             icon: 'success'
+             html: htmlContent,
+             icon: 'success',
+             showCancelButton: true,
+             confirmButtonText: '<i class="fa fa-file-pdf"></i> Descargar Reporte PDF',
+             cancelButtonText: 'Cerrar',
+             confirmButtonColor: '#4f46e5'
+         }).then((res) => {
+             if (res.isConfirmed) {
+                 generateClosingReportPDF(resumen, ingresos, egresos, user);
+             }
          });
+         
          loadData(); 
        } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
      }

@@ -232,12 +232,27 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
      const { idArqueo } = req.body;
      const { idCaja } = req.user;
      const localTimestamp = getLocalTimestamp();
+     // Extraemos fecha actual para buscar saldos (YYYY-MM-DD)
+     const todayDate = localTimestamp.split(' ')[0];
+
      await client.query('BEGIN');
 
      await updateArqueoBalance(idCaja, client);
      
-     const finalData = await client.query(`SELECT montoFinal, totalVentas, totalCostos, TotalGastos, ganancia FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
-     const resumen = finalData.rows[0];
+     const finalData = await client.query(`SELECT montoInicial, montoFinal, totalVentas, totalCostos, TotalGastos, ganancia FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
+     let resumen = finalData.rows[0];
+
+     // Obtener Saldos Finales de Recargas para el reporte
+     const saldosRes = await client.query(
+         `SELECT red, COALESCE(saldoFinal, saldoInicio) as saldo FROM saldos WHERE fecha = $1`, 
+         [todayDate]
+     );
+     
+     const tigo = saldosRes.rows.find(r => r.red === 'TIGO');
+     const claro = saldosRes.rows.find(r => r.red === 'CLARO');
+
+     resumen.saldoTigoFinal = tigo ? Number(tigo.saldo) : 0;
+     resumen.saldoClaroFinal = claro ? Number(claro.saldo) : 0;
 
      await client.query(`
         UPDATE arqueo 
