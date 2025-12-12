@@ -112,18 +112,30 @@ const Inventory: React.FC = () => {
 
   // --- LOGICA IMPRESIÓN AVANZADA ---
   
-  // Función auxiliar para obtener valores anidados: getValue(obj, 'categoria.tipo')
-  const getNestedValue = (obj: any, path: string) => {
-      return path.split('.').reduce((o, key) => (o && o[key] !== undefined) ? o[key] : undefined, obj);
+  // Función recursiva para buscar propiedades ignorando mayúsculas/minúsculas
+  const getNestedValue = (obj: any, path: string): any => {
+      if (!obj) return '';
+      const keys = path.split('.');
+      let current = obj;
+
+      for (const key of keys) {
+          if (current === null || typeof current !== 'object') return '';
+          // Buscar key exacta o insensible a mayúsculas
+          const foundKey = Object.keys(current).find(k => k.toLowerCase() === key.toLowerCase());
+          if (foundKey) {
+              current = current[foundKey];
+          } else {
+              return '';
+          }
+      }
+      return current;
   };
 
   const replaceVariables = (content: string, dataContext: any): string => {
       let text = content;
       
       // Reemplazo dinámico usando Regex para capturar cualquier {{variable.ruta}}
-      // Esto hace que funcione escalablemente para cualquier tabla relacionada
       text = text.replace(/{{([\w.]+)}}/g, (match, path) => {
-          // Intentar obtener el valor del contexto de datos
           const val = getNestedValue(dataContext, path);
           
           // Formateo especial para moneda
@@ -131,15 +143,8 @@ const Inventory: React.FC = () => {
               return `L. ${val.toFixed(2)}`;
           }
           
-          return val !== undefined ? String(val) : ''; // Retorna vacío si no encuentra, en lugar de undefined
+          return val !== undefined && val !== null ? String(val) : '';
       });
-
-      // Variables Legacy/Hardcoded (por compatibilidad si se usaron {{TITULO}} manualmente)
-      if (dataContext.legacy) {
-          text = text.replace(/{{TITULO}}/g, dataContext.legacy.titulo || '');
-          text = text.replace(/{{PRECIO}}/g, dataContext.legacy.precio || '');
-          text = text.replace(/{{CODIGO}}/g, dataContext.legacy.codigo || '');
-      }
 
       return text;
   };
@@ -154,13 +159,14 @@ const Inventory: React.FC = () => {
               return Swal.fire('Sin Plantilla', `No hay una etiqueta predeterminada para ${category}. Ve al Diseñador de Etiquetas y configura una.`, 'warning');
           }
 
-          // 2. Construir Contexto de Datos Estructurado (Mapeo de DB Plana a Objetos Anidados)
-          // Esto permite que {{categoria.tipo}} funcione aunque la API devuelva categoriaAccesorio
+          // 2. Construir Contexto de Datos Estructurado (Mapeo de DB Plana a Jerarquía de Objetos)
+          // ESTO ES CLAVE: Reconstruimos la profundidad para que {{inventario.accesorios.categoria.tipo}} funcione
           let dataContext: any = {};
 
           if (type === 'TELEFONO') {
               dataContext = {
                   telefonos: {
+                      ...item, // Propiedades planas base
                       codigo: item.codigo,
                       imei1: item.imei1,
                       imei2: item.imei2,
@@ -168,46 +174,45 @@ const Inventory: React.FC = () => {
                       modelo: item.modelo,
                       precioCompra: item.precioCompra,
                       precioVenta: item.precioVenta,
-                      fecha: item.fecha,
-                      estado: item.estado
-                  },
-                  ubicacion: {
-                      nombre: item.nombreUbicacion // Mapeo desde API
-                  },
-                  proveedores: {
-                      // Si la API devolviera nombreProveedor se pondría aquí
-                      codProveedor: item.codProveedor
-                  },
-                  legacy: {
-                      titulo: `${item.marca} ${item.modelo}`,
-                      precio: `L. ${Number(item.precioVenta).toFixed(2)}`,
-                      codigo: item.imei1
+                      estado: item.estado,
+                      ubicacion: {
+                          nombre: item.nombreUbicacion,
+                          id: item.idubicacion
+                      },
+                      proveedores: {
+                          id: item.codProveedor
+                      }
                   }
               };
           } else {
               // STOCK ACCESORIOS
+              // La API devuelve: categoriaAccesorio, descripcionAccesorio, etc.
+              // El diseñador pide: inventario.accesorios.categoria.tipo
               dataContext = {
                   inventario: {
+                      ...item,
                       codInventario: item.codInventario,
+                      // Normalizamos para soportar ambos casings
+                      codinventario: item.codInventario, 
                       cantidad: item.cantidad,
-                      precioCompra: item.precioCompra,
                       precioVenta: item.precioVenta,
                       estado: item.estado,
-                      fecha: item.fecha
-                  },
-                  accesorios: {
-                      descripcion: item.descripcionAccesorio // Mapeo crítico
-                  },
-                  categoria: {
-                      tipo: item.categoriaAccesorio // Mapeo crítico para que funcione {{categoria.tipo}}
-                  },
-                  ubicacion: {
-                      nombre: item.nombreUbicacion
-                  },
-                  legacy: {
-                      titulo: item.descripcionAccesorio,
-                      precio: `L. ${Number(item.precioVenta).toFixed(2)}`,
-                      codigo: item.codInventario
+                      
+                      // ANIDACIÓN MANUAL PARA SOPORTAR RELACIONES
+                      accesorios: {
+                          codAccesorio: item.codAccesorio,
+                          descripcion: item.descripcionAccesorio, // Mapeo de la columna plana JOIN
+                          categoria: {
+                              tipo: item.categoriaAccesorio // Mapeo de la columna plana JOIN
+                          }
+                      },
+                      ubicacion: {
+                          nombre: item.nombreUbicacion,
+                          id: item.idubicacion
+                      },
+                      proveedores: {
+                          id: item.codProveedor
+                      }
                   }
               };
           }
@@ -233,6 +238,7 @@ const Inventory: React.FC = () => {
                   
                   doc.setTextColor(el.color || '#000000');
                   
+                  // Alineación y posición
                   const opts: any = { baseline: 'top' };
                   let x = el.x;
                   if (el.textAlign === 'center') {
@@ -242,6 +248,11 @@ const Inventory: React.FC = () => {
                       x = el.x + el.width;
                       opts.align = 'right';
                   }
+                  
+                  // Manejo de Multilínea (maxWidth)
+                  if (el.isMultiline) {
+                      opts.maxWidth = el.width;
+                  }
 
                   if (el.rotation && el.rotation !== 0) {
                       opts.angle = el.rotation;
@@ -250,27 +261,31 @@ const Inventory: React.FC = () => {
                   doc.text(finalContent, x, el.y, opts);
               } 
               else if (el.type === 'BARCODE') {
-                  const code = type === 'TELEFONO' ? item.imei1 : item.codInventario;
-                  const canvas = document.createElement('canvas');
+                  // Obtener el valor del código (puede ser una variable)
+                  const codeValue = replaceVariables(el.content, dataContext);
                   
-                  try {
-                      // ALTA RESOLUCIÓN: Generamos el código a una escala mucho mayor (4x)
-                      // y luego jsPDF lo escala hacia abajo, manteniendo la nitidez.
-                      const scaleFactor = 4; 
-                      
-                      JsBarcode(canvas, code, {
-                          format: (el.barcodeFormat as any) || "CODE128",
-                          displayValue: el.displayValue,
-                          fontSize: 14 * scaleFactor, // Escalar fuente
-                          margin: 0,
-                          width: 2 * scaleFactor,     // Barras más anchas
-                          height: 50 * scaleFactor    // Altura base alta
-                      });
-                      
-                      const imgData = canvas.toDataURL("image/png");
-                      // jsPDF addImage(data, fmt, x, y, w, h) -> Aquí usamos el tamaño real (mm) definido en el diseño
-                      doc.addImage(imgData, 'PNG', el.x, el.y, el.width, el.height);
-                  } catch(e) { console.error("Barcode Error", e); }
+                  if (codeValue) {
+                      const canvas = document.createElement('canvas');
+                      try {
+                          // ALTA RESOLUCIÓN: Escala 4x para evitar pixelado
+                          const scaleFactor = 4; 
+                          
+                          JsBarcode(canvas, codeValue, {
+                              format: (el.barcodeFormat as any) || "CODE128",
+                              displayValue: el.displayValue, // Mostrar texto abajo
+                              text: codeValue, // Asegurar que el texto sea el valor
+                              fontSize: 14 * scaleFactor, // Escalar fuente para que se vea nítida al reducir
+                              textMargin: 2 * scaleFactor,
+                              margin: 0,
+                              width: 2 * scaleFactor,     // Barras más anchas
+                              height: 50 * scaleFactor    // Altura base alta
+                          });
+                          
+                          const imgData = canvas.toDataURL("image/png");
+                          // jsPDF escala la imagen de alta res al tamaño definido en mm
+                          doc.addImage(imgData, 'PNG', el.x, el.y, el.width, el.height);
+                      } catch(e) { console.error("Barcode Error", e); }
+                  }
               }
               else if (el.type === 'SHAPE') {
                   const style = el.fill && el.fill !== 'transparent' ? 'FD' : 'S';
@@ -587,7 +602,7 @@ const Inventory: React.FC = () => {
           </div>
       </div>
 
-      {/* --- MODAL FORM (El formulario sigue igual, lo omito para brevedad ya que el cambio era solo en impresión) --- */}
+      {/* --- MODAL FORM --- */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className={`bg-white rounded-3xl w-full ${activeTab === 'TELEPHONES' || activeTab === 'STOCK' ? 'max-w-4xl' : 'max-w-md'} shadow-2xl p-0 overflow-hidden animate-fade-in flex flex-col max-h-[90vh]`}>
@@ -606,10 +621,9 @@ const Inventory: React.FC = () => {
              <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
              <form onSubmit={handleSubmit} className="space-y-8">
                 
-                {/* FORMULARIO TELEFONOS (DISEÑO ANTIGUO) */}
+                {/* FORMULARIO TELEFONOS */}
                 {activeTab === 'TELEPHONES' && (
                     <div className="space-y-8">
-                        {/* 1. Identificadores */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Tag size={16}/> Identificadores</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -624,12 +638,11 @@ const Inventory: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* 2. Detalles del Producto - MODIFICADO CON DATALIST */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Smartphone size={16}/> Dispositivo</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Marca (Seleccionar o Escribir)</label>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Marca</label>
                                     <input 
                                         required 
                                         list="brands-list"
@@ -645,7 +658,7 @@ const Inventory: React.FC = () => {
                                     </datalist>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Modelo (Seleccionar o Escribir)</label>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Modelo</label>
                                     <input 
                                         required 
                                         list="models-list"
@@ -664,7 +677,6 @@ const Inventory: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* 3. Precios y Logística */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Layers size={16}/> Finanzas y Logística</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -705,7 +717,7 @@ const Inventory: React.FC = () => {
                     </div>
                 )}
 
-                {/* FORMULARIO STOCK ACCESORIOS (DISEÑO ANTIGUO) */}
+                {/* FORMULARIO STOCK ACCESORIOS */}
                 {activeTab === 'STOCK' && (
                     <div className="space-y-8">
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
