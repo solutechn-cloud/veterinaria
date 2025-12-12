@@ -61,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       subItems: [
         { name: 'Inventario General', path: '/inventory', icon: <Package size={18} />, permission: 'VER_INVENTARIO' },
         { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, permission: 'VER_PROVEEDORES' },
-        { name: 'Diseñador Etiquetas', path: '/label-designer', icon: <Tag size={18} />, permission: 'VER_INVENTARIO' },
+        { name: 'Diseñador Etiquetas', path: '/label-designer', icon: <Tag size={18} />, permission: 'DISEÑAR_ETIQUETAS' },
       ]
     },
     {

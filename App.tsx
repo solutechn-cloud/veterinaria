@@ -50,7 +50,7 @@ const App: React.FC = () => {
                     <ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>
                   } />
                   <Route path="/label-designer" element={
-                    <ProtectedRoute requiredPermission="VER_INVENTARIO"><LabelDesigner /></ProtectedRoute>
+                    <ProtectedRoute requiredPermission="DISEÑAR_ETIQUETAS"><LabelDesigner /></ProtectedRoute>
                   } />
                   
                   <Route path="/cash" element={

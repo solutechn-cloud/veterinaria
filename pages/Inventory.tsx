@@ -91,47 +91,35 @@ const Inventory: React.FC = () => {
           
           if (!tpl) return Swal.fire('Sin Plantilla', `No hay plantilla predeterminada para ${type === 'TELEPHONE' ? 'TELÉFONOS' : 'ACCESORIOS'}.`, 'warning');
 
-          // --- Sanitización de Datos ---
           const sanitizeValue = (val: any) => {
               if (val === null || val === undefined) return '';
               if (typeof val === 'object') return ''; 
               return String(val);
           };
 
-          // --- Hydration: Enriquecer datos con catálogos en memoria ---
-          // Usamos los arrays loaded (providers, locations, categories, master) para llenar relaciones completas
+          // --- Hydration ---
           let contextData: any = {};
-
           if (type === 'TELEPHONE') {
-              // Buscar relaciones
               const prov = providers.find(p => p.codProveedor === data.codProveedor) || ({} as Proveedor);
               const loc = locations.find(l => l.idUbicacion === data.idubicacion) || ({} as Ubicacion);
-
               contextData = {
-                  ...data, // Fallback flat data
+                  ...data, 
                   precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
-                  
                   telefonos: {
                       ...data,
                       precioVenta: `L. ${Number(data.precioVenta || 0).toFixed(2)}`,
                       precioCompra: `L. ${Number(data.precioCompra || 0).toFixed(2)}`,
                       fecha: data.fecha ? String(data.fecha).split('T')[0] : '',
-                      
                       ubicacion: { ...loc },
                       proveedores: { ...prov }
                   }
               };
           } else {
-              // ACCESSORY
               const precioFormatted = `L. ${Number(data.precioVenta || 0).toFixed(2)}`;
-              
-              // Buscar Master y Categoría
               const masterItem = master.find(m => m.codAccesorio === data.codAccesorio) || ({} as Accesorio);
               const categoryItem = categories.find(c => c.codCategoria === masterItem.codCategoria) || ({} as Categoria);
               const prov = providers.find(p => p.codProveedor === data.codProveedor) || ({} as Proveedor);
               const loc = locations.find(l => l.idUbicacion === data.idubicacion) || ({} as Ubicacion);
-
-              // Combinar datos planos para fallback
               const catName = categoryItem.tipo || data.categoriaAccesorio || '';
               const desc = masterItem.descripcion || data.descripcionAccesorio || data.descripcion;
 
@@ -140,7 +128,6 @@ const Inventory: React.FC = () => {
                   descripcion: desc,
                   precio: precioFormatted,
                   categoria: catName,
-
                   inventario: {
                       ...data,
                       codInventario: data.codInventario,
@@ -148,30 +135,18 @@ const Inventory: React.FC = () => {
                       precioVenta: precioFormatted,
                       precioCompra: `L. ${Number(data.precioCompra || 0).toFixed(2)}`,
                       fecha: data.fecha ? String(data.fecha).split('T')[0] : '',
-                      
                       accesorios: {
                           ...masterItem,
                           descripcion: desc,
-                          // Relación completa a Categoria
                           categoria: { ...categoryItem }
                       },
-                      
                       ubicacion: { ...loc },
                       proveedores: { ...prov }
                   }
               };
           }
 
-          console.log("Context Data Built:", contextData);
-
-          // --- Configuración Documento ---
-          const scale = tpl.type === 'DOCUMENT' ? 10 : 1;
-          const docWidth = tpl.width * scale;
-          const docHeight = tpl.height * scale;
-          const orientation = docWidth > docHeight ? 'l' : 'p';
-          const doc = new jsPDF({ orientation, unit: 'mm', format: [docWidth, docHeight] });
-
-          // --- Helper Recursivo para Variables ---
+          // --- Variable Helper ---
           const getValue = (path: string, obj: any) => {
               try {
                   const keys = path.split('.');
@@ -179,31 +154,28 @@ const Inventory: React.FC = () => {
                   for (const key of keys) {
                       if (current === null || current === undefined) return '';
                       let foundKey = Object.keys(current).find(k => k.toLowerCase() === key.toLowerCase());
-                      
-                      if (foundKey) {
-                          current = current[foundKey];
-                      } else {
-                          if (current[key] !== undefined) { 
-                              current = current[key]; 
-                          } else {
-                              return ''; 
-                          }
+                      if (foundKey) current = current[foundKey];
+                      else {
+                          if (current[key] !== undefined) current = current[key]; 
+                          else return ''; 
                       }
                   }
                   return sanitizeValue(current);
               } catch (e) { return ''; }
           };
 
-          // --- PRE-PROCESAMIENTO: Sustitución de Variables ---
-          let processElements: LabelElement[] = JSON.parse(JSON.stringify(tpl.elements));
+          // --- PRE-PROCESAMIENTO ---
+          const scale = tpl.type === 'DOCUMENT' ? 10 : 1;
+          const originalWidth = tpl.width * scale;
+          const originalHeight = tpl.height * scale;
           
+          // Clonamos y procesamos variables
+          let processElements: LabelElement[] = JSON.parse(JSON.stringify(tpl.elements));
           processElements.forEach(el => {
               if (el.content && el.content.includes('{{')) {
                   el.content = el.content.replace(/{{(.*?)}}/g, (match, key) => {
                       key = key.trim();
                       let val = getValue(key, contextData);
-                      
-                      // Fallback a raíz
                       if (!val && key.includes('.')) {
                           const cleanKey = key.split('.').pop(); 
                           if (cleanKey) {
@@ -216,41 +188,69 @@ const Inventory: React.FC = () => {
               }
           });
 
-          // --- ALGORITMO: STRETCH WITH OVERFLOW ---
+          // --- ALGORITMO: STRETCH WITH OVERFLOW & DYNAMIC HEIGHT ---
+          // 1. Usar un documento temporal para calcular alturas de texto reales
+          const tempDoc = new jsPDF();
           processElements.sort((a, b) => a.y - b.y);
+
+          let maxBottomY = originalHeight;
 
           for (let i = 0; i < processElements.length; i++) {
               let el = processElements[i];
               
               if (el.type === 'TEXT' && el.isStretchWithOverflow && el.isMultiline) {
-                  doc.setFontSize(el.fontSize || 10);
-                  doc.setFont(el.fontFamily || 'helvetica', el.fontWeight || 'normal');
+                  tempDoc.setFontSize(el.fontSize || 10);
+                  tempDoc.setFont(el.fontFamily || 'helvetica', el.fontWeight || 'normal');
                   
-                  const textLines = doc.splitTextToSize(el.content, el.width * scale);
+                  const textLines = tempDoc.splitTextToSize(el.content, el.width * scale);
                   const ptToMm = 0.352778;
                   const lineHeightFactor = el.lineHeight || 1.15;
                   const singleLineHeight = (el.fontSize || 10) * ptToMm * lineHeightFactor;
                   
                   const actualHeight = textLines.length * singleLineHeight;
+                  // Convertimos la altura de diseño (base) a unidades reales (scale) para comparar
                   const designHeight = el.height * scale;
                   
                   if (actualHeight > designHeight) {
                       const diff = actualHeight - designHeight;
-                      const diffBase = diff / scale;
+                      // diff está en mm (o cm si scale=10).
+                      const diffBase = diff / scale; // diff en unidades base para actualizar coordenadas base
                       
-                      el.height = actualHeight / scale;
-                      const bottomEdge = el.y + (designHeight / scale);
+                      // Actualizar altura del elemento actual
+                      el.height = actualHeight / scale; // Guardar en unidades base
+                      
+                      // Borde inferior original en unidades base
+                      const bottomEdgeBase = el.y + (designHeight / scale); 
 
+                      // Desplazar elementos inferiores
                       for (let j = 0; j < processElements.length; j++) {
                           if (i === j) continue;
                           const other = processElements[j];
-                          if (other.y >= bottomEdge - 0.01) {
+                          // Usar un pequeño margen de error para comparaciones float
+                          if (other.y >= bottomEdgeBase - 0.01) {
                               other.y += diffBase;
                           }
                       }
                   }
               }
+              
+              // Calcular el punto más bajo actual (en mm reales)
+              const currentBottom = (el.y * scale) + (el.height * scale);
+              if (currentBottom > maxBottomY) {
+                  maxBottomY = currentBottom;
+              }
           }
+
+          // --- CREACIÓN DEL DOCUMENTO FINAL ---
+          // Si el contenido se estiró más allá del diseño original, ajustamos el alto del PDF
+          const finalDocHeight = Math.max(originalHeight, maxBottomY + (2 * scale)); // + margen pequeño
+          const orientation = originalWidth > finalDocHeight ? 'l' : 'p';
+          
+          const doc = new jsPDF({ 
+              orientation, 
+              unit: 'mm', 
+              format: [originalWidth, finalDocHeight] 
+          });
 
           // --- RENDERIZADO FINAL ---
           processElements.forEach(el => {

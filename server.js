@@ -65,6 +65,11 @@ const initDB = async () => {
                     ALTER TABLE label_templates ADD COLUMN data_source VARCHAR(50) DEFAULT 'NONE';
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
             END $$;
+
+            -- INSERCIÓN DE NUEVOS PERMISOS
+            INSERT INTO permisos (idPermiso, nombre, modulo)
+            VALUES ('DISEÑAR_ETIQUETAS', 'Diseñar Etiquetas y Reportes', 'Logística')
+            ON CONFLICT (idPermiso) DO NOTHING;
         `);
     } catch (err) { console.error("Error init DB:", err); }
 };
