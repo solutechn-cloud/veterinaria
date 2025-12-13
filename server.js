@@ -23,7 +23,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-// --- INICIALIZACIÓN BD ---
+// --- INICIALIZACIÓN BD (Solo tablas auxiliares menores y permisos) ---
 const initDB = async () => {
     try {
         await pool.query(`
@@ -49,32 +49,10 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
-
-            -- TABLA DE CONFIGURACIÓN EMPRESA (SAR HONDURAS)
-            CREATE TABLE IF NOT EXISTS configuracion (
-                id SERIAL PRIMARY KEY,
-                nombreEmpresa VARCHAR(200) NOT NULL,
-                rtn VARCHAR(50),
-                direccion TEXT,
-                telefono VARCHAR(50),
-                correo VARCHAR(100),
-                cai VARCHAR(100),
-                rangoInicial VARCHAR(50),
-                rangoFinal VARCHAR(50),
-                fechaLimite DATE,
-                isv INTEGER DEFAULT 15,
-                mensajeFinal TEXT DEFAULT 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
-            );
             
-            -- Migraciones seguras y Seed Inicial
+            -- Migraciones seguras para columnas de etiquetas
             DO $$ 
             BEGIN 
-                -- Verificar si existe configuración, sino crear default
-                IF NOT EXISTS (SELECT 1 FROM configuracion LIMIT 1) THEN
-                    INSERT INTO configuracion (nombreEmpresa, rtn, direccion, telefono, isv)
-                    VALUES ('SMARTCLOUD', '00000000000000', 'Mercado Nuevo-Avenida Valle', '+504-00000000', 15);
-                END IF;
-
                 BEGIN
                     ALTER TABLE label_templates ADD COLUMN category VARCHAR(50) DEFAULT 'GENERAL';
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
@@ -88,7 +66,7 @@ const initDB = async () => {
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
             END $$;
 
-            -- INSERCIÓN DE NUEVOS PERMISOS
+            -- INSERCIÓN DE NUEVOS PERMISOS (Necesario para el funcionamiento del Frontend)
             INSERT INTO permisos (idPermiso, nombre, modulo)
             VALUES 
             ('DISEÑAR_ETIQUETAS', 'Diseñar Etiquetas y Reportes', 'Logística'),
