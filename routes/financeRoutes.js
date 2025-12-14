@@ -367,20 +367,38 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
 router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const arqRes = await pool.query(`SELECT * FROM arqueo WHERE idArqueo = $1`, [id]);
+        // FIX: Usar aliases explícitos para asegurar camelCase en la respuesta y evitar undefined en el frontend.
+        // Además, usar TO_CHAR para formatear fechas y evitar errores de "Invalid time value" con new Date(undefined).
+        const query = `
+            SELECT 
+                idArqueo as "idArqueo",
+                idCaja as "idCaja",
+                idUsuario as "idUsuario",
+                TO_CHAR(fechaApertura, 'YYYY-MM-DD HH24:MI:SS') as "fechaApertura",
+                TO_CHAR(fechaCierre, 'YYYY-MM-DD HH24:MI:SS') as "fechaCierre",
+                montoInicial as "montoInicial",
+                montoFinal as "montoFinal",
+                estado,
+                totalVentas as "totalVentas",
+                ganancia
+            FROM arqueo WHERE idArqueo = $1
+        `;
+        const arqRes = await pool.query(query, [id]);
         if(arqRes.rows.length === 0) return res.status(404).json({error: 'No encontrado'});
         
         const arqueo = arqRes.rows[0];
         
-        // Obtener rango de fechas para filtrar movimientos
-        const start = new Date(arqueo.fechaApertura).toISOString().replace('T', ' ').substring(0, 19);
-        let end = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        // Las fechas ya vienen como strings YYYY-MM-DD HH:MM:SS, seguras para comparar en Postgres
+        const start = arqueo.fechaApertura; 
+        
+        // Calcular end (fecha cierre o ahora)
+        let end = getLocalTimestamp();
         if (arqueo.fechaCierre) {
-            end = new Date(arqueo.fechaCierre).toISOString().replace('T', ' ').substring(0, 19);
+            end = arqueo.fechaCierre;
         }
 
-        const ingRes = await pool.query(`SELECT * FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idcaja, start, end]);
-        const egrRes = await pool.query(`SELECT * FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idcaja, start, end]);
+        const ingRes = await pool.query(`SELECT * FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
+        const egrRes = await pool.query(`SELECT * FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
 
         res.json({
             arqueo,
@@ -398,7 +416,7 @@ router.put('/arqueo/:id/reopen', authenticateToken, async (req, res) => {
         // Recalcular por si acaso
         const r = await pool.query(`SELECT idCaja FROM arqueo WHERE idArqueo = $1`, [req.params.id]);
         if(r.rows.length > 0) {
-            await updateArqueoBalance(r.rows[0].idCaja, pool);
+            await updateArqueoBalance(r.rows[0].idcaja, pool); // idcaja lowercase from SELECT * if not aliased, but here we used SELECT idCaja
         }
         
         res.json({ message: 'Caja reabierta' });
@@ -412,7 +430,7 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
         
         const r = await pool.query(`SELECT idCaja FROM arqueo WHERE idArqueo = $1`, [req.params.id]);
         if(r.rows.length > 0) {
-            await updateArqueoBalance(r.rows[0].idCaja, pool);
+            await updateArqueoBalance(r.rows[0].idcaja, pool);
         }
         res.json({ message: 'Monto inicial actualizado' });
     } catch(e) { handleDbError(res, e); }
