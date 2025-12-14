@@ -82,12 +82,17 @@ const AdminCashDashboard: React.FC = () => {
               const details = await CashService.getSessionDetails(box.idArqueo);
               setSessionDetails(details);
               
-              // Load Saldos for the session date
+              // Load Saldos for the session date using SAFE DATE HANDLING
               if (details.arqueo.fechaApertura) {
-                  // Extraer solo la fecha YYYY-MM-DD
-                  const fechaStr = details.arqueo.fechaApertura.split(' ')[0];
-                  const slds = await CashService.getSaldosByDate(fechaStr);
-                  setSaldosSession(slds || []);
+                  // Ensure string format YYYY-MM-DD
+                  const rawDate = details.arqueo.fechaApertura; 
+                  // If standard SQL date format, extract YYYY-MM-DD. 
+                  const fechaStr = rawDate.length >= 10 ? rawDate.substring(0, 10) : '';
+                  
+                  if(fechaStr) {
+                      const slds = await CashService.getSaldosByDate(fechaStr);
+                      setSaldosSession(slds || []);
+                  }
               }
           } else {
               setSessionDetails(null);
@@ -263,16 +268,9 @@ const AdminCashDashboard: React.FC = () => {
       if(!selectedBox?.idArqueo) return;
       try {
           await CashService.updateInitialAmount(selectedBox.idArqueo, Number(newMontoInicial));
-          const updatedDetails = await CashService.getSessionDetails(selectedBox.idArqueo);
-          setSessionDetails(updatedDetails);
-          const updatedBox = {
-              ...selectedBox,
-              montoInicial: Number(updatedDetails.arqueo.montoInicial),
-              montoFinal: Number(updatedDetails.arqueo.montoFinal),
-              ganancia: Number(updatedDetails.arqueo.ganancia)
-          };
-          setSelectedBox(updatedBox);
-          Swal.fire('Actualizado', `Nuevo saldo calculado: L. ${Number(updatedDetails.arqueo.montoFinal).toFixed(2)}`, 'success');
+          // Refresh details correctly
+          if (selectedBox) openManager(selectedBox);
+          Swal.fire('Actualizado', `Monto inicial actualizado`, 'success');
           loadData(); 
       } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
@@ -286,7 +284,7 @@ const AdminCashDashboard: React.FC = () => {
           });
           
           // Refrescar saldos localmente
-          const fechaStr = sessionDetails?.arqueo.fechaApertura.split(' ')[0] || '';
+          const fechaStr = sessionDetails?.arqueo.fechaApertura.substring(0, 10);
           if (fechaStr) {
               const slds = await CashService.getSaldosByDate(fechaStr);
               setSaldosSession(slds || []);
@@ -296,7 +294,6 @@ const AdminCashDashboard: React.FC = () => {
       } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
 
-  // ... (rest of edit functions: startEdit, saveEdit, deleteTransaction, handleReopenBox remain same) ...
   const handleReopenBox = async (idArqueo: string) => {
       const result = await Swal.fire({
           title: '¿Reabrir Caja?',
@@ -344,8 +341,10 @@ const AdminCashDashboard: React.FC = () => {
               });
           }
           setEditingItem({id:'', type: null});
+          // FORCE REFRESH: Reload data using the selected box ID to update UI
           openManager(selectedBox);
           loadData();
+          Swal.fire('Guardado', 'Registro actualizado', 'success');
       } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
 
@@ -356,8 +355,11 @@ const AdminCashDashboard: React.FC = () => {
           try {
               if(type === 'INGRESO') await CashService.deleteIngreso(id);
               else await CashService.deleteEgreso(id);
+              
+              // FORCE REFRESH
               openManager(selectedBox);
               loadData();
+              Swal.fire('Eliminado', 'Transacción eliminada', 'success');
           } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
       }
   };

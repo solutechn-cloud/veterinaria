@@ -13,7 +13,15 @@ router.get('/arqueo/active', authenticateToken, async (req, res) => {
     try {
         const { idCaja } = req.user;
         const result = await pool.query(
-            `SELECT * FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`,
+            `SELECT 
+                idArqueo as "idArqueo",
+                idCaja as "idCaja",
+                idUsuario as "idUsuario",
+                fechaApertura as "fechaApertura",
+                montoInicial as "montoInicial",
+                estado,
+                totalVentas as "totalVentas"
+             FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`,
             [idCaja]
         );
         res.json(result.rows[0] || null);
@@ -27,15 +35,13 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
         const { montoInicial, saldoTigoInicial, saldoClaroInicial, fechaLocal } = req.body;
         const { idCaja, codUsuario } = req.user;
 
-        // Verificar si ya hay una abierta
         const active = await client.query(`SELECT 1 FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, [idCaja]);
         if (active.rows.length > 0) return res.status(400).json({ error: 'Ya existe una caja abierta.' });
 
         await client.query('BEGIN');
 
-        // 1. Crear Arqueo
         const idArqueo = await generateNextId('arqueo', 'idArqueo', 'ARQ', client);
-        // Usar fecha local enviada o generar una
+        // Usar fecha local enviada o generar una timestamp completa
         const fecha = fechaLocal ? `${fechaLocal} ${new Date().toLocaleTimeString('en-US', {hour12:false})}` : getLocalTimestamp();
 
         await client.query(
@@ -44,11 +50,8 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
             [idArqueo, idCaja, codUsuario, fecha, montoInicial]
         );
 
-        // 2. Registrar Saldos Iniciales (Si se enviaron)
-        // Se asume que si vienen en 0 es porque ya existen o no se tienen.
-        // Aquí registramos el registro diario de saldos.
+        // Registrar Saldos Iniciales
         if (saldoTigoInicial !== undefined && saldoClaroInicial !== undefined) {
-             // Verificar si ya existen saldos para hoy (por si se reabre caja el mismo día)
              const today = fechaLocal || new Date().toISOString().split('T')[0];
              const checkSaldos = await client.query(`SELECT 1 FROM saldos WHERE fecha = $1`, [today]);
              
@@ -59,12 +62,7 @@ router.post('/arqueo/open', authenticateToken, async (req, res) => {
                      [idSaldosTigo, saldoTigoInicial, today]
                  );
 
-                 // Pequeño hack para asegurar IDs distintos si se generan muy rápido
-                 const idSaldosClaro = await generateNextId('saldos', 'idsaldos', 'SLD', client); 
-                 // O simplemente concatenar algo, pero generateNextId debería manejarlo si consulta la tabla.
-                 // Como generateNextId consulta la tabla, y el anterior no está commited, podría dar conflicto si no fuese porque es SERIAL o texto calculado.
-                 // Al estar dentro de una transacción, el SELECT del generateNextId NO VE el insert anterior a menos que la logica de ID lo maneje.
-                 // Para seguridad en este bloque específico, modificamos el ID manualmente:
+                 // Hack para ID unico rapido
                  const parts = idSaldosTigo.split('-');
                  const nextNum = parseInt(parts[1]) + 1;
                  const idSaldosClaroSafe = `${parts[0]}-${nextNum.toString().padStart(4,'0')}`;
@@ -92,39 +90,47 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
         const { idArqueo } = req.body;
         const { idCaja } = req.user;
 
-        // 1. Forzar actualización de balances
         await updateArqueoBalance(idCaja, pool);
 
-        // 2. Obtener datos finales
         const arqRes = await pool.query(`SELECT * FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
         if (arqRes.rows.length === 0) return res.status(404).json({ error: 'Arqueo no encontrado' });
         const arqueo = arqRes.rows[0];
 
-        // 3. Obtener saldos finales de recargas (del día de apertura)
-        const fechaStr = new Date(arqueo.fechaApertura).toISOString().split('T')[0];
+        const fechaStr = new Date(arqueo.fechaapertura).toISOString().split('T')[0]; // Postgres returns lowercase column names by default on SELECT *
         const saldosRes = await pool.query(`SELECT red, saldoFinal FROM saldos WHERE fecha = $1`, [fechaStr]);
         
         let saldoTigo = 0, saldoClaro = 0;
         saldosRes.rows.forEach(s => {
-            if (s.red === 'TIGO') saldoTigo = Number(s.saldoFinal);
-            if (s.red === 'CLARO') saldoClaro = Number(s.saldoFinal);
+            if (s.red === 'TIGO') saldoTigo = Number(s.saldofinal); // lowercase from driver
+            if (s.red === 'CLARO') saldoClaro = Number(s.saldofinal);
         });
 
-        // 4. Cerrar
         const fechaCierre = getLocalTimestamp();
         await pool.query(
-            `UPDATE arqueo SET estado = 'Cerrada', fechaCierre = $1 WHERE idArqueo = $2`,
-            [fechaCierre, idArqueo]
+            `UPDATE arqueo SET estado = 'Cerrada', fechaCierre = $1, saldoTigoFinal = $2, saldoClaroFinal = $3 WHERE idArqueo = $4`,
+            [fechaCierre, saldoTigo, saldoClaro, idArqueo]
         );
+
+        // Volver a leer para retornar datos actualizados
+        const finalRes = await pool.query(`SELECT * FROM arqueo WHERE idArqueo = $1`, [idArqueo]);
+        
+        // Mapear a camelCase para el frontend
+        const r = finalRes.rows[0];
+        const resumen = {
+            idArqueo: r.idarqueo,
+            montoInicial: r.montoinicial,
+            montoFinal: r.montofinal,
+            totalVentas: r.totalventas,
+            TotalGastos: r.totalgastos,
+            ganancia: r.ganancia,
+            fechaCierre: r.fechacierre,
+            saldoTigoFinal: r.saldotigofinal,
+            saldoClaroFinal: r.saldoclarofinal
+        };
 
         res.json({
             message: 'Caja cerrada correctamente',
-            resumen: {
-                ...arqueo,
-                fechaCierre,
-                saldoTigoFinal: saldoTigo,
-                saldoClaroFinal: saldoClaro
-            }
+            resumen
         });
 
     } catch (e) { handleDbError(res, e); }
@@ -137,7 +143,8 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
 router.get('/ingresos', authenticateToken, async (req, res) => {
     try {
         const { idCaja, fecha } = req.query;
-        let query = `SELECT * FROM ingresos WHERE idCaja = $1`;
+        // Usar alias explícitos para evitar problemas de mayúsculas/minúsculas
+        let query = `SELECT idIngreso as "idIngreso", idCaja as "idCaja", descripcion, monto, costo, fechaCreacion as "fechaCreacion", estado FROM ingresos WHERE idCaja = $1`;
         const params = [idCaja];
         
         if (fecha) {
@@ -192,7 +199,7 @@ router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
 router.get('/egresos', authenticateToken, async (req, res) => {
     try {
         const { idCaja, fecha } = req.query;
-        let query = `SELECT * FROM egresos WHERE idCaja = $1`;
+        let query = `SELECT idegresos as "idegresos", idCaja as "idCaja", descripcion, monto, fechaCreacion as "fechaCreacion", estado FROM egresos WHERE idCaja = $1`;
         const params = [idCaja];
         if (fecha) {
             query += ` AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2`;
@@ -250,7 +257,7 @@ router.get('/saldos/today', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query;
         const dateStr = fecha || new Date().toISOString().split('T')[0];
-        const result = await pool.query(`SELECT * FROM saldos WHERE fecha = $1`, [dateStr]);
+        const result = await pool.query(`SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoFinal as "saldoFinal" FROM saldos WHERE fecha = $1`, [dateStr]);
         res.json(result.rows);
     } catch(e) { handleDbError(res, e); }
 });
@@ -268,7 +275,6 @@ router.get('/saldos/status', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// Comprar Saldo (Registra Egreso y Aumenta Saldo)
 router.post('/saldos/buy', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -278,14 +284,12 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
 
-        // 1. Registrar Egreso
         const idEgreso = await generateNextId('egresos', 'idegresos', 'EGRE', client);
         await client.query(
             `INSERT INTO egresos (idegresos, idCaja, descripcion, monto, fechaCreacion, estado) VALUES ($1, $2, $3, $4, NOW(), 'Compra Saldo')`,
             [idEgreso, idCaja, `Compra Saldo ${red}`, montoPagado]
         );
 
-        // 2. Actualizar Tabla Saldos
         await client.query(
             `UPDATE saldos 
              SET saldoComprado = saldoComprado + $1, saldoFinal = saldoFinal + $1 
@@ -302,7 +306,6 @@ router.post('/saldos/buy', authenticateToken, async (req, res) => {
     } finally { client.release(); }
 });
 
-// Vender Recarga (Registra Ingreso y Disminuye Saldo)
 router.post('/recargas', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -312,14 +315,12 @@ router.post('/recargas', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
 
-        // 1. Registrar Ingreso (Venta)
         const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
         await client.query(
             `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) VALUES ($1, $2, $3, $4, $5, NOW(), 'Recarga')`,
             [idIngreso, idCaja, `${tipo} ${red} - ${descripcion}`, precioCobrado, precioPagado]
         );
 
-        // 2. Descontar Saldo
         await client.query(
             `UPDATE saldos SET saldoFinal = saldoFinal - $1 WHERE red = $2 AND fecha = $3`,
             [precioPagado, red, today]
@@ -367,8 +368,7 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
 router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        // FIX: Usar aliases explícitos para asegurar camelCase en la respuesta y evitar undefined en el frontend.
-        // Además, usar TO_CHAR para formatear fechas y evitar errores de "Invalid time value" con new Date(undefined).
+        // Aliases explícitos
         const query = `
             SELECT 
                 idArqueo as "idArqueo",
@@ -387,18 +387,15 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
         if(arqRes.rows.length === 0) return res.status(404).json({error: 'No encontrado'});
         
         const arqueo = arqRes.rows[0];
-        
-        // Las fechas ya vienen como strings YYYY-MM-DD HH:MM:SS, seguras para comparar en Postgres
         const start = arqueo.fechaApertura; 
         
-        // Calcular end (fecha cierre o ahora)
         let end = getLocalTimestamp();
         if (arqueo.fechaCierre) {
             end = arqueo.fechaCierre;
         }
 
-        const ingRes = await pool.query(`SELECT * FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
-        const egrRes = await pool.query(`SELECT * FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
+        const ingRes = await pool.query(`SELECT idIngreso as "idIngreso", descripcion, monto, costo, fechaCreacion as "fechaCreacion" FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
+        const egrRes = await pool.query(`SELECT idegresos as "idegresos", descripcion, monto, fechaCreacion as "fechaCreacion" FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion DESC`, [arqueo.idCaja, start, end]);
 
         res.json({
             arqueo,
@@ -410,13 +407,12 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
 
 router.put('/arqueo/:id/reopen', authenticateToken, async (req, res) => {
     try {
-        // Reabrir caja (Admin)
         await pool.query(`UPDATE arqueo SET estado = 'Activo', fechaCierre = NULL WHERE idArqueo = $1`, [req.params.id]);
         
-        // Recalcular por si acaso
+        // Obtener ID de caja para recalcular
         const r = await pool.query(`SELECT idCaja FROM arqueo WHERE idArqueo = $1`, [req.params.id]);
         if(r.rows.length > 0) {
-            await updateArqueoBalance(r.rows[0].idcaja, pool); // idcaja lowercase from SELECT * if not aliased, but here we used SELECT idCaja
+            await updateArqueoBalance(r.rows[0].idcaja, pool); // La librería devuelve minusculas si no se alisa, pero updateArqueoBalance maneja el string
         }
         
         res.json({ message: 'Caja reabierta' });
@@ -437,21 +433,17 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
 });
 
 // --- NUEVOS ENDPOINTS ADMIN SALDOS ---
-
-// Obtener saldos por fecha (para admin dashboard)
 router.get('/admin/saldos', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query;
         if (!fecha) return res.status(400).json({ error: 'Fecha requerida' });
         
-        // Usamos TO_CHAR para asegurar coincidencia de fecha local
         const query = `SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha FROM saldos WHERE fecha = $1`;
         const result = await pool.query(query, [fecha]);
         res.json(result.rows);
     } catch (err) { handleDbError(res, err); }
 });
 
-// Actualizar saldos (para admin dashboard)
 router.put('/admin/saldos/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
@@ -461,7 +453,6 @@ router.put('/admin/saldos/:id', authenticateToken, async (req, res) => {
             `UPDATE saldos SET saldoInicio = $1, saldoFinal = $2 WHERE idsaldos = $3`,
             [saldoInicio, saldoFinal, id]
         );
-        
         res.json({ message: 'Saldos actualizados correctamente' });
     } catch (err) { handleDbError(res, err); }
 });
