@@ -1,4 +1,5 @@
 
+
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
 export interface Usuario {
@@ -182,6 +183,7 @@ export interface Arqueo {
   idCaja: string;
   idUsuario: string;
   fechaApertura: string;
+  fechaCierre?: string;
   montoInicial: number;
   montoFinal?: number;
   estado: 'Activo' | 'Cerrada';
