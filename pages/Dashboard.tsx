@@ -13,9 +13,8 @@ import {
   ReportsService, 
   SalesService
 } from '../services/api';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-// Colores para el Pie Chart (Productos Top)
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 const StatCard: React.FC<{
@@ -40,11 +39,10 @@ const StatCard: React.FC<{
 );
 
 const Dashboard: React.FC = () => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Data States
   const [kpiData, setKpiData] = useState({
     phonesCount: 0,
     accessoriesCount: 0,
@@ -62,11 +60,10 @@ const Dashboard: React.FC = () => {
   const getDates = () => {
     const today = new Date();
     const lastWeek = new Date();
-    lastWeek.setDate(today.getDate() - 6); // Last 7 days
+    lastWeek.setDate(today.getDate() - 6);
 
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
-    // Helper to format YYYY-MM-DD
     const fmt = (d: Date) => d.toISOString().split('T')[0];
     
     return {
@@ -82,7 +79,6 @@ const Dashboard: React.FC = () => {
     try {
       const dates = getDates();
 
-      // 1. Fetch KPIs Data in Parallel
       const [phones, stock, clients, providers] = await Promise.all([
         InventoryService.getTelefonos(),
         InventoryService.getStockAccesorios(),
@@ -90,7 +86,6 @@ const Dashboard: React.FC = () => {
         InventoryService.getProveedores()
       ]);
 
-      // Calculate Counts
       const phonesCount = phones.filter(p => p.estado === 'Disponible').length;
       const accessoriesCount = stock.reduce((acc, item) => acc + Number(item.cantidad), 0);
       
@@ -101,28 +96,24 @@ const Dashboard: React.FC = () => {
         providersCount: providers.length
       });
 
-      // 2. Fetch Chart Data (Sales Last 7 Days)
       const dailyData = await ReportsService.getDailySales(dates.sevenDaysAgo, dates.today);
       
-      // Process Daily Data to ensure all 7 days are represented
       const processedChartData = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD
-        const dayName = d.toLocaleDateString('es-ES', { weekday: 'long' }); // Lunes, Martes...
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = d.toLocaleDateString('es-ES', { weekday: 'long' });
         
-        // Find existing data or default to 0
         const found = dailyData.find((item: any) => item.fecha && item.fecha.startsWith(dateStr));
         processedChartData.push({
-          name: dayName.charAt(0).toUpperCase() + dayName.slice(1), // Capitalize
+          name: dayName.charAt(0).toUpperCase() + dayName.slice(1),
           fullDate: dateStr,
           total: found ? Number(found.total_dia) : 0
         });
       }
       setSalesChartData(processedChartData);
 
-      // 3. Fetch Top Products (This Month)
       const topProds = await ReportsService.getTopProducts(dates.firstDayMonth, dates.today);
       const pieData = topProds.slice(0, 5).map(item => ({
         name: item.producto || 'Producto General',
@@ -130,9 +121,8 @@ const Dashboard: React.FC = () => {
       }));
       setTopProductsData(pieData);
 
-      // 4. Fetch Recent Activity
       const recent = await SalesService.getVentasDiarias(); 
-      setRecentSales(recent.slice(0, 5)); // Take top 5
+      setRecentSales(recent.slice(0, 5));
 
     } catch (err: any) {
       console.error("Error loading dashboard data:", err);
@@ -153,7 +143,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-10">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Panel de Control</h2>
@@ -172,7 +161,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Teléfonos Disp."
@@ -214,7 +202,6 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Sales Chart */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -268,7 +255,6 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Top Products Pie Chart */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
           <h3 className="font-bold text-slate-800 text-lg mb-2">Productos Más Vendidos</h3>
           <p className="text-sm text-slate-500 mb-6">Top 5 por cantidad (Mes actual)</p>
@@ -303,7 +289,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Recent Activity List */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center">
              <div>
@@ -312,7 +297,7 @@ const Dashboard: React.FC = () => {
                 </h3>
                 <p className="text-sm text-slate-500">Últimas transacciones registradas</p>
              </div>
-             <button onClick={() => history.push('/cash')} className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline">
+             <button onClick={() => navigate('/cash')} className="text-indigo-600 text-sm font-bold flex items-center gap-1 hover:underline">
                 Ver todo <ArrowRight size={16}/>
              </button>
           </div>

@@ -7,13 +7,13 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 type TabType = 'INGRESOS' | 'EGRESOS' | 'VENTAS' | 'RECARGAS';
 
-// Helper robusto para números a letras (Copia exacta de POS.tsx)
+// Helper robusto para números a letras (Soporta miles y millones)
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
     const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
@@ -88,7 +88,7 @@ const CashRegister: React.FC = () => {
   const [openForm, setOpenForm] = useState({ monto: '', tigo: '', claro: '' });
   
   const { user, hasPermission } = useAuth();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   // Modals Forms
   const [showIngresoModal, setShowIngresoModal] = useState(false);
@@ -495,7 +495,7 @@ const CashRegister: React.FC = () => {
          } catch(err:any) { Swal.fire('Error', err.message, 'error'); }
      } else {
          if (ingresoForm.irAPos) {
-             history.push('/pos', { customItem: { descripcion: ingresoForm.descripcion, precio: Number(ingresoForm.monto) } });
+             navigate('/pos', { state: { customItem: { descripcion: ingresoForm.descripcion, precio: Number(ingresoForm.monto) } } });
              return;
          }
          try {
@@ -552,7 +552,7 @@ const CashRegister: React.FC = () => {
   };
   
   const handleEditVenta = (venta: Venta) => {
-      history.push('/pos', { editSaleId: venta.codVenta, saleData: venta });
+      navigate('/pos', { state: { editSaleId: venta.codVenta, saleData: venta } });
   };
 
   const handleBuySaldo = async () => {

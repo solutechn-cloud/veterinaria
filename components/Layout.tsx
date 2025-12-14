@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Link, useLocation, useHistory } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings
@@ -14,7 +14,7 @@ interface NavItem {
   name: string;
   path?: string;
   icon: React.ReactNode;
-  permission?: string; // ID del permiso en BD (ej: 'VER_POS')
+  permission?: string;
   subItems?: NavItem[];
 }
 
@@ -23,11 +23,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Comercial', 'Logística', 'Finanzas', 'Administración']); 
   const { user, logout, hasPermission } = useAuth();
   const location = useLocation();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
-    history.push('/login');
+    navigate('/login');
   };
 
   const toggleMenu = (name: string) => {
@@ -36,18 +36,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     );
   };
 
-  // Estructura basada en los permisos insertados en la Base de Datos
   const navigationStructure: NavItem[] = [
     { 
       name: 'Dashboard', 
       path: '/', 
       icon: <LayoutDashboard size={20} />
-      // Sin permiso = visible para todos los logueados
     },
     {
       name: 'Comercial',
       icon: <ShoppingCart size={20} />,
-      permission: 'VER_POS', // Permiso padre o genérico
+      permission: 'VER_POS',
       subItems: [
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
         { name: 'Clientes', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
@@ -57,7 +55,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     {
       name: 'Logística',
       icon: <Package size={20} />,
-      permission: 'VER_INVENTARIO', // Se muestra si tiene acceso al menos al inventario
+      permission: 'VER_INVENTARIO',
       subItems: [
         { name: 'Inventario General', path: '/inventory', icon: <Package size={18} />, permission: 'VER_INVENTARIO' },
         { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, permission: 'VER_PROVEEDORES' },
@@ -67,7 +65,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     {
       name: 'Finanzas',
       icon: <DollarSign size={20} />,
-      permission: 'VER_CAJA', // Visible si puede ver caja o costos (validación abajo)
+      permission: 'VER_CAJA',
       subItems: [
         { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={18} />, permission: 'VER_CAJA' },
         { name: 'Costos y Gastos', path: '/costs', icon: <Calculator size={18} />, permission: 'VER_COSTOS' },
@@ -97,13 +95,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const renderNavItems = (items: NavItem[], isMobile = false) => {
     return items.map((item) => {
-      
-      // Lógica para submenús
       if (item.subItems) {
-        // Filtrar subitems visibles según permisos
         const visibleSubItems = item.subItems.filter(sub => hasPermission(sub.permission));
-        
-        // Si no hay subitems visibles, no renderizar el padre
         if (visibleSubItems.length === 0) return null;
 
         const isExpanded = expandedMenus.includes(item.name);
@@ -151,7 +144,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         );
       }
 
-      // Lógica para ítems individuales
       if (item.permission && !hasPermission(item.permission)) return null;
 
       const isActive = location.pathname === item.path;
@@ -178,7 +170,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
-      {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-[#0f172a] text-white shadow-2xl z-30 transition-all duration-300 shrink-0">
         <div className="h-20 flex items-center gap-3 px-6 border-b border-slate-800/50 bg-gradient-to-r from-slate-900 to-slate-800">
           <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
@@ -216,9 +207,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#f8fafc]">
-        {/* Header Responsivo */}
         <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/60 h-16 md:h-20 flex items-center justify-between px-4 md:px-8 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button 
@@ -249,7 +238,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div 

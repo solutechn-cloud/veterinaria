@@ -6,7 +6,7 @@ import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, 
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
-import { useHistory, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import 'jspdf-autotable';
 
 // Helper robusto para números a letras (Soporta miles y millones)
@@ -88,7 +88,7 @@ const POS: React.FC = () => {
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const { user } = useAuth();
-  const history = useHistory();
+  const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
@@ -111,7 +111,7 @@ const POS: React.FC = () => {
               tipoProducto: 'SERVICIO'
           };
           setCart(prev => [...prev, newItem]);
-          history.replace(location.pathname, {});
+          navigate(location.pathname, { replace: true, state: {} });
       }
 
       // 2. Modo Edición (Edit Sale)
@@ -131,7 +131,7 @@ const POS: React.FC = () => {
            icon: 'warning',
            confirmButtonText: 'Ir a Caja'
          });
-         history.push('/cash');
+         navigate('/cash');
        }
      } catch (error) {
        console.error("Error checking register", error);
@@ -424,7 +424,7 @@ const POS: React.FC = () => {
         setSelectedClientId('');
         setIsEditing(false);
         setEditingSaleId(null);
-        history.replace(location.pathname, {});
+        navigate(location.pathname, { replace: true, state: {} });
 
     } catch (err: any) {
         console.error(err);
@@ -599,7 +599,7 @@ const POS: React.FC = () => {
                 </button>
                 
                 {isEditing && (
-                    <button onClick={() => { setIsEditing(false); setCart([]); setEditingSaleId(null); setSelectedClientId(''); history.replace(location.pathname, {}); }} className="w-full mt-2 py-2 text-slate-500 text-xs font-bold hover:bg-slate-200 rounded-lg">
+                    <button onClick={() => { setIsEditing(false); setCart([]); setEditingSaleId(null); setSelectedClientId(''); navigate(location.pathname, { replace: true, state: {} }); }} className="w-full mt-2 py-2 text-slate-500 text-xs font-bold hover:bg-slate-200 rounded-lg">
                         CANCELAR EDICIÓN
                     </button>
                 )}

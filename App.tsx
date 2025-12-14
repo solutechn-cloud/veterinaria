@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter, Switch, Route, Redirect } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -23,78 +23,104 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <HashRouter>
-        <Switch>
-          <Route path="/login" component={Login} />
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
           {/* Rutas Protegidas Envueltas en Layout */}
-          <Route path="/">
-            <ProtectedRoute>
-              <Layout>
-                <Switch>
-                  <Route exact path="/" component={Dashboard} />
-                  
-                  {/* Rutas Operativas */}
-                  <Route path="/pos">
-                    <ProtectedRoute requiredPermission="VER_POS"><POS /></ProtectedRoute>
-                  </Route>
-                  <Route path="/clients">
-                    <ProtectedRoute requiredPermission="VER_CLIENTES"><Clients /></ProtectedRoute>
-                  </Route>
-                  <Route path="/packages">
-                    <ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO"><Packages /></ProtectedRoute>
-                  </Route>
-                  
-                  {/* Rutas Logísticas */}
-                  <Route path="/providers">
-                    <ProtectedRoute requiredPermission="VER_PROVEEDORES"><Providers /></ProtectedRoute>
-                  </Route>
-                  <Route path="/inventory">
-                    <ProtectedRoute requiredPermission="VER_INVENTARIO"><Inventory /></ProtectedRoute>
-                  </Route>
-                  <Route path="/label-designer">
-                    <ProtectedRoute requiredPermission="DISEÑAR_ETIQUETAS"><LabelDesigner /></ProtectedRoute>
-                  </Route>
-                  
-                  {/* Rutas Financieras */}
-                  <Route path="/cash">
-                    <ProtectedRoute requiredPermission="VER_CAJA"><CashRegister /></ProtectedRoute>
-                  </Route>
-                  <Route path="/costs">
-                    <ProtectedRoute requiredPermission="VER_COSTOS"><Costs /></ProtectedRoute>
-                  </Route>
-                  <Route path="/reports">
-                    <ProtectedRoute requiredPermission="VER_REPORTES"><Reports /></ProtectedRoute>
-                  </Route>
-                  
-                  {/* Rutas Administrativas */}
-                  <Route path="/admin/cash-dashboard">
-                    <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS"><AdminCashDashboard /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/users">
-                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="USERS" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/employees">
-                    <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS"><AdminUsers initialView="EMPLOYEES" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/roles">
-                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="ROLES" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/boxes">
-                    <ProtectedRoute requiredPermission="GESTIONAR_ROLES"><AdminUsers initialView="CAJAS" /></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/config">
-                    <ProtectedRoute requiredPermission="CONFIGURAR_EMPRESA"><CompanyConfig /></ProtectedRoute>
-                  </Route>
-
-                  {/* Redirección Fallback */}
-                  <Route path="*">
-                    <Redirect to="/" />
-                  </Route>
-                </Switch>
-              </Layout>
+          <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
+          
+          <Route path="/pos" element={
+            <ProtectedRoute requiredPermission="VER_POS">
+              <Layout><POS /></Layout>
             </ProtectedRoute>
-          </Route>
-        </Switch>
+          } />
+          
+          <Route path="/clients" element={
+            <ProtectedRoute requiredPermission="VER_CLIENTES">
+              <Layout><Clients /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/packages" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_INVENTARIO">
+              <Layout><Packages /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/providers" element={
+            <ProtectedRoute requiredPermission="VER_PROVEEDORES">
+              <Layout><Providers /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/inventory" element={
+            <ProtectedRoute requiredPermission="VER_INVENTARIO">
+              <Layout><Inventory /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/label-designer" element={
+            <ProtectedRoute requiredPermission="DISEÑAR_ETIQUETAS">
+              <Layout><LabelDesigner /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/cash" element={
+            <ProtectedRoute requiredPermission="VER_CAJA">
+              <Layout><CashRegister /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/costs" element={
+            <ProtectedRoute requiredPermission="VER_COSTOS">
+              <Layout><Costs /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reports" element={
+            <ProtectedRoute requiredPermission="VER_REPORTES">
+              <Layout><Reports /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/cash-dashboard" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS">
+              <Layout><AdminCashDashboard /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/users" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS">
+              <Layout><AdminUsers initialView="USERS" /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/employees" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_USUARIOS">
+              <Layout><AdminUsers initialView="EMPLOYEES" /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/roles" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_ROLES">
+              <Layout><AdminUsers initialView="ROLES" /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/boxes" element={
+            <ProtectedRoute requiredPermission="GESTIONAR_ROLES">
+              <Layout><AdminUsers initialView="CAJAS" /></Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/config" element={
+            <ProtectedRoute requiredPermission="CONFIGURAR_EMPRESA">
+              <Layout><CompanyConfig /></Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </HashRouter>
     </AuthProvider>
   );
