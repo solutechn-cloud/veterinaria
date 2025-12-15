@@ -15,7 +15,8 @@ const inventoryRoutes = require('./routes/inventoryRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const financeRoutes = require('./routes/financeRoutes');
 const reportsRoutes = require('./routes/reportsRoutes');
-const labelRoutes = require('./routes/labelRoutes'); 
+const labelRoutes = require('./routes/labelRoutes');
+const accountingRoutes = require('./routes/accountingRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -23,7 +24,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 
-// --- INICIALIZACIÓN BD (Solo tablas auxiliares menores y permisos) ---
+// --- INICIALIZACIÓN BD ---
 const initDB = async () => {
     try {
         await pool.query(`
@@ -49,8 +50,27 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
+
+            -- TABLAS CONTABILIDAD --
+            CREATE TABLE IF NOT EXISTS socios (
+                id_socio SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) NOT NULL,
+                porcentaje_participacion NUMERIC(5,2) DEFAULT 0,
+                estado VARCHAR(20) DEFAULT 'Activo',
+                fecha_ingreso DATE DEFAULT CURRENT_DATE
+            );
+
+            CREATE TABLE IF NOT EXISTS gastos_contables (
+                id_gasto SERIAL PRIMARY KEY,
+                descripcion VARCHAR(255) NOT NULL,
+                monto NUMERIC(10,2) NOT NULL,
+                fecha DATE DEFAULT CURRENT_DATE,
+                categoria VARCHAR(50), 
+                id_socio_asignado INT REFERENCES socios(id_socio), 
+                origen_fondo VARCHAR(50) DEFAULT 'Caja'
+            );
             
-            -- Migraciones seguras para columnas de etiquetas
+            -- Migraciones seguras
             DO $$ 
             BEGIN 
                 BEGIN
@@ -66,13 +86,14 @@ const initDB = async () => {
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
             END $$;
 
-            -- INSERCIÓN DE NUEVOS PERMISOS (Necesario para el funcionamiento del Frontend)
+            -- INSERCIÓN DE NUEVOS PERMISOS
             INSERT INTO permisos (idPermiso, nombre, modulo)
             VALUES 
             ('DISEÑAR_ETIQUETAS', 'Diseñar Etiquetas y Reportes', 'Logística'),
             ('GESTIONAR_PANEL_CAJAS', 'Gestionar y Auditar Cajas', 'Finanzas'),
             ('ANULAR_VENTA', 'Anular Facturas', 'Ventas'),
-            ('CONFIGURAR_EMPRESA', 'Configurar Empresa/SAR', 'Administración')
+            ('CONFIGURAR_EMPRESA', 'Configurar Empresa/SAR', 'Administración'),
+            ('VER_CONTABILIDAD', 'Acceso a Módulo Contabilidad', 'Finanzas')
             ON CONFLICT (idPermiso) DO NOTHING;
         `);
     } catch (err) { console.error("Error init DB:", err); }
@@ -134,6 +155,7 @@ app.use('/api', salesRoutes);
 app.use('/api', financeRoutes);
 app.use('/api', reportsRoutes);
 app.use('/api', labelRoutes); 
+app.use('/api', accountingRoutes);
 
 // --- STATIC FILES ---
 app.use(express.static(path.join(__dirname, 'build')));

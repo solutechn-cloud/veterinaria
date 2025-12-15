@@ -1,5 +1,4 @@
 
-
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
 export interface Usuario {
@@ -252,6 +251,42 @@ export interface EmpresaConfig {
   fechaLimite: string;
   isv: number;
   mensajeFinal: string;
+}
+
+// --- CONTABILIDAD Y SOCIOS ---
+export interface Socio {
+  idSocio: number;
+  nombre: string;
+  porcentajeParticipacion: number;
+  estado: EstadoGeneral;
+  fechaIngreso?: string;
+}
+
+export interface GastoContable {
+  idGasto: number;
+  descripcion: string;
+  monto: number;
+  fecha: string;
+  categoria: 'Operativo' | 'Administrativo' | 'Ventas' | 'Personal';
+  idSocioAsignado?: number | null; // Null si es gasto de empresa, ID si es gasto personal de socio
+  nombreSocio?: string;
+  origenFondo: 'Caja' | 'Banco' | 'Tarjeta';
+}
+
+export interface ReporteFinanciero {
+  periodo: string;
+  ingresosVentas: number;
+  costoVentas: number;
+  utilidadBruta: number;
+  gastosOperativos: number;
+  utilidadNeta: number;
+  distribucion: {
+    socio: string;
+    porcentaje: number;
+    utilidadCorrespondiente: number;
+    gastosPersonalesDeducidos: number;
+    pagoFinal: number;
+  }[];
 }
 
 // --- LABEL DESIGNER TYPES ---

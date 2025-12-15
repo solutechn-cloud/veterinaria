@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
-  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings
+  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings, PieChart
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -69,6 +69,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       subItems: [
         { name: 'Caja y Movimientos', path: '/cash', icon: <DollarSign size={18} />, permission: 'VER_CAJA' },
         { name: 'Costos y Gastos', path: '/costs', icon: <Calculator size={18} />, permission: 'VER_COSTOS' },
+        { name: 'Contabilidad', path: '/accounting', icon: <PieChart size={18} />, permission: 'VER_CONTABILIDAD' },
       ]
     },
     {

@@ -1,9 +1,10 @@
+
 import {
   Usuario, Empleado, Rol, Caja, Permiso,
   Cliente, Proveedor, Categoria, Ubicacion, Telefono, Accesorio, Inventario, ProductoUnified,
   DetalleVenta, Venta, VentaPayload,
   Arqueo, Ingreso, Egreso, Saldo, Paquete, Costo, EmpresaConfig,
-  LabelTemplate
+  LabelTemplate, Socio, GastoContable, ReporteFinanciero
 } from '../types';
 
 const API_URL = '/api';
@@ -169,4 +170,18 @@ export const LabelService = {
 export const ConfigService = {
   get: () => request<EmpresaConfig>('/config'),
   update: (data: EmpresaConfig) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+export const AccountingService = {
+  getSocios: () => request<Socio[]>('/accounting/socios'),
+  createSocio: (data: Partial<Socio>) => request('/accounting/socios', { method: 'POST', body: JSON.stringify(data) }),
+  updateSocio: (id: number, data: Partial<Socio>) => request(`/accounting/socios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSocio: (id: number) => request(`/accounting/socios/${id}`, { method: 'DELETE' }),
+
+  getGastosContables: (startDate: string, endDate: string) => request<GastoContable[]>(`/accounting/gastos?start=${startDate}&end=${endDate}`),
+  createGastoContable: (data: Partial<GastoContable>) => request('/accounting/gastos', { method: 'POST', body: JSON.stringify(data) }),
+  updateGastoContable: (id: number, data: Partial<GastoContable>) => request(`/accounting/gastos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGastoContable: (id: number) => request(`/accounting/gastos/${id}`, { method: 'DELETE' }),
+
+  getFinancialReport: (month: number, year: number) => request<ReporteFinanciero>(`/accounting/report?month=${month}&year=${year}`),
 };

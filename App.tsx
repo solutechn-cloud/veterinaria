@@ -18,6 +18,7 @@ import AdminCashDashboard from './pages/AdminCashDashboard';
 import Reports from './pages/Reports';
 import LabelDesigner from './pages/LabelDesigner';
 import CompanyConfig from './pages/CompanyConfig';
+import Accounting from './pages/Accounting';
 
 const App: React.FC = () => {
   return (
@@ -80,6 +81,12 @@ const App: React.FC = () => {
           <Route path="/reports" element={
             <ProtectedRoute requiredPermission="VER_REPORTES">
               <Layout><Reports /></Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/accounting" element={
+            <ProtectedRoute requiredPermission="VER_CONTABILIDAD">
+              <Layout><Accounting /></Layout>
             </ProtectedRoute>
           } />
           
