@@ -413,10 +413,22 @@ const POS: React.FC = () => {
       doc.text("SON: " + numeroALetras(total), 14, finalY);
 
       // Footer
+      const pageHeightFinal = doc.internal.pageSize.height;
+      let footerY = pageHeightFinal - 40;
+      
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(grayColor);
+      doc.setFontSize(8);
+      
+      doc.text(`Rango Autorizado: ${config.rangoInicial || '000-001-01-00000001'} al ${config.rangoFinal || '000-001-01-00002000'}`, 14, footerY);
+      doc.text(`Fecha Límite de Emisión: ${config.fechaLimite ? new Date(config.fechaLimite).toLocaleDateString() : 'N/A'}`, 14, footerY + 4);
+      doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 8);
+
       doc.setFillColor(lightGray);
       doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
       doc.setTextColor(primaryColor);
-      doc.text(config.mensajeFinal || "GRACIAS POR SU COMPRA", pageWidth / 2, pageHeight - 6, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(config.mensajeFinal || "LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
 
       doc.save(`Factura_${codVenta}.pdf`);
     } catch (e:any) {

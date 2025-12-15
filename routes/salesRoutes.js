@@ -65,6 +65,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
 
 router.get('/ventas/:id', authenticateToken, async (req, res) => {
     try {
+        // CORRECCIÓN: Unir con usuarios y empleados para obtener el nombre del vendedor real
         const result = await pool.query(`
             SELECT 
                 v.codVenta as "codVenta", 
@@ -76,11 +77,15 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
                 COALESCE(v.isv, 0) as "isv",
                 COALESCE(v.descuento, 0) as "descuento",
                 c.nombre || ' ' || c.apellido as "nombreCliente",
-                c.direccion as "direccionCliente"
+                c.direccion as "direccionCliente",
+                COALESCE(e.nombre || ' ' || e.apellido, u.usuario) as "nombreVendedor"
             FROM ventas v
             LEFT JOIN clientes c ON v.identidadCliente = c.identidad
+            LEFT JOIN usuarios u ON v.codVendedor = u.codUsuario
+            LEFT JOIN empleado e ON u.identidad = e.identidad
             WHERE v.codVenta = $1
         `, [req.params.id]);
+        
         if (result.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
         res.json(result.rows[0]);
     } catch(e) { handleDbError(res, e); }

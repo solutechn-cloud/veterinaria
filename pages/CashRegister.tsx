@@ -359,7 +359,6 @@ const CashRegister: React.FC = () => {
           doc.setFontSize(10);
           doc.setFont("helvetica", "normal");
           doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 28, { align: "right" });
-          doc.text("(REIMPRESIÓN)", pageWidth - 15, 34, { align: "right" });
 
           const topInfoY = 60;
           doc.setFillColor(lightGray);
@@ -369,7 +368,7 @@ const CashRegister: React.FC = () => {
           doc.setTextColor(primaryColor);
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
-          doc.text("CLIENTE:", 18, topInfoY + 6);
+          doc.text("FACTURAR A:", 18, topInfoY + 6);
           
           doc.setTextColor(0, 0, 0);
           doc.setFont("helvetica", "bold");
@@ -377,23 +376,39 @@ const CashRegister: React.FC = () => {
           doc.setFont("helvetica", "normal");
           doc.setFontSize(9);
           doc.setTextColor(grayColor);
-          doc.text(`ID: ${sale.identidadCliente || "N/A"}`, 18, topInfoY + 17);
-          doc.text(`Dir: ${sale.direccionCliente || "N/A"}`, 18, topInfoY + 22); // NUEVO CAMPO
+          doc.text(`RTN/DNI: ${sale.identidadCliente || "N/A"}`, 18, topInfoY + 17);
+          doc.text(`${sale.direccionCliente || "N/A"}`, 18, topInfoY + 22); // NUEVO CAMPO
 
           const rightColX = 115;
-          doc.text("FECHA:", rightColX, topInfoY + 5);
+          doc.setFont("helvetica", "bold"); doc.setTextColor(grayColor);
+          doc.text("FECHA EMISIÓN:", rightColX, topInfoY + 5);
           doc.setTextColor(0,0,0);
-          doc.text(new Date(sale.fecha).toLocaleDateString(), rightColX + 40, topInfoY + 5);
+          doc.text(new Date(sale.fecha).toLocaleDateString(), rightColX + 45, topInfoY + 5);
           
           doc.setTextColor(grayColor);
-          doc.text("VENCIMIENTO:", rightColX, topInfoY + 10);
+          doc.text("FECHA VENCIMIENTO:", rightColX, topInfoY + 10);
           doc.setTextColor(0,0,0);
-          doc.text(config.fechaLimite ? new Date(config.fechaLimite).toLocaleDateString() : 'N/A', rightColX + 40, topInfoY + 10);
+          doc.text(config.fechaLimite ? new Date(config.fechaLimite).toLocaleDateString() : 'N/A', rightColX + 45, topInfoY + 10);
 
           doc.setTextColor(grayColor);
-          doc.text("CAI:", rightColX, topInfoY + 15);
+          doc.text("R.T.N. EMISOR:", rightColX, topInfoY + 15);
           doc.setTextColor(0,0,0);
-          doc.text(config.cai || '', rightColX + 40, topInfoY + 15);
+          doc.text(config.rtn || 'N/A', rightColX + 45, topInfoY + 15);
+
+          doc.setTextColor(grayColor);
+          doc.text("CAI:", rightColX, topInfoY + 20);
+          doc.setTextColor(0,0,0);
+          doc.text(config.cai || 'N/A', rightColX + 45, topInfoY + 20);
+
+          doc.setTextColor(grayColor);
+          doc.text("ORDEN DE COMPRA:", rightColX, topInfoY + 25);
+          doc.setTextColor(0,0,0);
+          doc.text("N/A", rightColX + 45, topInfoY + 25);
+
+          doc.setTextColor(grayColor);
+          doc.text("VENDEDOR:", rightColX, topInfoY + 30);
+          doc.setTextColor(0,0,0);
+          doc.text(sale.nombreVendedor || "Cajero", rightColX + 45, topInfoY + 30);
 
           // Tabla con Columnas Centradas
           // @ts-ignore
@@ -432,17 +447,24 @@ const CashRegister: React.FC = () => {
           doc.text("Subtotal:", totalsX, finalY);
           doc.text(`L. ${subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
           finalY += 6;
-          doc.text("ISV:", totalsX, finalY);
-          doc.text(`L. ${isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 6;
           if(discount > 0) {
-              doc.text("Descuento:", totalsX, finalY);
+              doc.text("Descuentos:", totalsX, finalY);
               doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
               finalY += 6;
           }
+          doc.text("ISV:", totalsX, finalY);
+          doc.text(`L. ${isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 2;
+          
+          // Linea separadora total
+          doc.setDrawColor(primaryColor);
+          doc.setLineWidth(0.5);
+          doc.line(totalsX, finalY, pageWidth - 14, finalY);
+          finalY += 5;
+
           doc.setFont("helvetica", "bold");
           doc.setTextColor(primaryColor);
-          doc.text("TOTAL:", totalsX, finalY);
+          doc.text("TOTAL A PAGAR:", totalsX, finalY);
           doc.text(`L. ${total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
 
           // Letras (Función Robusta)
@@ -452,10 +474,22 @@ const CashRegister: React.FC = () => {
           doc.text("SON: " + numeroALetras(total), 14, finalY);
 
           // Footer
+          const pageHeightFinal = doc.internal.pageSize.height;
+          let footerY = pageHeightFinal - 40;
+          
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(grayColor);
+          doc.setFontSize(8);
+          
+          doc.text(`Rango Autorizado: ${config.rangoInicial || '000-001-01-00000001'} al ${config.rangoFinal || '000-001-01-00002000'}`, 14, footerY);
+          doc.text(`Fecha Límite de Emisión: ${config.fechaLimite ? new Date(config.fechaLimite).toLocaleDateString() : 'N/A'}`, 14, footerY + 4);
+          doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 8);
+
           doc.setFillColor(lightGray);
           doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
           doc.setTextColor(primaryColor);
-          doc.text(config.mensajeFinal || "GRACIAS POR SU COMPRA", pageWidth / 2, pageHeight - 6, { align: "center" });
+          doc.setFontSize(10);
+          doc.text(config.mensajeFinal || "LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
 
           doc.save(`Factura_${idVenta}_reimpresion.pdf`);
 
