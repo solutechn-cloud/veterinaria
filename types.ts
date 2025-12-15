@@ -267,7 +267,7 @@ export interface GastoContable {
   descripcion: string;
   monto: number;
   fecha: string;
-  categoria: 'Operativo' | 'Administrativo' | 'Ventas' | 'Personal';
+  categoria: 'Operativo' | 'Administrativo' | 'Ventas' | 'Personal' | 'Financiero';
   idSocioAsignado?: number | null; // Null si es gasto de empresa, ID si es gasto personal de socio
   nombreSocio?: string;
   origenFondo: 'Caja' | 'Banco' | 'Tarjeta';
@@ -287,6 +287,51 @@ export interface ReporteFinanciero {
     gastosPersonalesDeducidos: number;
     pagoFinal: number;
   }[];
+}
+
+// --- CONTABILIDAD AVANZADA (COGS & P&L) ---
+
+export interface ComponenteCosto {
+  id: number;
+  nombre: string; // e.g., 'Empaque', 'Transporte'
+  naturaleza: 'Fijo' | 'Porcentual';
+}
+
+export interface CostoProducto {
+  id: number;
+  idProducto: string; // Link to Telefono.codigo or Accesorio.codAccesorio
+  tipoProducto: 'TELEFONO' | 'ACCESORIO';
+  idComponente: number;
+  valor: number;
+  nombreComponente?: string;
+}
+
+export interface PresupuestoMensual {
+  id?: number;
+  mes: number;
+  anio: number;
+  categoria: string; // 'Ventas', 'CostoVentas', 'GastosOperativos'
+  montoBase: number;
+  montoMejor: number;
+  montoPeor: number;
+}
+
+export interface DailyTrackingRow {
+  fecha: string;
+  diaSemana: string;
+  ventaTotal: number;
+  costosDirectos: number; // Calculated COGS
+  gastosOperativos: number;
+  gananciaBruta: number;
+  gananciaNeta: number;
+}
+
+export interface PnLRow {
+  concepto: string;
+  real: number;
+  presupuesto: number;
+  diferencia: number;
+  isTotal?: boolean;
 }
 
 // --- LABEL DESIGNER TYPES ---

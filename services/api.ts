@@ -4,7 +4,8 @@ import {
   Cliente, Proveedor, Categoria, Ubicacion, Telefono, Accesorio, Inventario, ProductoUnified,
   DetalleVenta, Venta, VentaPayload,
   Arqueo, Ingreso, Egreso, Saldo, Paquete, Costo, EmpresaConfig,
-  LabelTemplate, Socio, GastoContable, ReporteFinanciero
+  LabelTemplate, Socio, GastoContable, ReporteFinanciero,
+  ComponenteCosto, CostoProducto, PresupuestoMensual, DailyTrackingRow, PnLRow
 } from '../types';
 
 const API_URL = '/api';
@@ -173,6 +174,7 @@ export const ConfigService = {
 };
 
 export const AccountingService = {
+  // Existing
   getSocios: () => request<Socio[]>('/accounting/socios'),
   createSocio: (data: Partial<Socio>) => request('/accounting/socios', { method: 'POST', body: JSON.stringify(data) }),
   updateSocio: (id: number, data: Partial<Socio>) => request(`/accounting/socios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -184,4 +186,18 @@ export const AccountingService = {
   deleteGastoContable: (id: number) => request(`/accounting/gastos/${id}`, { method: 'DELETE' }),
 
   getFinancialReport: (month: number, year: number) => request<ReporteFinanciero>(`/accounting/report?month=${month}&year=${year}`),
+
+  // --- NEW ADVANCED METHODS ---
+  getCostComponents: () => request<ComponenteCosto[]>('/accounting/cogs/components'),
+  createCostComponent: (nombre: string, naturaleza: string) => request('/accounting/cogs/components', { method: 'POST', body: JSON.stringify({ nombre, naturaleza }) }),
+  
+  getProductDirectCosts: (idProducto: string) => request<CostoProducto[]>(`/accounting/cogs/product/${idProducto}`),
+  addProductDirectCost: (data: Partial<CostoProducto>) => request('/accounting/cogs/product', { method: 'POST', body: JSON.stringify(data) }),
+  deleteProductDirectCost: (id: number) => request(`/accounting/cogs/cost/${id}`, { method: 'DELETE' }),
+
+  getBudgets: (year: number) => request<PresupuestoMensual[]>(`/accounting/budgets?year=${year}`),
+  upsertBudget: (data: Partial<PresupuestoMensual>) => request('/accounting/budgets', { method: 'POST', body: JSON.stringify(data) }),
+
+  getDailyTracking: (startDate: string, endDate: string) => request<DailyTrackingRow[]>(`/accounting/tracking/daily?start=${startDate}&end=${endDate}`),
+  getPnLStatement: (year: number) => request<PnLRow[]>(`/accounting/pnl?year=${year}`),
 };

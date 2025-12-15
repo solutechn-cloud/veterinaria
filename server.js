@@ -51,7 +51,7 @@ const initDB = async () => {
                 updated_at TIMESTAMP DEFAULT NOW()
             );
 
-            -- TABLAS CONTABILIDAD --
+            -- TABLAS CONTABILIDAD BASICA --
             CREATE TABLE IF NOT EXISTS socios (
                 id_socio SERIAL PRIMARY KEY,
                 nombre VARCHAR(100) NOT NULL,
@@ -68,6 +68,33 @@ const initDB = async () => {
                 categoria VARCHAR(50), 
                 id_socio_asignado INT REFERENCES socios(id_socio), 
                 origen_fondo VARCHAR(50) DEFAULT 'Caja'
+            );
+
+            -- TABLAS CONTABILIDAD AVANZADA (COGS & P&L) --
+            CREATE TABLE IF NOT EXISTS cost_components (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) NOT NULL UNIQUE,
+                naturaleza VARCHAR(20) DEFAULT 'Fijo' -- 'Fijo' o 'Porcentual'
+            );
+
+            CREATE TABLE IF NOT EXISTS product_direct_costs (
+                id SERIAL PRIMARY KEY,
+                id_producto VARCHAR(100) NOT NULL, -- Link to codigo (tel) or codAccesorio
+                tipo_producto VARCHAR(20) NOT NULL, -- 'TELEFONO' or 'ACCESORIO'
+                id_componente INT REFERENCES cost_components(id),
+                valor NUMERIC(10,2) NOT NULL,
+                UNIQUE(id_producto, id_componente)
+            );
+
+            CREATE TABLE IF NOT EXISTS financial_budgets (
+                id SERIAL PRIMARY KEY,
+                mes INT NOT NULL,
+                anio INT NOT NULL,
+                categoria VARCHAR(50) NOT NULL, -- 'Ventas', 'CostoVentas', 'GastosOperativos'
+                monto_base NUMERIC(12,2) DEFAULT 0,
+                monto_mejor NUMERIC(12,2) DEFAULT 0,
+                monto_peor NUMERIC(12,2) DEFAULT 0,
+                UNIQUE(mes, anio, categoria)
             );
             
             -- Migraciones seguras
@@ -95,6 +122,10 @@ const initDB = async () => {
             ('CONFIGURAR_EMPRESA', 'Configurar Empresa/SAR', 'Administración'),
             ('VER_CONTABILIDAD', 'Acceso a Módulo Contabilidad', 'Finanzas')
             ON CONFLICT (idPermiso) DO NOTHING;
+
+            -- INSERCION DEFAULT COSTOS
+            INSERT INTO cost_components (nombre) VALUES ('Empaque'), ('Transporte'), ('Comisión Venta'), ('Impuestos Aduana')
+            ON CONFLICT (nombre) DO NOTHING;
         `);
     } catch (err) { console.error("Error init DB:", err); }
 };
