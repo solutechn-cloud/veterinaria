@@ -39,17 +39,14 @@ export const AdminService = {
   updateUser: (id: string, data: any) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: 'DELETE' }),
   getEmpleados: () => request<Empleado[]>('/empleados'),
-  // Add missing Empleado CRUD methods
   createEmpleado: (data: any) => request('/empleados', { method: 'POST', body: JSON.stringify(data) }),
   updateEmpleado: (id: string, data: any) => request(`/empleados/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteEmpleado: (id: string) => request(`/empleados/${id}`, { method: 'DELETE' }),
   getRoles: () => request<Rol[]>('/roles'),
-  // Add missing Rol CRUD methods
   createRol: (data: any) => request('/roles', { method: 'POST', body: JSON.stringify(data) }),
   updateRol: (id: string, data: any) => request(`/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteRol: (id: string) => request(`/roles/${id}`, { method: 'DELETE' }),
   getCajas: () => request<Caja[]>('/cajas'),
-  // Add missing Caja CRUD methods
   createCaja: (nombre: string) => request('/cajas', { method: 'POST', body: JSON.stringify({ nombre }) }),
   updateCaja: (id: string, data: any) => request(`/cajas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCaja: (id: string) => request(`/cajas/${id}`, { method: 'DELETE' }),
@@ -59,32 +56,26 @@ export const AdminService = {
 
 export const InventoryService = {
   getTelefonos: () => request<Telefono[]>('/inventory/telefonos'),
-  // Add missing Telefono CRUD methods
   createTelefono: (data: any) => request('/inventory/telefonos', { method: 'POST', body: JSON.stringify(data) }),
   updateTelefono: (id: string, data: any) => request(`/inventory/telefonos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTelefono: (id: string) => request(`/inventory/telefonos/${id}`, { method: 'DELETE' }),
   getStockAccesorios: () => request<Inventario[]>('/inventory/stock'),
-  // Add missing Stock CRUD methods
   createStock: (data: any) => request('/inventory/stock', { method: 'POST', body: JSON.stringify(data) }),
   updateStock: (id: string, data: any) => request(`/inventory/stock/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteStock: (id: string) => request(`/inventory/stock/${id}`, { method: 'DELETE' }),
   getAccesoriosMaster: () => request<Accesorio[]>('/inventory/accesorios-master'),
-  // Add missing AccesorioMaster CRUD methods
   createAccesorioMaster: (data: any) => request('/inventory/accesorios-master', { method: 'POST', body: JSON.stringify(data) }),
   updateAccesorioMaster: (id: string, data: any) => request(`/inventory/accesorios-master/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAccesorioMaster: (id: string) => request(`/inventory/accesorios-master/${id}`, { method: 'DELETE' }),
   getCategorias: () => request<Categoria[]>('/inventory/categorias'),
-  // Add missing Categoria CRUD methods
   createCategoria: (data: any) => request('/inventory/categorias', { method: 'POST', body: JSON.stringify(data) }),
   updateCategoria: (id: string, data: any) => request(`/inventory/categorias/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCategoria: (id: string) => request(`/inventory/categorias/${id}`, { method: 'DELETE' }),
   getUbicaciones: () => request<Ubicacion[]>('/inventory/ubicaciones'),
-  // Add missing Ubicacion CRUD methods
   createUbicacion: (data: any) => request('/inventory/ubicaciones', { method: 'POST', body: JSON.stringify(data) }),
   updateUbicacion: (id: string, data: any) => request(`/inventory/ubicaciones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUbicacion: (id: string) => request(`/inventory/ubicaciones/${id}`, { method: 'DELETE' }),
   getProveedores: () => request<Proveedor[]>('/proveedores'),
-  // Add missing Proveedor CRUD methods
   createProveedor: (data: any) => request('/proveedores', { method: 'POST', body: JSON.stringify(data) }),
   updateProveedor: (id: string, data: any) => request(`/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteProveedor: (id: string) => request(`/proveedores/${id}`, { method: 'DELETE' }),
@@ -138,7 +129,6 @@ export const AccountingService = {
   getProfitabilityReport: (date: string) => request<any>(`/accounting/report/profitability?date=${date}`),
 };
 
-// Add missing CostsService
 export const CostsService = {
   getAll: () => request<Costo[]>('/costs'),
   create: (data: any) => request('/costs', { method: 'POST', body: JSON.stringify(data) }),
@@ -148,14 +138,12 @@ export const CostsService = {
 
 export const PackagesService = {
   getAll: () => request<Paquete[]>('/paquetes'),
-  // Add missing Package CRUD methods
   create: (data: any) => request('/paquetes', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) => request(`/paquetes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/paquetes/${id}`, { method: 'DELETE' }),
 };
 
 export const ReportsService = {
-  // Add missing Report calculation methods
   getSalesTrend: (year: number) => request<any[]>(`/reports/sales-trend?year=${year}`),
   getDailySales: (startDate: string, endDate: string) => request<any[]>(`/reports/daily-sales?startDate=${startDate}&endDate=${endDate}`),
   getTopProducts: (startDate: string, endDate: string) => request<any[]>(`/reports/top-products?startDate=${startDate}&endDate=${endDate}`),
@@ -167,7 +155,6 @@ export const ReportsService = {
 export const LabelService = {
   getDefault: (category: string) => request<LabelTemplate | null>(`/labels/default?category=${category}`),
   getAll: () => request<LabelTemplate[]>('/labels'),
-  // Add missing Label CRUD methods
   create: (data: any) => request('/labels', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) => request(`/labels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/labels/${id}`, { method: 'DELETE' }),

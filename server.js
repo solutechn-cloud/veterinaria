@@ -59,32 +59,6 @@ const initDB = async () => {
                 fecha_ingreso DATE DEFAULT CURRENT_DATE
             );
 
-            CREATE TABLE IF NOT EXISTS gastos_contables (
-                id_gasto SERIAL PRIMARY KEY,
-                descripcion VARCHAR(255) NOT NULL,
-                monto NUMERIC(10,2) NOT NULL,
-                fecha DATE DEFAULT CURRENT_DATE,
-                categoria VARCHAR(50), 
-                id_socio_asignado INT REFERENCES socios(id_socio), 
-                origen_fondo VARCHAR(50) DEFAULT 'Caja'
-            );
-
-            CREATE TABLE IF NOT EXISTS cost_components (
-                id SERIAL PRIMARY KEY,
-                nombre VARCHAR(100) NOT NULL UNIQUE,
-                naturaleza VARCHAR(20) DEFAULT 'Fijo'
-            );
-
-            CREATE TABLE IF NOT EXISTS product_direct_costs (
-                id SERIAL PRIMARY KEY,
-                id_producto VARCHAR(100) NOT NULL,
-                tipo_producto VARCHAR(20) NOT NULL,
-                id_componente INT REFERENCES cost_components(id),
-                valor NUMERIC(10,2) NOT NULL,
-                UNIQUE(id_producto, id_componente)
-            );
-
-            -- Table for defining fixed/variable costs (used in Costs.tsx)
             CREATE TABLE IF NOT EXISTS costos (
                 codCostos VARCHAR(100) PRIMARY KEY,
                 tipo VARCHAR(50) NOT NULL,
@@ -95,10 +69,17 @@ const initDB = async () => {
 
             DO $$ 
             BEGIN 
+                -- Columna para categorizar egresos
                 BEGIN
                     ALTER TABLE egresos ADD COLUMN categoria VARCHAR(50) DEFAULT 'Gasto Operativo';
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
 
+                -- Columna para asignar gasto a un socio específico
+                BEGIN
+                    ALTER TABLE egresos ADD COLUMN id_socio_asignado INT REFERENCES socios(id_socio);
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                -- Columnas de balance en arqueo
                 BEGIN
                     ALTER TABLE arqueo ADD COLUMN saldoTigoFinal NUMERIC(10,2) DEFAULT 0;
                     ALTER TABLE arqueo ADD COLUMN saldoClaroFinal NUMERIC(10,2) DEFAULT 0;
@@ -119,8 +100,6 @@ app.use('/api', salesRoutes);
 app.use('/api', financeRoutes);
 app.use('/api', reportsRoutes);
 app.use('/api', labelRoutes); 
-
-// IMPORTANTE: Montar con prefijo específico para evitar confusiones de ruta
 app.use('/api/accounting', accountingRoutes);
 
 // --- AUTH ROUTE ---
@@ -160,18 +139,8 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error interno' }); }
 });
 
-// --- STATIC FILES & SPA FALLBACK ---
 app.use(express.static(path.join(__dirname, 'build')));
+app.use('/api', (req, res) => res.status(404).json({ error: `API Route not found: ${req.originalUrl}` }));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'build', 'index.html')));
 
-// PROTECTOR: Si una ruta empieza con /api pero no se encontró arriba, devolver 404 JSON, NO el HTML.
-app.use('/api', (req, res) => {
-    res.status(404).json({ error: `Ruta API no encontrada: ${req.originalUrl}` });
-});
-
-app.get('*', (req, res) => { 
-    res.sendFile(path.join(__dirname, 'build', 'index.html')); 
-});
-
-app.listen(port, () => {
-  console.log(`SmartCloud Server running on port ${port}`);
-});
+app.listen(port, () => console.log(`SmartCloud running on port ${port}`));
