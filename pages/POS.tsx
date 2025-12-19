@@ -2,14 +2,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService, ClientService, SalesService, CashService, ConfigService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente, EmpresaConfig, VentaPayload } from '../types';
-import { Search, ShoppingCart, Trash2, CreditCard, Smartphone, Headphones, Zap, RefreshCw, List, LayoutGrid, Save, User, X, Check, FileText, Plus, Minus, UserPlus, Grid, Filter, ChevronRight, Tag } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Smartphone, Zap, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Grid, Filter, Tag, Info, AlertCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+// Added missing useAuth import
+import { useAuth } from '../context/AuthContext';
 
 const POS: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  // useAuth now correctly imported
   const { user } = useAuth();
 
   // Data States
@@ -46,7 +48,7 @@ const POS: React.FC = () => {
     } else if (state?.customItem) {
       const { descripcion, precio } = state.customItem;
       setCart(prev => [...prev, {
-        codDetalleVenta: `MAN-1`,
+        codDetalleVenta: `MAN-${Date.now()}`,
         cantidad: 1,
         precioVenta: Number(precio),
         descripcionProducto: descripcion,
@@ -137,7 +139,6 @@ const POS: React.FC = () => {
         if (item.tipoProducto === 'TELEFONO') return item;
         const newQty = item.cantidad + delta;
         
-        // Validar stock real del producto
         const product = products.find(p => p.id === item.idInventario);
         if (delta > 0 && product && newQty > product.stock) return item;
 
@@ -196,7 +197,8 @@ const POS: React.FC = () => {
   };
 
   const brands = useMemo(() => ['ALL', ...new Set(products.filter(p => p.tipo === 'TELEFONO').map(p => p.marca!))].sort(), [products]);
-  const categories = useMemo(() => ['ALL', ...new Set(products.filter(p => p.tipo === 'ACCESORIO').map(p => p.categoria!))].sort(), [products]);
+  // Renamed to categoriesList to avoid potential naming conflicts
+  const categoriesList = useMemo(() => ['ALL', ...new Set(products.filter(p => p.tipo === 'ACCESORIO').map(p => p.categoria!))].sort(), [products]);
 
   const filteredProducts = products.filter(p => {
     const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || p.imei?.includes(searchTerm) || p.codigo.toLowerCase().includes(searchTerm.toLowerCase());
@@ -207,38 +209,40 @@ const POS: React.FC = () => {
   });
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-80px)] md:h-[calc(100vh-100px)] gap-4 overflow-hidden">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] gap-6 overflow-hidden">
       
-      {/* CATALOGO (Izquierda) */}
-      <div className={`flex-1 flex flex-col min-w-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ${mobileTab === 'CART' ? 'hidden md:flex' : 'flex'}`}>
-        {/* Barra de Búsqueda y Filtros Compacta */}
-        <div className="p-3 border-b bg-slate-50/50 space-y-3">
-          <div className="flex gap-2">
-             <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                <input 
-                  className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" 
-                  placeholder="Producto, IMEI o Código..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                />
-             </div>
-             <button onClick={loadInitialData} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border rounded-xl shadow-sm"><RefreshCw size={18} className={loading ? 'animate-spin' : ''}/></button>
+      {/* PANEL IZQUIERDO: CATALOGO */}
+      <div className={`flex-1 flex flex-col min-w-0 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden ${mobileTab === 'CART' ? 'hidden md:flex' : 'flex'}`}>
+        
+        {/* Barra Superior con Buscador y Filtros */}
+        <div className="p-5 border-b space-y-4">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+              <input 
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium" 
+                placeholder="Buscar por Nombre, Código o IMEI..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button onClick={loadInitialData} className="p-3 text-slate-400 hover:text-indigo-600 bg-slate-50 border rounded-2xl transition-colors">
+              <RefreshCw size={22} className={loading ? 'animate-spin' : ''}/>
+            </button>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-              {['ALL', 'TELEFONO', 'ACCESORIO'].map(t => (
-                <button key={t} onClick={() => setSelectedType(t as any)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase transition-all whitespace-nowrap ${selectedType === t ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>
-                  {t === 'ALL' ? 'Todos' : t === 'TELEFONO' ? 'Teléfonos' : 'Accesorios'}
-                </button>
-              ))}
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              <button onClick={() => { setSelectedType('ALL'); setSelectedBrand('ALL'); setSelectedCategory('ALL'); }} className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${selectedType === 'ALL' ? 'bg-[#334155] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>TODOS</button>
+              <button onClick={() => { setSelectedType('TELEFONO'); setSelectedCategory('ALL'); }} className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${selectedType === 'TELEFONO' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Smartphone size={16}/> TELÉFONOS</button>
+              <button onClick={() => { setSelectedType('ACCESORIO'); setSelectedBrand('ALL'); }} className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${selectedType === 'ACCESORIO' ? 'bg-[#e67e22] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Zap size={16}/> ACCESORIOS</button>
             </div>
 
             {selectedType === 'TELEFONO' && (
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 border-t border-slate-100 pt-2">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                <div className="flex items-center gap-2 px-2 border-r pr-4"><Filter size={14} className="text-slate-400"/></div>
                 {brands.map(b => (
-                  <button key={b} onClick={() => setSelectedBrand(b)} className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border transition-all ${selectedBrand === b ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white text-slate-400 border-slate-200'}`}>
+                  <button key={b} onClick={() => setSelectedBrand(b)} className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase transition-all border ${selectedBrand === b ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white text-slate-400 border-slate-200'}`}>
                     {b === 'ALL' ? 'Todas las Marcas' : b}
                   </button>
                 ))}
@@ -246,9 +250,10 @@ const POS: React.FC = () => {
             )}
 
             {selectedType === 'ACCESORIO' && (
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 border-t border-slate-100 pt-2">
-                {categories.map(c => (
-                  <button key={c} onClick={() => setSelectedCategory(c)} className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border transition-all ${selectedCategory === c ? 'bg-orange-600 border-orange-600 text-white' : 'bg-white text-slate-400 border-slate-200'}`}>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                <div className="flex items-center gap-2 px-2 border-r pr-4"><Filter size={14} className="text-slate-400"/></div>
+                {categoriesList.map(c => (
+                  <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase transition-all border ${selectedCategory === c ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-white text-slate-400 border-slate-200'}`}>
                     {c === 'ALL' ? 'Todas las Categorías' : c}
                   </button>
                 ))}
@@ -257,115 +262,139 @@ const POS: React.FC = () => {
           </div>
         </div>
 
-        {/* Grid de Productos Compacto */}
-        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/30">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {/* Listado de Productos */}
+        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-slate-50/30">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filteredProducts.map(p => (
               <button 
                 key={p.id} 
                 onClick={() => addToCart(p)}
-                className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all flex flex-col text-left group relative active:scale-95"
+                className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all flex flex-col text-left group active:scale-95"
               >
-                <div className={`w-8 h-8 rounded-lg mb-2 flex items-center justify-center ${p.tipo === 'TELEFONO' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
-                   {p.tipo === 'TELEFONO' ? <Smartphone size={16}/> : <Zap size={16}/>}
+                <div className="flex justify-between items-start mb-3">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest ${p.tipo==='TELEFONO'?'bg-blue-50 text-blue-600':'bg-orange-50 text-orange-600'}`}>{p.tipo==='TELEFONO'?'TEL':'ACC'}</span>
+                  <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${p.stock <= 1 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>Stock: {p.stock}</span>
                 </div>
-                <h4 className="text-[11px] font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{p.nombre}</h4>
+                <h4 className="font-bold text-slate-800 text-sm line-clamp-2 leading-tight min-h-[2.5rem] mb-4">{p.nombre}</h4>
                 <div className="mt-auto">
-                  <p className="text-[10px] font-black text-indigo-600">L. {Number(p.precioVenta).toLocaleString()}</p>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-[9px] text-slate-400 font-bold uppercase">{p.marca || p.categoria || 'Genérico'}</span>
-                    <span className={`text-[9px] font-black px-1 rounded ${p.stock < 3 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>S:{p.stock}</span>
-                  </div>
+                  <p className="text-xl font-black text-indigo-600 mb-1">L. {Number(p.precioVenta).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ubic: {p.ubicacion}</p>
                 </div>
               </button>
             ))}
           </div>
+          {filteredProducts.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-slate-300 py-20">
+              <Search size={64} strokeWidth={1} className="mb-4 opacity-20"/>
+              <p className="font-black uppercase tracking-widest text-sm">Sin resultados</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* CARRITO (Derecha) */}
-      <div className={`w-full md:w-[400px] flex flex-col bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden ${mobileTab === 'CATALOG' ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 bg-slate-900 text-white shrink-0">
-          <div className="flex justify-between items-center mb-4">
-             <div className="flex items-center gap-2">
-                <ShoppingCart size={18} className="text-indigo-400"/>
-                <h3 className="font-black text-sm uppercase tracking-wider">{isEditing ? `Editando #${editingSaleId}` : 'Carrito de Venta'}</h3>
-             </div>
-             <button onClick={() => cart.length > 0 && Swal.fire({title:'¿Vaciar?', icon:'warning', showCancelButton:true, confirmButtonText:'Sí'}).then(r => r.isConfirmed && resetPOS())} className="text-slate-500 hover:text-white transition-colors"><Trash2 size={18}/></button>
+      {/* PANEL DERECHO: CARRITO */}
+      <div className={`w-full md:w-[420px] flex flex-col bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden ${mobileTab === 'CATALOG' ? 'hidden md:flex' : 'flex'}`}>
+        <div className="p-6 bg-[#1e293b] text-white shrink-0">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <Zap size={24} className="text-amber-400 fill-amber-400"/>
+              <h3 className="font-black text-lg uppercase tracking-tight">{isEditing ? `EDITANDO #${editingSaleId}` : 'VENTA'}</h3>
+            </div>
+            {isEditing && (
+              <button onClick={resetPOS} className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black hover:bg-red-500 hover:text-white transition-all uppercase">Cancelar</button>
+            )}
+            {!isEditing && (
+               <button onClick={() => cart.length > 0 && Swal.fire({title:'¿Vaciar?', icon:'warning', showCancelButton:true}).then(r=>r.isConfirmed && setCart([]))} className="p-2 hover:bg-white/10 rounded-xl text-slate-400"><Trash2 size={20}/></button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <button onClick={() => setPaymentType('Contado')} className={`py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest border-2 transition-all ${paymentType === 'Contado' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-500'}`}>Contado</button>
+            <button onClick={() => setPaymentType('Credito')} className={`py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest border-2 transition-all ${paymentType === 'Credito' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-500'}`}>Crédito</button>
           </div>
           
-          <div className="relative">
-            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+          <div className="relative group">
+            <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
             <select 
-              className="w-full pl-9 pr-10 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+              className="w-full pl-10 pr-12 py-3 bg-white border-2 border-transparent rounded-2xl text-sm font-bold text-slate-800 outline-none appearance-none focus:border-indigo-500 transition-all cursor-pointer"
               value={selectedClientId}
               onChange={e => setSelectedClientId(e.target.value)}
             >
-              <option value="">CONSUMIDOR FINAL</option>
+              <option value="">-- Cliente --</option>
               {clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}
             </select>
-            <button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 rounded-lg"><UserPlus size={14}/></button>
+            <button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 text-white rounded-xl hover:scale-105 transition-transform"><UserPlus size={18}/></button>
           </div>
+          
+          {/* Info del Cliente Seleccionado */}
+          {selectedClientId && (
+            <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-xl flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-black">{clients.find(c=>c.identidad===selectedClientId)?.nombre[0]}</div>
+              <div className="flex-1">
+                <p className="text-xs font-bold truncate">{clients.find(c=>c.identidad===selectedClientId)?.nombre} {clients.find(c=>c.identidad===selectedClientId)?.apellido}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest">{clients.find(c=>c.identidad===selectedClientId)?.direccion || 'Sin dirección'}</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Lista de Items (Compacta) */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-slate-50/50 custom-scrollbar">
+        {/* Lista de Items */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 custom-scrollbar">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-20">
-              <ShoppingCart size={64} strokeWidth={1}/>
-              <p className="font-black text-xs uppercase mt-2">Carrito Vacío</p>
+            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-40">
+              <ShoppingCart size={80} strokeWidth={1}/>
+              <p className="font-black text-sm uppercase mt-4">Carrito vacío</p>
             </div>
           ) : cart.map(item => (
-            <div key={item.codDetalleVenta} className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 animate-fade-in group">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${item.tipoProducto === 'TELEFONO' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
-                {item.tipoProducto === 'TELEFONO' ? <Smartphone size={14}/> : <Zap size={14}/>}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-slate-800 truncate">{item.descripcionProducto}</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black text-indigo-600">L. {Number(item.precioVenta).toLocaleString()}</span>
-                  {item.idTelefono && <span className="text-[8px] font-mono text-slate-400 bg-slate-100 px-1 rounded">IMEI:...{item.idTelefono.slice(-4)}</span>}
+            <div key={item.codDetalleVenta} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-3 group animate-fade-in relative">
+              <div className="flex justify-between items-start">
+                <div className="flex-1 min-w-0 pr-8">
+                  <p className="text-xs font-black text-slate-800 leading-tight mb-1">{item.descripcionProducto}</p>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${item.tipoProducto==='TELEFONO'?'bg-blue-50 text-blue-600':'bg-orange-50 text-orange-600'}`}>{item.tipoProducto}</span>
+                    <span className="text-[10px] text-slate-500 font-bold">{item.cantidad} x L. {Number(item.precioVenta).toFixed(2)}</span>
+                  </div>
                 </div>
+                <p className="text-sm font-black text-indigo-600 whitespace-nowrap">L. {(item.cantidad * item.precioVenta).toFixed(2)}</p>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
-                <button 
-                  onClick={() => updateQty(item.codDetalleVenta!, -1)}
-                  disabled={item.tipoProducto === 'TELEFONO'}
-                  className="w-5 h-5 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"
-                ><Minus size={10}/></button>
-                <span className="text-[11px] font-black w-4 text-center">{item.cantidad}</span>
-                <button 
-                  onClick={() => updateQty(item.codDetalleVenta!, 1)}
-                  disabled={item.tipoProducto === 'TELEFONO'}
-                  className="w-5 h-5 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"
-                ><Plus size={10}/></button>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    onClick={() => updateQty(item.codDetalleVenta!, -1)}
+                    disabled={item.tipoProducto === 'TELEFONO'}
+                    className="w-7 h-7 flex items-center justify-center bg-white rounded-lg text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"
+                  ><Minus size={14}/></button>
+                  <span className="text-xs font-black w-6 text-center">{item.cantidad}</span>
+                  <button 
+                    onClick={() => updateQty(item.codDetalleVenta!, 1)}
+                    disabled={item.tipoProducto === 'TELEFONO'}
+                    className="w-7 h-7 flex items-center justify-center bg-white rounded-lg text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"
+                  ><Plus size={14}/></button>
+                </div>
+                <button onClick={() => setCart(cart.filter(i => i.codDetalleVenta !== item.codDetalleVenta))} className="text-red-300 hover:text-red-500 p-1 transition-colors"><Trash2 size={18}/></button>
               </div>
-
-              <button onClick={() => setCart(cart.filter(i => i.codDetalleVenta !== item.codDetalleVenta))} className="text-slate-300 hover:text-red-500 p-1 transition-colors"><X size={16}/></button>
             </div>
           ))}
         </div>
 
-        {/* Totales y Pago (Compacto) */}
-        <div className="p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
-           <div className="space-y-1.5 mb-4">
-              <div className="flex justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        {/* Resumen y Totales */}
+        <div className="p-6 bg-white border-t border-slate-100 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
+           <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
                 <span>Subtotal Bruto</span>
                 <span>L. {totals.bruto.toFixed(2)}</span>
               </div>
               
-              <div className="flex justify-between items-center py-1 border-y border-slate-50">
+              <div className="flex justify-between items-center py-2 border-y border-slate-50">
                 <div className="flex items-center gap-2">
-                  <Tag size={12} className="text-red-500"/>
-                  <span className="text-[10px] font-black text-red-500 uppercase">Aplicar Descuento</span>
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"/>
+                  <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Aplicar Descuento</span>
                 </div>
                 <div className="relative w-24 group">
-                   <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">L.</span>
                    <input 
                     type="number" 
-                    className="w-full pl-6 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-right text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-red-500/20 transition-all"
+                    className="w-full pl-2 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-right text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-red-500/20 transition-all"
                     value={discount}
                     onChange={e => setDiscount(Math.max(0, Number(e.target.value)))}
                     onFocus={e => e.target.select()}
@@ -373,51 +402,43 @@ const POS: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
                 <span>ISV ({companyConfig?.isv || 15}%)</span>
                 <span>L. {totals.isv.toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between items-end pt-2">
-                <span className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Total Neto</span>
-                <span className="text-2xl font-black text-indigo-600 tracking-tighter">L. {totals.total.toFixed(2)}</span>
+              <div className="flex justify-between items-end pt-4 border-t-2 border-slate-100">
+                <span className="text-lg font-black text-slate-800 uppercase tracking-tighter">Total</span>
+                <span className="text-4xl font-black text-indigo-600 tracking-tighter">L. {totals.total.toFixed(2)}</span>
               </div>
-           </div>
-
-           <div className="grid grid-cols-2 gap-2 mb-3">
-              <button 
-                onClick={() => setPaymentType('Contado')}
-                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${paymentType === 'Contado' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}
-              >Contado</button>
-              <button 
-                onClick={() => setPaymentType('Credito')}
-                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${paymentType === 'Credito' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}
-              >Crédito</button>
            </div>
 
            <button 
             onClick={handleCheckout}
             disabled={loading || cart.length === 0}
-            className={`w-full py-4 rounded-2xl font-black text-white shadow-lg flex items-center justify-center gap-3 uppercase tracking-[0.2em] text-xs transition-all active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none ${isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            className={`w-full py-5 rounded-[2rem] font-black text-white shadow-2xl flex items-center justify-center gap-3 uppercase tracking-[0.2em] text-xs transition-all active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none ${isEditing ? 'bg-[#e67e22] hover:bg-[#d35400]' : 'bg-indigo-600 hover:bg-indigo-700'}`}
            >
-             {loading ? <RefreshCw className="animate-spin" size={20}/> : <Check size={20} strokeWidth={3}/>}
-             {isEditing ? 'Guardar Cambios' : 'Procesar Pago'}
+             {loading ? <RefreshCw className="animate-spin" size={24}/> : <ShoppingCart size={24}/>}
+             {isEditing ? 'Actualizar Venta' : 'Facturar'}
            </button>
         </div>
       </div>
 
-      {/* Navegación Móvil */}
-      <div className="md:hidden fixed bottom-6 left-6 right-6 flex bg-slate-900/90 backdrop-blur-md rounded-full shadow-2xl p-1 z-50 border border-white/10">
+      {/* Navegación Móvil (Bottom Tabs) */}
+      <div className="md:hidden fixed bottom-6 left-6 right-6 flex bg-[#1e293b]/95 backdrop-blur-md rounded-full shadow-2xl p-1 z-50 border border-white/10">
           <button 
             onClick={() => setMobileTab('CATALOG')}
-            className={`flex-1 py-3 rounded-full flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest transition-all ${mobileTab === 'CATALOG' ? 'bg-white text-slate-900 shadow-xl' : 'text-white/60'}`}
-          ><Grid size={16}/> Catálogo</button>
+            className={`flex-1 py-4 rounded-full flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-[0.1em] transition-all ${mobileTab === 'CATALOG' ? 'bg-white text-slate-900 shadow-xl' : 'text-white/60'}`}
+          ><Grid size={18}/> Catálogo</button>
           <button 
             onClick={() => setMobileTab('CART')}
-            className={`flex-1 py-3 rounded-full flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest transition-all ${mobileTab === 'CART' ? 'bg-white text-slate-900 shadow-xl' : 'text-white/60'}`}
+            className={`flex-1 py-4 rounded-full flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-[0.1em] transition-all ${mobileTab === 'CART' ? 'bg-white text-slate-900 shadow-xl' : 'text-white/60'}`}
           >
-            <ShoppingCart size={16}/> Carrito 
-            {cart.length > 0 && <span className="bg-indigo-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px]">{cart.reduce((a,b)=>a+b.cantidad,0)}</span>}
+            <div className="relative">
+              <ShoppingCart size={18}/> 
+              {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-indigo-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] border-2 border-white">{cart.reduce((a,b)=>a+b.cantidad,0)}</span>}
+            </div>
+            Carrito 
           </button>
       </div>
 
