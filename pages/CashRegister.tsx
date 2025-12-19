@@ -1,15 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CashService, SalesService, PackagesService, ConfigService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete, EmpresaConfig } from '../types';
 import { 
-  Lock, PlusCircle, Smartphone, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X, CloudLightning, FileText, Printer, CheckCircle, RefreshCw, AlertTriangle
+  Lock, PlusCircle, Smartphone, ArrowDownCircle, ArrowUpCircle, Wallet, Edit2, Trash2, X, CloudLightning, FileText, Printer, CheckCircle, RefreshCw, AlertTriangle, ShoppingBag, Download, History, ListFilter
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
-type TabType = 'INGRESOS' | 'EGRESO' | 'RECARGAS' | 'FACTURAS';
+type TabType = 'INGRESOS' | 'GASTOS' | 'RECARGAS' | 'HISTORIAL';
 
 const CashRegister: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('INGRESOS');
@@ -36,7 +38,7 @@ const CashRegister: React.FC = () => {
   const [egresoForm, setEgresoForm] = useState({ id: '', descripcion: '', monto: '' });
 
   const [showSaldoModal, setShowSaldoModal] = useState(false);
-  const [saldoForm, setSaldoForm] = useState({ red: 'TIGO', montoPagado: '' });
+  const [saldoForm, setSaldoForm] = useState({ red: 'TIGO', montoPagado: '', saldoRecibido: '' });
 
   const [showRecargaModal, setShowRecargaModal] = useState<{red: 'TIGO' | 'CLARO', tipo: 'RECARGA' | 'PAQUETE'} | null>(null);
   const [recargaForm, setRecargaForm] = useState({ monto: '', paqueteId: '' });
@@ -48,7 +50,7 @@ const CashRegister: React.FC = () => {
 
   const loadCatalogos = async () => {
       try {
-        const [paqs] = await Promise.all([PackagesService.getAll()]);
+        const paqs = await PackagesService.getAll();
         setPaquetes(paqs || []);
       } catch(e) { console.error(e); }
   };
@@ -80,6 +82,21 @@ const CashRegister: React.FC = () => {
     finally { setIsLoading(false); }
   };
 
+  const totals = useMemo(() => {
+    const totalIng = ingresos.reduce((a, b) => a + Number(b.monto), 0);
+    const totalEgr = egresos.reduce((a, b) => a + Number(b.monto), 0);
+    const inicial = arqueo ? Number(arqueo.montoInicial) : 0;
+    const sTigo = saldos.find(s => s.red === 'TIGO')?.saldoFinal || 0;
+    const sClaro = saldos.find(s => s.red === 'CLARO')?.saldoFinal || 0;
+    return {
+      efectivo: (inicial + totalIng) - totalEgr,
+      ingresos: totalIng,
+      egresos: totalEgr,
+      tigo: sTigo,
+      claro: sClaro
+    };
+  }, [ingresos, egresos, arqueo, saldos]);
+
   const handleOpenBox = async () => {
      if(!openForm.monto) return Swal.fire('Error', 'Ingrese monto inicial', 'error');
      try {
@@ -90,7 +107,14 @@ const CashRegister: React.FC = () => {
 
   const handleCloseBox = async () => {
      if(!arqueo) return;
-     const res = await Swal.fire({ title: '¿Finalizar Turno?', text: 'Se cerrará la caja actual.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar', confirmButtonColor: '#ef4444' });
+     const res = await Swal.fire({ 
+         title: '¿Cierre de Caja?', 
+         text: `El efectivo esperado es L. ${totals.efectivo.toLocaleString()}. ¿Desea finalizar el turno?`, 
+         icon: 'warning', 
+         showCancelButton: true, 
+         confirmButtonText: 'Sí, Cerrar Caja', 
+         confirmButtonColor: '#ef4444' 
+     });
      if(res.isConfirmed) {
        try {
          await CashService.closeCaja(arqueo.idArqueo);
@@ -131,7 +155,7 @@ const CashRegister: React.FC = () => {
           if (showRecargaModal.tipo === 'RECARGA') {
               mnt = Number(recargaForm.monto);
               cst = mnt * 0.95;
-              desc = `RECARGA ${showRecargaModal.red} L. ${mnt}`;
+              desc = `RECARGA ${showRecargaModal.red}: L. ${mnt}`;
           } else {
               const paq = paquetes.find(p => p.idPaquete === recargaForm.paqueteId);
               if (!paq) return;
@@ -144,7 +168,7 @@ const CashRegister: React.FC = () => {
   };
 
   const handleDeleteItem = async (id: string, type: 'INGRESO' | 'EGRESO') => {
-      const res = await Swal.fire({ title: '¿Eliminar registro?', text: "Se ajustará el balance.", icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, eliminar' });
+      const res = await Swal.fire({ title: '¿Eliminar registro?', text: "Se ajustará el balance de caja.", icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, eliminar' });
       if (res.isConfirmed) {
           try {
               if (type === 'INGRESO') await CashService.deleteIngreso(id);
@@ -152,6 +176,30 @@ const CashRegister: React.FC = () => {
               loadData();
           } catch (e:any) { Swal.fire('Error', e.message, 'error'); }
       }
+  };
+
+  const generateDailyReport = (includeRecharges: boolean = true) => {
+      const doc = new jsPDF();
+      const date = getLocalDate();
+      const filteredIngresos = includeRecharges ? ingresos : ingresos.filter(i => !i.descripcion.includes('RECARGA'));
+      
+      doc.setFontSize(18); doc.text("REPORTE DIARIO DE CAJA", 105, 15, { align: 'center' });
+      doc.setFontSize(10); doc.text(`Caja: ${user?.idCaja} | Fecha: ${date} | Cajero: ${user?.nombreEmpleado}`, 105, 22, { align: 'center' });
+
+      const bodyIng = filteredIngresos.map(i => [i.descripcion, `L. ${Number(i.monto).toFixed(2)}`]);
+      // @ts-ignore
+      doc.autoTable({ startY: 30, head: [['Descripción Ingresos', 'Monto']], body: bodyIng, theme: 'striped', headStyles: { fillColor: [16, 185, 129] } });
+
+      const finalYIng = (doc as any).lastAutoTable.finalY || 30;
+      const bodyEgr = egresos.map(e => [e.descripcion, `L. ${Number(e.monto).toFixed(2)}`]);
+      // @ts-ignore
+      doc.autoTable({ startY: finalYIng + 10, head: [['Descripción Egresos', 'Monto']], body: bodyEgr, theme: 'striped', headStyles: { fillColor: [239, 68, 68] } });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+      doc.text(`TOTAL EN CAJA: L. ${totals.efectivo.toLocaleString()}`, 140, finalY);
+
+      doc.save(`Reporte_Caja_${date}${includeRecharges ? '' : '_Sin_Recargas'}.pdf`);
   };
 
   if (isLoading) return <div className="flex h-screen items-center justify-center text-slate-400"><RefreshCw className="animate-spin mr-2"/> Cargando Caja...</div>;
@@ -182,124 +230,164 @@ const CashRegister: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden">
-         <div className="absolute top-0 right-0 p-10 opacity-5"><CloudLightning size={200}/></div>
+      {/* HEADER CARDS SECTION */}
+      <div className="bg-[#1e293b] rounded-[30px] p-8 text-white shadow-2xl relative overflow-hidden">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
              <div>
-                <div className="flex items-center gap-3 mb-2">
-                    <span className="bg-indigo-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">ACTIVA</span>
-                    <h2 className="text-2xl font-black uppercase tracking-widest">{user?.idCaja}</h2>
-                </div>
-                <p className="text-slate-400 font-medium">{user?.nombreEmpleado}</p>
+                <h2 className="text-2xl font-black uppercase tracking-widest">CAJA: {user?.idCaja}</h2>
+                <p className="text-slate-400 font-medium">Usuario: {user?.nombreEmpleado}</p>
              </div>
-             <button onClick={handleCloseBox} className="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-3 shadow-xl border border-red-500/50 transition-all active:scale-95">
-                <Lock size={20}/> FINALIZAR TURNO
+             <button onClick={handleCloseBox} className="bg-[#ef4444] hover:bg-red-700 px-8 py-3 rounded-xl font-black text-xs flex items-center gap-3 shadow-xl transition-all uppercase tracking-widest">
+                <Lock size={18}/> CIERRE DE CAJA
              </button>
          </div>
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-10 relative z-10">
-              <div className="bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-2">Efectivo Actual</p>
-                  <h3 className="text-3xl font-black">L. {(Number(arqueo.montoInicial) + ingresos.reduce((a,b)=>a+Number(b.monto),0) - egresos.reduce((a,b)=>a+Number(b.monto),0)).toLocaleString()}</h3>
+         
+         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-10 relative z-10">
+              <div className="bg-[#334155] p-5 rounded-2xl border border-white/5">
+                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">EFECTIVO EN CAJA</p>
+                  <h3 className="text-2xl font-black">L. {totals.efectivo.toFixed(2)}</h3>
               </div>
-              <div className="bg-emerald-500/10 p-6 rounded-3xl border border-emerald-500/20">
-                  <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest mb-2">Entradas</p>
-                  <h3 className="text-3xl font-black text-emerald-400">L. {ingresos.reduce((a,b)=>a+Number(b.monto),0).toLocaleString()}</h3>
+              <div className="bg-[#334155] p-5 rounded-2xl border border-white/5">
+                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">TOTAL INGRESOS HOY</p>
+                  <h3 className="text-2xl font-black">L. {totals.ingresos.toFixed(2)}</h3>
               </div>
-              <div className="bg-red-500/10 p-6 rounded-3xl border border-red-500/20">
-                  <p className="text-[10px] text-red-300 font-black uppercase tracking-widest mb-2">Salidas</p>
-                  <h3 className="text-3xl font-black text-red-200">L. {egresos.reduce((a,b)=>a+Number(b.monto),0).toLocaleString()}</h3>
+              <div className="bg-[#334155] p-5 rounded-2xl border border-white/5">
+                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">TOTAL GASTOS HOY</p>
+                  <h3 className="text-2xl font-black">L. {totals.egresos.toFixed(2)}</h3>
               </div>
-              <div className="bg-indigo-500/10 p-6 rounded-3xl border border-indigo-500/20">
-                  <p className="text-[10px] text-indigo-300 font-black uppercase tracking-widest mb-2">Ventas POS</p>
-                  <h3 className="text-3xl font-black text-indigo-200">{ventas.length}</h3>
+              <div className="bg-[#1e3a8a]/40 p-5 rounded-2xl border border-blue-500/20">
+                  <p className="text-[9px] text-blue-300 font-black uppercase tracking-widest mb-1">SALDO TIGO</p>
+                  <h3 className="text-2xl font-black text-blue-100">L. {totals.tigo.toFixed(2)}</h3>
+              </div>
+              <div className="bg-[#7f1d1d]/30 p-5 rounded-2xl border border-red-500/20">
+                  <p className="text-[9px] text-red-300 font-black uppercase tracking-widest mb-1">SALDO CLARO</p>
+                  <h3 className="text-2xl font-black text-red-100">L. {totals.claro.toFixed(2)}</h3>
               </div>
          </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto no-scrollbar border-b border-slate-200 px-4">
-         {[{ id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={20}/> }, { id: 'EGRESO', label: 'Egresos', icon: <ArrowDownCircle size={20}/> }, { id: 'RECARGAS', label: 'Recargas', icon: <Smartphone size={20}/> }, { id: 'FACTURAS', label: 'Facturas', icon: <FileText size={20}/> }].map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as TabType)} className={`px-8 py-5 font-black text-xs whitespace-nowrap transition-all border-b-[6px] flex items-center gap-3 ${activeTab === tab.id ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                {tab.icon} {tab.label.toUpperCase()}
+      {/* TABS NAVIGATION */}
+      <div className="flex gap-4 border-b border-slate-200 px-4">
+         {[
+           { id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={18}/> }, 
+           { id: 'GASTOS', label: 'Gastos/Compras', icon: <ArrowDownCircle size={18}/> }, 
+           { id: 'RECARGAS', label: 'Recargas', icon: <Smartphone size={18}/> }, 
+           { id: 'HISTORIAL', label: 'Historial Ventas', icon: <ShoppingBag size={18}/> }
+         ].map((tab) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as TabType)} className={`px-6 py-4 font-black text-xs whitespace-nowrap transition-all border-b-[4px] flex items-center gap-2 ${activeTab === tab.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                {tab.icon} {tab.label}
             </button>
          ))}
       </div>
 
-      <div className="px-4">
-      <div className="bg-white rounded-[40px] shadow-sm border border-slate-200 p-8 min-h-[600px] animate-fade-in">
+      <div className="px-2">
+      <div className="bg-white rounded-[20px] shadow-sm border border-slate-200 p-8 min-h-[500px]">
+         
+         {/* TAB: INGRESOS */}
          {activeTab === 'INGRESOS' && (
            <div className="space-y-6">
-              <div className="flex justify-between items-center bg-emerald-50 p-8 rounded-3xl border border-emerald-100">
-                 <div><h3 className="font-black text-emerald-800 text-lg uppercase tracking-tight">Entradas Manuales</h3><p className="text-sm text-emerald-600 opacity-80 font-medium">Servicios técnicos o abonos manuales.</p></div>
-                 <button onClick={() => { setIngresoForm({id:'', descripcion:'', monto:'', costo:'', irAPos:true}); setShowIngresoModal(true); }} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl hover:bg-emerald-700 shadow-xl flex items-center gap-3 font-black text-sm transition-all active:scale-95"><PlusCircle size={20}/> NUEVO INGRESO</button>
+              <div className="flex justify-between items-center bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100">
+                 <div><h3 className="font-black text-emerald-800 text-sm uppercase">Registrar Ingreso Manual</h3><p className="text-xs text-emerald-600 opacity-80">Para productos fuera de inventario o servicios.</p></div>
+                 <button onClick={() => { setIngresoForm({id:'', descripcion:'', monto:'', costo:'', irAPos:true}); setShowIngresoModal(true); }} className="bg-emerald-600 text-white px-6 py-3 rounded-xl hover:bg-emerald-700 shadow-lg flex items-center gap-2 font-black text-xs transition-all active:scale-95"><PlusCircle size={18}/> Nuevo Ingreso</button>
               </div>
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-slate-500 uppercase font-black text-[11px] tracking-widest border-b"><tr><th className="p-5">Descripción</th><th className="p-5">Monto</th><th className="p-5 text-right">Acciones</th></tr></thead>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b"><tr><th className="p-4">DESCRIPCIÓN</th><th className="p-4">MONTO</th><th className="p-4">COSTO</th><th className="p-4 text-right">ACCIONES</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                    {ingresos.length === 0 ? <tr><td colSpan={3} className="p-20 text-center text-slate-400 italic font-medium">No hay ingresos registrados hoy.</td></tr> : ingresos.map(i => (
-                        <tr key={i.idIngreso} className="hover:bg-slate-50 transition-colors group"><td className="p-5 font-bold text-slate-700">{i.descripcion}</td><td className="p-5 font-black text-emerald-600 text-lg">L. {Number(i.monto).toFixed(2)}</td><td className="p-5 text-right"><button onClick={() => handleDeleteItem(i.idIngreso, 'INGRESO')} className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button></td></tr>
+                    {ingresos.length === 0 ? <tr><td colSpan={4} className="p-10 text-center text-slate-400 italic">No hay ingresos hoy.</td></tr> : ingresos.map(i => (
+                        <tr key={i.idIngreso} className="hover:bg-slate-50 group">
+                            <td className="p-4 font-bold text-slate-700 uppercase">{i.descripcion}</td>
+                            <td className="p-4 font-black text-emerald-600">L. {Number(i.monto).toFixed(2)}</td>
+                            <td className="p-4 text-slate-400">L. {Number(i.costo).toFixed(2)}</td>
+                            <td className="p-4 text-right flex justify-end gap-2">
+                                <button className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
+                                <button onClick={() => handleDeleteItem(i.idIngreso, 'INGRESO')} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                            </td>
+                        </tr>
                     ))}
                 </tbody>
               </table>
            </div>
          )}
 
-         {activeTab === 'EGRESO' && (
+         {/* TAB: GASTOS */}
+         {activeTab === 'GASTOS' && (
            <div className="space-y-6">
-              <div className="flex justify-between items-center bg-red-50 p-8 rounded-3xl border border-red-100">
-                 <div><h3 className="font-black text-red-800 text-lg uppercase tracking-tight">Salidas de Efectivo</h3><p className="text-sm text-red-600 opacity-80 font-medium">Pagos de servicios o gastos operativos.</p></div>
-                 <button onClick={() => { setEgresoForm({id:'', descripcion:'', monto:''}); setShowEgresoModal(true); }} className="bg-red-600 text-white px-8 py-4 rounded-2xl hover:bg-red-700 shadow-xl flex items-center gap-3 font-black text-sm transition-all active:scale-95"><PlusCircle size={20}/> NUEVO EGRESO</button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-red-50/50 p-6 rounded-2xl border border-red-100 flex justify-between items-center">
+                    <div><h3 className="font-black text-red-800 text-sm uppercase">Registrar Gasto Operativo</h3><p className="text-xs text-red-600 opacity-80">Salidas de dinero de caja.</p></div>
+                    <button onClick={() => { setEgresoForm({id:'', descripcion:'', monto:''}); setShowEgresoModal(true); }} className="bg-red-600 text-white px-6 py-3 rounded-xl hover:bg-red-700 shadow-lg flex items-center gap-2 font-black text-xs transition-all active:scale-95"><ArrowDownCircle size={18}/> Nuevo Gasto</button>
+                  </div>
+                  <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex justify-between items-center">
+                    <div><h3 className="font-black text-blue-800 text-sm uppercase">Compra de Saldo</h3><p className="text-xs text-blue-600 opacity-80">Reabastecer saldo Tigo/Claro.</p></div>
+                    <button onClick={() => { setSaldoForm({red: 'TIGO', montoPagado: '', saldoRecibido: ''}); setShowSaldoModal(true); }} className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 shadow-lg flex items-center gap-2 font-black text-xs transition-all active:scale-95"><Wallet size={18}/> Comprar Saldo</button>
+                  </div>
               </div>
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-slate-500 uppercase font-black text-[11px] tracking-widest border-b"><tr><th className="p-5">Descripción</th><th className="p-5">Monto</th><th className="p-5 text-right">Acciones</th></tr></thead>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b"><tr><th className="p-4">DESCRIPCIÓN</th><th className="p-4">MONTO</th><th className="p-4 text-right">ACCIONES</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                    {egresos.length === 0 ? <tr><td colSpan={3} className="p-20 text-center text-slate-400 italic font-medium">No hay egresos registrados hoy.</td></tr> : egresos.map(e => (
-                        <tr key={e.idegresos} className="hover:bg-slate-50 transition-colors group"><td className="p-5 font-bold text-slate-700">{e.descripcion}</td><td className="p-5 font-black text-red-600 text-lg">L. {Number(e.monto).toFixed(2)}</td><td className="p-5 text-right"><button onClick={() => handleDeleteItem(e.idegresos, 'EGRESO')} className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button></td></tr>
+                    {egresos.length === 0 ? <tr><td colSpan={3} className="p-10 text-center text-slate-400 italic">No hay egresos hoy.</td></tr> : egresos.map(e => (
+                        <tr key={e.idegresos} className="hover:bg-slate-50">
+                            <td className="p-4 font-bold text-slate-700 uppercase">{e.descripcion}</td>
+                            <td className="p-4 font-black text-red-600">L. {Number(e.monto).toFixed(2)}</td>
+                            <td className="p-4 text-right flex justify-end gap-2">
+                                <button className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg"><Edit2 size={16}/></button>
+                                <button onClick={() => handleDeleteItem(e.idegresos, 'EGRESO')} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                            </td>
+                        </tr>
                     ))}
                 </tbody>
               </table>
            </div>
          )}
 
+         {/* TAB: RECARGAS */}
          {activeTab === 'RECARGAS' && (
-             <div className="space-y-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    {['TIGO', 'CLARO'].map(red => {
-                        const sld = saldos.find(s => s.red === red);
-                        return (
-                           <div key={red} className={`rounded-[40px] border shadow-2xl overflow-hidden flex flex-col transition-all hover:scale-[1.02] ${red === 'TIGO' ? 'border-blue-100 shadow-blue-900/10' : 'border-red-100 shadow-red-900/10'}`}>
-                             <div className={`${red === 'TIGO' ? 'bg-blue-600' : 'bg-red-600'} text-white p-8 flex justify-between items-center`}>
-                                <div><h3 className="font-black text-2xl uppercase tracking-tighter">{red}</h3><p className="text-[11px] font-black opacity-60 tracking-widest uppercase">RECARGAS</p></div>
-                                <div className="text-right"><p className="text-[11px] opacity-70 uppercase tracking-widest font-black">Disponible</p><p className="text-4xl font-black">L. {(sld?.saldoFinal || 0).toLocaleString()}</p></div>
-                             </div>
-                             <div className="p-8 grid grid-cols-1 gap-6 bg-white flex-1">
-                                 <div className="flex gap-4">
-                                     <button onClick={() => setShowRecargaModal({ red: red as any, tipo: 'RECARGA' })} className={`flex-1 py-6 font-black rounded-3xl border-4 transition-all flex flex-col items-center gap-2 ${red === 'TIGO' ? 'border-blue-50 text-blue-600 hover:bg-blue-50' : 'border-red-50 text-red-600 hover:bg-red-50'}`}><Smartphone size={32}/><span className="text-xs uppercase tracking-widest">RECARGA</span></button>
-                                     <button onClick={() => setShowRecargaModal({ red: red as any, tipo: 'PAQUETE' })} className={`flex-1 py-6 font-black rounded-3xl border-4 transition-all flex flex-col items-center gap-2 ${red === 'TIGO' ? 'border-blue-50 text-blue-600 hover:bg-blue-50' : 'border-red-50 text-red-600 hover:bg-red-50'}`}><PlusCircle size={32}/><span className="text-xs uppercase tracking-widest">PACKS</span></button>
-                                 </div>
-                                 <button onClick={() => { setSaldoForm({red: red as any, montoPagado: ''}); setShowSaldoModal(true); }} className="w-full py-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-slate-500 hover:bg-slate-100 flex items-center justify-center gap-3 text-xs tracking-widest uppercase"><Wallet size={20}/> COMPRAR SALDO</button>
-                             </div>
-                           </div>
-                        );
-                    })}
-                </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {['TIGO', 'CLARO'].map(red => {
+                    const sld = saldos.find(s => s.red === red);
+                    return (
+                        <div key={red} className={`rounded-2xl border-2 overflow-hidden bg-white shadow-xl ${red === 'TIGO' ? 'border-blue-500' : 'border-red-500'}`}>
+                            <div className={`${red === 'TIGO' ? 'bg-blue-600' : 'bg-red-600'} p-4 flex justify-between items-center text-white`}>
+                                <h3 className="font-black text-lg tracking-tighter">{red}</h3>
+                                <p className="text-xs font-bold bg-white/20 px-3 py-1 rounded-lg">Saldo: {sld?.saldoFinal || 0}</p>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <button onClick={() => setShowRecargaModal({ red: red as any, tipo: 'RECARGA' })} className="w-full py-6 rounded-xl border-2 border-slate-100 hover:bg-slate-50 font-black text-slate-600 flex flex-col items-center gap-2 transition-all">
+                                    <Smartphone size={24}/> RECARGA NORMAL
+                                </button>
+                                <button onClick={() => setShowRecargaModal({ red: red as any, tipo: 'PAQUETE' })} className="w-full py-6 rounded-xl border-2 border-slate-100 hover:bg-slate-50 font-black text-slate-600 flex flex-col items-center gap-2 transition-all">
+                                    <FileText size={24}/> PAQUETES
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
              </div>
          )}
 
-         {activeTab === 'FACTURAS' && (
+         {/* TAB: HISTORIAL */}
+         {activeTab === 'HISTORIAL' && (
            <div className="space-y-6">
-              <div className="flex justify-between items-center bg-indigo-50 p-8 rounded-3xl border border-indigo-100">
-                 <div><h3 className="font-black text-indigo-800 text-lg uppercase tracking-tight">Historial POS</h3><p className="text-sm text-indigo-600 opacity-80 font-medium">Facturas emitidas hoy.</p></div>
-                 <button onClick={() => navigate('/pos')} className="bg-indigo-600 text-white px-8 py-4 rounded-2xl hover:bg-indigo-700 shadow-xl flex items-center gap-3 font-black text-sm transition-all active:scale-95"><PlusCircle size={20}/> NUEVA VENTA</button>
+              <div className="flex justify-between items-center">
+                 <h3 className="font-black text-slate-800 text-sm uppercase">Historial Ventas POS (Hoy)</h3>
+                 <div className="flex gap-2">
+                    <button onClick={() => generateDailyReport(true)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 hover:bg-indigo-100 transition-all"><Download size={16}/> Reporte Full</button>
+                    <button onClick={() => generateDailyReport(false)} className="bg-slate-50 text-slate-600 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 hover:bg-slate-100 transition-all"><Download size={16}/> Sin Recargas</button>
+                 </div>
               </div>
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-slate-500 uppercase font-black text-[11px] tracking-widest border-b"><tr><th className="p-5">Factura</th><th className="p-5">Cliente</th><th className="p-5">Monto</th><th className="p-5 text-right">Acciones</th></tr></thead>
+              <table className="w-full text-left text-[11px]">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-black border-b"><tr><th className="p-4">FACTURA</th><th className="p-4">CLIENTE</th><th className="p-4">TOTAL</th><th className="p-4">ESTADO</th><th className="p-4 text-right">ACCIÓN</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                    {ventas.length === 0 ? <tr><td colSpan={4} className="p-20 text-center text-slate-400 italic font-medium">No hay ventas registradas hoy.</td></tr> : ventas.map(v => (
-                        <tr key={v.codVenta} className={`hover:bg-slate-50 transition-colors ${v.estado === 'Anulada' ? 'opacity-40' : ''}`}>
-                            <td className="p-5"><p className="font-black text-slate-800 text-sm">{v.codVenta}</p><p className="text-[10px] font-mono text-slate-400">{new Date(v.fecha).toLocaleTimeString()}</p></td>
-                            <td className="p-5 font-bold text-slate-600 text-sm">{v.nombreCliente}</td>
-                            <td className="p-5 font-black text-indigo-600 text-lg">L. {Number(v.total).toLocaleString()}</td>
-                            <td className="p-5 text-right"><button className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Printer size={20}/></button></td>
+                    {ventas.length === 0 ? <tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">No hay ventas registradas hoy.</td></tr> : ventas.map(v => (
+                        <tr key={v.codVenta} className={`hover:bg-slate-50 ${v.estado === 'Anulada' ? 'opacity-40' : ''}`}>
+                            <td className="p-4 font-bold text-slate-800">{v.codVenta}</td>
+                            <td className="p-4 text-slate-600 font-medium">{v.nombreCliente}</td>
+                            <td className="p-4 font-black text-slate-800">L. {Number(v.total).toFixed(2)}</td>
+                            <td className="p-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v.estado === 'Completada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{v.estado}</span></td>
+                            <td className="p-4 text-right flex justify-end gap-2">
+                                <button className="px-3 py-1.5 border border-indigo-200 text-indigo-600 rounded-lg font-bold hover:bg-indigo-50 flex items-center gap-1"><Edit2 size={12}/> EDITAR</button>
+                                <button className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg font-bold hover:bg-red-50 flex items-center gap-1"><X size={12}/> ANULAR</button>
+                            </td>
                         </tr>
                     ))}
                 </tbody>
@@ -309,65 +397,85 @@ const CashRegister: React.FC = () => {
       </div>
       </div>
 
-      {/* MODALS (Restaurados tal cual estaban) */}
+      {/* --- MODALS RESTORATION --- */}
+      
       {showIngresoModal && (
-         <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[40px] p-10 shadow-2xl animate-fade-in border border-slate-100">
-               <div className="flex justify-between items-center mb-8"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tight">Entrada Efectivo</h3><button onClick={() => setShowIngresoModal(false)} className="p-3 hover:bg-slate-100 rounded-full transition-colors"><X size={24}/></button></div>
-               <div className="space-y-6">
-                  <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Descripción</label><input className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold" value={ingresoForm.descripcion} onChange={e => setIngresoForm({...ingresoForm, descripcion: e.target.value})} placeholder="Ej: Servicio Técnico..." /></div>
+         <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl animate-fade-in">
+               <h3 className="font-black text-lg text-slate-800 mb-6">Registrar Ingreso</h3>
+               <div className="space-y-4">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Descripción</label><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold" value={ingresoForm.descripcion} onChange={e => setIngresoForm({...ingresoForm, descripcion: e.target.value})} placeholder="Producto/Servicio" /></div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-[11px] font-black text-emerald-500 uppercase tracking-widest mb-2 block">Monto (L.)</label><input type="number" className="w-full p-4 bg-emerald-50 border-2 border-emerald-100 rounded-2xl outline-none font-black text-emerald-700 text-xl" value={ingresoForm.monto} onChange={e => setIngresoForm({...ingresoForm, monto: e.target.value})} /></div>
-                    <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Costo (L.)</label><input type="number" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold" value={ingresoForm.costo} onChange={e => setIngresoForm({...ingresoForm, costo: e.target.value})} /></div>
+                    <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Precio Venta</label><input type="number" className="w-full p-3 bg-slate-50 border rounded-xl font-black text-slate-700" value={ingresoForm.monto} onChange={e => setIngresoForm({...ingresoForm, monto: e.target.value})} placeholder="0.00" /></div>
+                    <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Costo</label><input type="number" className="w-full p-3 bg-slate-50 border rounded-xl font-bold" value={ingresoForm.costo} onChange={e => setIngresoForm({...ingresoForm, costo: e.target.value})} placeholder="0.00" /></div>
                   </div>
-                  <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border-2 border-indigo-100 cursor-pointer" onClick={() => setIngresoForm({...ingresoForm, irAPos: !ingresoForm.irAPos})}>
-                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${ingresoForm.irAPos ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>{ingresoForm.irAPos && <CheckCircle size={16} className="text-white"/>}</div>
-                      <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Generar Factura SAR</span>
+                  <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer" onClick={() => setIngresoForm({...ingresoForm, irAPos: !ingresoForm.irAPos})}>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${ingresoForm.irAPos ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>{ingresoForm.irAPos && <CheckCircle size={14} className="text-white"/>}</div>
+                      <div className="flex flex-col"><span className="text-xs font-bold text-slate-700">Facturar en Punto de Venta</span><span className="text-[10px] text-slate-400">Genera ticket formal</span></div>
                   </div>
                </div>
-               <button onClick={handleIngresoAction} className="w-full mt-10 py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl uppercase tracking-widest text-sm transition-all active:scale-95">GUARDAR REGISTRO</button>
+               <div className="flex gap-3 mt-8">
+                   <button onClick={() => setShowIngresoModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl">Cancelar</button>
+                   <button onClick={handleIngresoAction} className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20">Guardar</button>
+               </div>
             </div>
          </div>
       )}
 
       {showEgresoModal && (
-         <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[40px] p-10 shadow-2xl animate-fade-in border border-slate-100">
-               <div className="flex justify-between items-center mb-8"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tight">Salida Efectivo</h3><button onClick={() => setShowEgresoModal(false)} className="p-3 hover:bg-slate-100 rounded-full transition-colors"><X size={24}/></button></div>
-               <div className="space-y-6">
-                  <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Descripción</label><input className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-500 font-bold" value={egresoForm.descripcion} onChange={e => setEgresoForm({...egresoForm, descripcion: e.target.value})} placeholder="Ej: Pago de Luz..." /></div>
-                  <div><label className="text-[11px] font-black text-red-500 uppercase tracking-widest mb-2 block">Monto (L.)</label><input type="number" className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl outline-none font-black text-red-600 text-3xl text-center" value={egresoForm.monto} onChange={e => setEgresoForm({...egresoForm, monto: e.target.value})} /></div>
+         <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl animate-fade-in">
+               <h3 className="font-black text-lg text-slate-800 mb-6">Registrar Gasto</h3>
+               <div className="space-y-4">
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Descripción del gasto</label><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500/20 font-bold" value={egresoForm.descripcion} onChange={e => setEgresoForm({...egresoForm, descripcion: e.target.value})} /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Monto</label><input type="number" className="w-full p-3 bg-slate-50 border rounded-xl font-black text-slate-700" value={egresoForm.monto} onChange={e => setEgresoForm({...egresoForm, monto: e.target.value})} placeholder="0.00" /></div>
                </div>
-               <button onClick={handleEgresoAction} className="w-full mt-10 py-5 bg-red-600 text-white font-black rounded-2xl shadow-xl uppercase tracking-widest text-sm transition-all active:scale-95">REGISTRAR SALIDA</button>
-            </div>
-         </div>
-      )}
-
-      {showRecargaModal && (
-         <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[40px] p-10 shadow-2xl animate-fade-in border border-slate-100">
-               <div className="flex justify-between items-center mb-8"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tight">{showRecargaModal.tipo === 'RECARGA' ? `Recarga ${showRecargaModal.red}` : `Paquete ${showRecargaModal.red}`}</h3><button onClick={() => setShowRecargaModal(null)} className="p-3 hover:bg-slate-100 rounded-full"><X size={24}/></button></div>
-               <div className="space-y-6">
-                  {showRecargaModal.tipo === 'RECARGA' ? (
-                      <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 block text-center">Monto Recarga L.</label><input type="number" className="w-full p-6 bg-slate-50 border-2 border-slate-200 rounded-3xl outline-none text-5xl font-black text-center" value={recargaForm.monto} onChange={e => setRecargaForm({...recargaForm, monto: e.target.value})} placeholder="0" autoFocus /></div>
-                  ) : (
-                      <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Seleccione el Paquete</label><select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-sm" value={recargaForm.paqueteId} onChange={e => setRecargaForm({...recargaForm, paqueteId: e.target.value})}><option value="">-- SELECCIONAR --</option>{paquetes.filter(p => p.red === showRecargaModal.red).map(p => (<option key={p.idPaquete} value={p.idPaquete}>{p.nombre} - L. {p.precio}</option>))}</select></div>
-                  )}
+               <div className="flex gap-3 mt-8">
+                   <button onClick={() => setShowEgresoModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl">Cancelar</button>
+                   <button onClick={handleEgresoAction} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-600/20">Guardar</button>
                </div>
-               <button onClick={handleRecargaAction} className={`w-full mt-10 py-6 text-white font-black rounded-3xl shadow-xl uppercase tracking-widest text-sm transition-all active:scale-95 ${showRecargaModal.red === 'TIGO' ? 'bg-blue-600 shadow-blue-600/20' : 'bg-red-600 shadow-red-600/20'}`}>PROCESAR VENTA</button>
             </div>
          </div>
       )}
 
       {showSaldoModal && (
-         <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[40px] p-10 shadow-2xl border border-slate-100">
-               <div className="flex justify-between items-center mb-8"><h3 className="font-black text-xl text-slate-800 uppercase tracking-tight">Compra Saldo {saldoForm.red}</h3><button onClick={() => setShowSaldoModal(false)}><X size={24}/></button></div>
-               <div className="space-y-6">
-                  <div className="bg-amber-50 p-6 rounded-2xl border-2 border-amber-100 text-amber-800 text-[10px] font-black tracking-widest flex gap-4 uppercase leading-relaxed"><AlertTriangle size={24} className="shrink-0"/> ESTO GENERARÁ UN EGRESO AUTOMÁTICO DE CAJA.</div>
-                  <div><label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block text-center">Monto Pagado L.</label><input type="number" className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none font-black text-3xl text-center" value={saldoForm.montoPagado} onChange={e => setSaldoForm({...saldoForm, montoPagado: e.target.value})} placeholder="0.00" autoFocus /></div>
+         <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border-t-8 border-indigo-600">
+               <div className="flex justify-between items-center mb-6">
+                   <h3 className="font-black text-lg text-slate-800">Comprar Saldo</h3>
+                   <button onClick={() => setShowSaldoModal(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
                </div>
-               <button onClick={handleBuySaldo} className="w-full mt-10 py-6 bg-slate-800 text-white font-black rounded-3xl shadow-2xl uppercase tracking-widest text-sm transition-all active:scale-95">CONFIRMAR COMPRA</button>
+               <div className="space-y-4">
+                  <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Red</label>
+                      <select className="w-full p-3 bg-slate-50 border rounded-xl font-bold" value={saldoForm.red} onChange={e => setSaldoForm({...saldoForm, red: e.target.value as any})}>
+                          <option value="TIGO">TIGO</option>
+                          <option value="CLARO">CLARO</option>
+                      </select>
+                  </div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">DINERO PAGADO (EGRESO)</label><input className="w-full p-3 bg-slate-50 border rounded-xl font-black text-lg" placeholder="L. Pagados" value={saldoForm.montoPagado} onChange={e => setSaldoForm({...saldoForm, montoPagado: e.target.value})} /></div>
+                  <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">SALDO RECIBIDO</label><input className="w-full p-3 bg-slate-50 border rounded-xl font-black text-lg" placeholder="Saldo Recibido" value={saldoForm.saldoRecibido} onChange={e => setSaldoForm({...saldoForm, saldoRecibido: e.target.value})} /></div>
+               </div>
+               <button onClick={handleBuySaldo} className="w-full mt-8 py-4 bg-indigo-600 text-white font-black rounded-xl shadow-xl shadow-indigo-600/20 uppercase tracking-widest text-xs">Registrar Compra</button>
+            </div>
+         </div>
+      )}
+
+      {showRecargaModal && (
+         <div className="fixed inset-0 bg-slate-900/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-sm rounded-2xl p-8 shadow-2xl">
+               <div className="flex justify-between items-center mb-6">
+                   <h3 className="font-black text-lg text-slate-800 uppercase tracking-tight">{showRecargaModal.tipo === 'RECARGA' ? `Recarga Normal ${showRecargaModal.red}` : `Paquete ${showRecargaModal.red}`}</h3>
+                   <button onClick={() => setShowRecargaModal(null)}><X size={24}/></button>
+               </div>
+               <div className="space-y-4">
+                  {showRecargaModal.tipo === 'RECARGA' ? (
+                      <div><label className="text-[10px] font-black text-slate-400 uppercase mb-4 block text-center">MONTO RECARGA L.</label><input type="number" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none text-4xl font-black text-center text-indigo-600" value={recargaForm.monto} onChange={e => setRecargaForm({...recargaForm, monto: e.target.value})} autoFocus /></div>
+                  ) : (
+                      <div><label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Seleccione el Paquete</label><select className="w-full p-4 bg-slate-50 border rounded-xl font-black text-xs" value={recargaForm.paqueteId} onChange={e => setRecargaForm({...recargaForm, paqueteId: e.target.value})}><option value="">-- SELECCIONAR --</option>{paquetes.filter(p => p.red === showRecargaModal.red).map(p => (<option key={p.idPaquete} value={p.idPaquete}>{p.nombre} - L. {p.precio}</option>))}</select></div>
+                  )}
+               </div>
+               <button onClick={handleRecargaAction} className={`w-full mt-8 py-4 text-white font-black rounded-xl shadow-xl uppercase tracking-widest text-xs transition-all active:scale-95 ${showRecargaModal.red === 'TIGO' ? 'bg-blue-600 shadow-blue-600/20' : 'bg-red-600 shadow-red-600/20'}`}>PROCESAR VENTA</button>
             </div>
          </div>
       )}
