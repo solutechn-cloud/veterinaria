@@ -22,8 +22,11 @@ const Inventory: React.FC = () => {
   const [activeTab, setActiveTab] = useState<InventoryTab>('TELEPHONES');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // NEW: Filter for Phones Status
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
+  // Data Arrays
   const [phones, setPhones] = useState<Telefono[]>([]);
   const [stock, setStock] = useState<Inventario[]>([]);
   const [master, setMaster] = useState<Accesorio[]>([]);
@@ -31,10 +34,12 @@ const Inventory: React.FC = () => {
   const [locations, setLocations] = useState<Ubicacion[]>([]);
   const [providers, setProviders] = useState<Proveedor[]>([]);
 
+  // Modal State
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
 
+  // Forms
   const [phoneForm, setPhoneForm] = useState<Partial<Telefono>>({ estado: 'Disponible' });
   const [stockForm, setStockForm] = useState<Partial<Inventario>>({ estado: 'Activo' });
   const [masterForm, setMasterForm] = useState<Partial<Accesorio>>({});
@@ -46,19 +51,22 @@ const Inventory: React.FC = () => {
     loadDependencies();
   }, [activeTab]);
 
+  // --- LOGICA PARA COMBOBOX INTELIGENTE (MARCA/MODELO) ---
   const uniqueBrands = useMemo(() => {
-      const brands = phones.map(p => p.marca).filter(Boolean);
-      return Array.from(new Set(brands)).sort();
+      const brands = phones.map(p => p.marca).filter(Boolean); // Obtener todas las marcas
+      return Array.from(new Set(brands)).sort(); // Eliminar duplicados y ordenar
   }, [phones]);
 
   const availableModels = useMemo(() => {
       if (!phoneForm.marca) return [];
+      // Filtrar teléfonos que coincidan con la marca escrita (insensible a mayúsculas)
       const models = phones
           .filter(p => p.marca.toLowerCase() === phoneForm.marca?.toLowerCase())
           .map(p => p.modelo)
           .filter(Boolean);
       return Array.from(new Set(models)).sort();
   }, [phones, phoneForm.marca]);
+  // -------------------------------------------------------
 
   const loadDependencies = async () => {
       try {
@@ -70,76 +78,350 @@ const Inventory: React.FC = () => {
           setProviders(provs || []);
           setCategories(cats || []);
           setLocations(locs || []);
-      } catch (error) { console.error(error); }
+      } catch (error) {
+          console.error("Error loading dependencies", error);
+      }
   };
 
   const loadData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'TELEPHONES') setPhones(await InventoryService.getTelefonos());
-      else if (activeTab === 'STOCK') setStock(await InventoryService.getStockAccesorios());
-      else if (activeTab === 'MASTER') setMaster(await InventoryService.getAccesoriosMaster());
-      else if (activeTab === 'CATEGORIES') setCategories(await InventoryService.getCategorias());
-      else if (activeTab === 'LOCATIONS') setLocations(await InventoryService.getUbicaciones());
-    } catch (error) { console.error(error); }
-    finally { setLoading(false); }
+      if (activeTab === 'TELEPHONES') {
+          const data = await InventoryService.getTelefonos();
+          setPhones(data || []);
+      } else if (activeTab === 'STOCK') {
+          const data = await InventoryService.getStockAccesorios();
+          setStock(data || []);
+      } else if (activeTab === 'MASTER') {
+          const data = await InventoryService.getAccesoriosMaster();
+          setMaster(data || []);
+      } else if (activeTab === 'CATEGORIES') {
+          const data = await InventoryService.getCategorias();
+          setCategories(data || []);
+      } else if (activeTab === 'LOCATIONS') {
+          const data = await InventoryService.getUbicaciones();
+          setLocations(data || []);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- LOGICA IMPRESIÓN AVANZADA ---
+  
+  // Función recursiva para buscar propiedades ignorando mayúsculas/minúsculas
+  const getNestedValue = (obj: any, path: string): any => {
+      if (!obj) return '';
+      const keys = path.split('.');
+      let current = obj;
+
+      for (const key of keys) {
+          if (current === null || typeof current !== 'object') return '';
+          // Buscar key exacta o insensible a mayúsculas
+          const foundKey = Object.keys(current).find(k => k.toLowerCase() === key.toLowerCase());
+          if (foundKey) {
+              current = current[foundKey];
+          } else {
+              return '';
+          }
+      }
+      return current;
+  };
+
+  const replaceVariables = (content: string, dataContext: any): string => {
+      let text = content || '';
+      
+      // Reemplazo dinámico usando Regex para capturar cualquier {{variable.ruta}}
+      text = text.replace(/{{([\w.]+)}}/g, (match, path) => {
+          const val = getNestedValue(dataContext, path);
+          
+          // Formateo especial para moneda
+          if (typeof val === 'number' && (path.toLowerCase().includes('precio') || path.toLowerCase().includes('costo'))) {
+              return `L. ${val.toFixed(2)}`;
+          }
+          
+          return val !== undefined && val !== null ? String(val) : '';
+      });
+
+      return text;
+  };
+
+  // Helper para sanitizar números y evitar NaN
+  const safeNum = (val: any, def: number = 0): number => {
+      const num = parseFloat(val);
+      return isNaN(num) ? def : num;
   };
 
   const handlePrintLabel = async (item: any, type: 'TELEFONO' | 'STOCK') => {
       try {
-          const codigo = type === 'TELEFONO' ? item.imei1 : item.codInventario;
-          const extraText = type === 'TELEFONO' ? `${item.marca} ${item.modelo}` : (item.descripcionAccesorio || '');
+          // 1. Obtener la plantilla
+          const category = type === 'TELEFONO' ? 'TELEPHONE' : 'ACCESSORY';
+          const template = await LabelService.getDefault(category);
 
-          // MIGRACIÓN LÓGICA JAVA: 25mm x 40mm
-          const mmToPt = 72.0 / 25.4;
-          const widthPt = 25 * mmToPt;
-          const heightPt = 40 * mmToPt;
-
-          const doc = new jsPDF({
-              orientation: 'portrait',
-              unit: 'pt',
-              format: [widthPt, heightPt]
-          });
-
-          // TÍTULO VERTICAL ARRIBA (Mismo algoritmo que Java BarcodePdfUtil)
-          if (extraText) {
-              doc.setFontSize(8);
-              doc.setFont('helvetica', 'normal');
-              const textWidth = doc.getTextWidth(extraText);
-              // xCenter en Java es widthPt / 6f para alinear con el código rotado
-              const xCenter = widthPt / 6;
-              const yCenter = textWidth / 2 + 5; // Margen superior
-              doc.text(extraText, xCenter, yCenter, { angle: 90, align: 'center' });
+          if (!template) {
+              return Swal.fire('Sin Plantilla', `No hay una etiqueta predeterminada para ${category}. Ve al Diseñador de Etiquetas y configura una.`, 'warning');
           }
 
-          // CÓDIGO DE BARRAS (Rotado 90)
-          const canvas = document.createElement('canvas');
-          JsBarcode(canvas, codigo, { format: "CODE128", displayValue: true, fontSize: 20, margin: 0 });
-          const imgData = canvas.toDataURL("image/png");
-          
-          // Image properties like in Java: rotation 90, alignment top
-          doc.addImage(imgData, 'PNG', 2, 2, heightPt - 4, widthPt - 4, undefined, 'FAST', 90);
+          // 2. Construir Contexto de Datos Estructurado
+          let dataContext: any = {};
 
-          doc.save(`Etiqueta_${codigo}.pdf`);
+          if (type === 'TELEFONO') {
+              dataContext = {
+                  telefonos: {
+                      ...item,
+                      codigo: item.codigo,
+                      imei1: item.imei1,
+                      imei2: item.imei2,
+                      marca: item.marca,
+                      modelo: item.modelo,
+                      precioCompra: item.precioCompra,
+                      precioVenta: item.precioVenta,
+                      estado: item.estado,
+                      ubicacion: {
+                          nombre: item.nombreUbicacion,
+                          id: item.idubicacion
+                      },
+                      proveedores: {
+                          id: item.codProveedor
+                      }
+                  }
+              };
+          } else {
+              dataContext = {
+                  inventario: {
+                      ...item,
+                      codInventario: item.codInventario,
+                      codinventario: item.codInventario, 
+                      cantidad: item.cantidad,
+                      precioVenta: item.precioVenta,
+                      estado: item.estado,
+                      accesorios: {
+                          codAccesorio: item.codAccesorio,
+                          descripcion: item.descripcionAccesorio,
+                          categoria: {
+                              tipo: item.categoriaAccesorio
+                          }
+                      },
+                      ubicacion: {
+                          nombre: item.nombreUbicacion,
+                          id: item.idubicacion
+                      },
+                      proveedores: {
+                          id: item.codProveedor
+                      }
+                  }
+              };
+          }
+
+          // --- LOGICA DE DESBORDAMIENTO (STRETCH WITH OVERFLOW) ---
+          
+          // Instancia temporal para calcular alturas de texto
+          const scratchDoc = new jsPDF(); 
+          let totalShiftY = 0; // Cuánto se ha desplazado el layout hacia abajo
+
+          // Ordenar elementos por posición Y para procesarlos de arriba a abajo
+          // Usamos safeNum para garantizar ordenamiento numérico
+          const sortedElements = [...template.elements].sort((a, b) => safeNum(a.y) - safeNum(b.y));
+
+          const layoutElements = sortedElements.map(el => {
+              // Sanitizar dimensiones
+              const elY = safeNum(el.y);
+              const elH = safeNum(el.height);
+              const elW = safeNum(el.width);
+              const elX = safeNum(el.x);
+
+              // Aplicar el desplazamiento acumulado hasta el momento a la posición Y
+              let finalY = elY + totalShiftY;
+              let finalHeight = elH;
+              let finalContent = el.content;
+
+              if (el.type === 'TEXT') {
+                  // Reemplazar variables antes de medir
+                  finalContent = replaceVariables(el.content, dataContext);
+                  
+                  if (el.isStretchWithOverflow) {
+                      const fontSize = safeNum(el.fontSize, 10);
+                      
+                      // Configurar fuente en dummy doc para medición precisa
+                      if(el.fontFamily?.includes('Courier')) scratchDoc.setFont('courier', el.fontWeight);
+                      else if(el.fontFamily?.includes('Times')) scratchDoc.setFont('times', el.fontWeight);
+                      else scratchDoc.setFont('helvetica', el.fontWeight);
+                      
+                      scratchDoc.setFontSize(fontSize);
+
+                      // jsPDF divide el texto en líneas según el ancho disponible
+                      // Usamos un ancho mínimo de seguridad si el width viene mal
+                      const usableWidth = elW > 0 ? elW : 10;
+                      const lines = scratchDoc.splitTextToSize(finalContent, usableWidth);
+                      
+                      // Calcular altura real: líneas * factor de altura de línea (aprox 1.15) conversion pt->mm (0.3527)
+                      const lineHeightMm = fontSize * 0.3527 * 1.15;
+                      const actualHeight = lines.length * lineHeightMm;
+
+                      // Si la altura real es mayor que la definida en diseño
+                      if (actualHeight > elH) {
+                          const growth = actualHeight - elH;
+                          finalHeight = actualHeight; // El elemento crece
+                          totalShiftY += growth; // Acumulamos el crecimiento para empujar elementos siguientes
+                      }
+                  }
+              } else if (el.type === 'BARCODE') {
+                   finalContent = replaceVariables(el.content, dataContext);
+              }
+
+              return { 
+                  ...el, 
+                  y: finalY, 
+                  height: finalHeight, 
+                  width: elW, 
+                  x: elX, 
+                  computedContent: finalContent 
+              };
+          });
+
+          // Aumentar el tamaño total del PDF con el desplazamiento acumulado
+          const baseW = safeNum(template.width, 50);
+          const baseH = safeNum(template.height, 25);
+          const finalPdfHeight = baseH + totalShiftY;
+
+          // 3. Configurar PDF FINAL con el nuevo tamaño
+          const doc = new jsPDF({
+              orientation: baseW > finalPdfHeight ? 'landscape' : 'portrait',
+              unit: 'mm',
+              format: [baseW, finalPdfHeight]
+          });
+
+          // 4. Renderizar Elementos Calculados
+          for (const el of layoutElements) {
+              if (el.type === 'TEXT') {
+                  doc.setFontSize(safeNum(el.fontSize, 10));
+                  
+                  if(el.fontFamily?.includes('Courier')) doc.setFont('courier', el.fontWeight);
+                  else if(el.fontFamily?.includes('Times')) doc.setFont('times', el.fontWeight);
+                  else doc.setFont('helvetica', el.fontWeight);
+                  
+                  doc.setTextColor(el.color || '#000000');
+                  
+                  const opts: any = { baseline: 'top' };
+                  let x = el.x;
+                  if (el.textAlign === 'center') {
+                      x = el.x + (el.width / 2);
+                      opts.align = 'center';
+                  } else if (el.textAlign === 'right') {
+                      x = el.x + el.width;
+                      opts.align = 'right';
+                  }
+                  
+                  if (el.isMultiline) {
+                      opts.maxWidth = el.width > 0 ? el.width : baseW;
+                  }
+
+                  if (el.rotation && el.rotation !== 0) {
+                      opts.angle = el.rotation;
+                  }
+
+                  doc.text(String(el.computedContent || ''), x, el.y, opts);
+              } 
+              else if (el.type === 'BARCODE') {
+                  const codeValue = el.computedContent;
+                  
+                  if (codeValue) {
+                      const canvas = document.createElement('canvas');
+                      try {
+                          const scaleFactor = 4; // Alta resolución
+                          
+                          JsBarcode(canvas, codeValue, {
+                              format: (el.barcodeFormat as any) || "CODE128",
+                              displayValue: el.displayValue,
+                              text: codeValue,
+                              fontSize: 14 * scaleFactor,
+                              textMargin: 2 * scaleFactor,
+                              margin: 0,
+                              width: 2 * scaleFactor,
+                              height: 50 * scaleFactor
+                          });
+                          
+                          const imgData = canvas.toDataURL("image/png");
+                          // Usar dimensiones sanitizadas
+                          doc.addImage(imgData, 'PNG', el.x, el.y, el.width, el.height);
+                      } catch(e) { console.error("Barcode Error", e); }
+                  }
+              }
+              else if (el.type === 'SHAPE') {
+                  const style = el.fill && el.fill !== 'transparent' ? 'FD' : 'S';
+                  doc.setDrawColor(el.stroke || '#000000');
+                  doc.setFillColor(el.fill || '#FFFFFF');
+                  doc.setLineWidth((el.strokeWidth || 1) * 0.1); 
+
+                  if (el.shapeType === 'CIRCLE') {
+                      const r = Math.min(el.width, el.height) / 2;
+                      doc.circle(el.x + r, el.y + r, r, style);
+                  } else if (el.shapeType === 'LINE') {
+                      doc.line(el.x, el.y, el.x + el.width, el.y);
+                  } else {
+                      doc.rect(el.x, el.y, el.width, el.height, style);
+                  }
+              }
+          }
+
+          const filename = type === 'TELEFONO' ? `Label_${item.imei1}.pdf` : `Label_${item.codInventario}.pdf`;
+          doc.save(filename);
+
       } catch (error) {
           console.error(error);
-          Swal.fire('Error', 'No se pudo generar la etiqueta.', 'error');
+          Swal.fire('Error', 'No se pudo generar la etiqueta. Verifique la plantilla.', 'error');
       }
   };
 
   const openModal = (item?: any) => {
       setIsEditing(!!item);
       setCurrentId(item ? (item.codigo || item.codInventario || item.codAccesorio || item.codCategoria || item.idUbicacion) : null);
-      if (activeTab === 'TELEPHONES') setPhoneForm(item || { estado: 'Disponible', fecha: new Date().toISOString().split('T')[0] });
-      else if (activeTab === 'STOCK') setStockForm(item || { estado: 'Activo', fecha: new Date().toISOString().split('T')[0] });
-      else if (activeTab === 'MASTER') setMasterForm(item || {});
-      else if (activeTab === 'CATEGORIES') setCatForm(item || {});
-      else if (activeTab === 'LOCATIONS') setLocForm(item || { estado: 'Activo' });
+
+      if (activeTab === 'TELEPHONES') {
+          setPhoneForm(item || { estado: 'Disponible', fecha: new Date().toISOString().split('T')[0] });
+      } else if (activeTab === 'STOCK') {
+          setStockForm(item || { estado: 'Activo', fecha: new Date().toISOString().split('T')[0] });
+      } else if (activeTab === 'MASTER') {
+          setMasterForm(item || {});
+      } else if (activeTab === 'CATEGORIES') {
+          setCatForm(item || {});
+      } else if (activeTab === 'LOCATIONS') {
+          setLocForm(item || { estado: 'Activo' });
+      }
       setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!isEditing) {
+        if (activeTab === 'TELEPHONES') {
+            const imeiExists = phones.some(p => p.imei1 === phoneForm.imei1);
+            if (imeiExists) {
+                return Swal.fire({ title: 'IMEI Duplicado', text: `El IMEI ${phoneForm.imei1} ya existe.`, icon: 'warning' });
+            }
+        } 
+        // --- NUEVA VALIDACIÓN: DUPLICADOS EN STOCK ---
+        else if (activeTab === 'STOCK') {
+            // Verificar si ya existe este accesorio en esta ubicación específica
+            // (Se asume que codProveedor también es parte de la unicidad o se puede omitir si es irrelevante)
+            const stockExists = stock.some(s => 
+                s.codAccesorio === stockForm.codAccesorio && 
+                s.idubicacion === stockForm.idubicacion
+            );
+            
+            if (stockExists) {
+                return Swal.fire({ 
+                    title: 'Producto ya en Inventario', 
+                    text: 'Este accesorio ya existe en la ubicación seleccionada. Por favor, edite el registro existente para agregar más cantidad.', 
+                    icon: 'error' 
+                });
+            }
+        }
+    }
+
     try {
       if (activeTab === 'TELEPHONES') {
         if(isEditing) await InventoryService.updateTelefono(currentId!, phoneForm);
@@ -184,16 +466,39 @@ const Inventory: React.FC = () => {
       if (activeTab === 'TELEPHONES') {
           const filtered = phones.filter(p => {
               const term = searchTerm.toLowerCase();
-              return (p.marca.toLowerCase().includes(term) || p.modelo.toLowerCase().includes(term) || p.imei1.toLowerCase().includes(term)) && (statusFilter === 'ALL' || p.estado === statusFilter);
+              const matchesSearch = p.marca.toLowerCase().includes(term) || 
+                                    p.modelo.toLowerCase().includes(term) ||
+                                    p.imei1.toLowerCase().includes(term) ||
+                                    p.codigo.toLowerCase().includes(term); // Buscar por ID/Codigo
+              const matchesStatus = statusFilter === 'ALL' || p.estado === statusFilter;
+              return matchesSearch && matchesStatus;
           });
           return (
               <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase"><tr><th className="p-3">Código</th><th className="p-3">Marca/Modelo</th><th className="p-3">IMEI</th><th className="p-3">Precio Venta</th><th className="p-3">Ubicación</th><th className="p-3">Estado</th><th className="p-3 text-right">Acciones</th></tr></thead>
+                  <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0">
+                      <tr>
+                          <th className="p-3">Código</th>
+                          <th className="p-3">Marca/Modelo</th>
+                          <th className="p-3">IMEI</th>
+                          <th className="p-3">Precio Venta</th>
+                          <th className="p-3">Ubicación</th>
+                          <th className="p-3">Estado</th>
+                          <th className="p-3 text-right">Acciones</th>
+                      </tr>
+                  </thead>
                   <tbody className="divide-y divide-slate-100">
                       {filtered.map(p => (
                           <tr key={p.codigo} className="hover:bg-slate-50 text-sm">
-                              <td className="p-3 font-mono text-slate-500">{p.codigo}</td><td className="p-3 font-bold text-slate-700">{p.marca} {p.modelo}</td><td className="p-3 font-mono">{p.imei1}</td><td className="p-3 font-bold text-emerald-600">L. {Number(p.precioVenta).toFixed(2)}</td><td className="p-3 text-xs">{p.nombreUbicacion || p.idubicacion}</td><td><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{p.estado}</span></td><td className="p-3 text-right">
-                                  <button onClick={() => handlePrintLabel(p, 'TELEFONO')} className="text-slate-400 hover:text-slate-600 p-1.5 rounded mr-1"><Printer size={16}/></button><button onClick={() => openModal(p)} className="text-blue-500 p-1.5 rounded mr-1"><Edit2 size={16}/></button><button onClick={() => handleDelete(p.codigo)} className="text-red-500 p-1.5 rounded"><Trash2 size={16}/></button>
+                              <td className="p-3 font-mono text-slate-500">{p.codigo}</td>
+                              <td className="p-3 font-bold text-slate-700">{p.marca} {p.modelo}</td>
+                              <td className="p-3 font-mono">{p.imei1}</td>
+                              <td className="p-3 font-bold text-emerald-600">L. {Number(p.precioVenta).toFixed(2)}</td>
+                              <td className="p-3 text-xs">{p.nombreUbicacion || p.idubicacion}</td>
+                              <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : p.estado === 'Vendido' ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-600'}`}>{p.estado}</span></td>
+                              <td className="p-3 text-right">
+                                  <button onClick={() => handlePrintLabel(p, 'TELEFONO')} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded mr-1" title="Imprimir Etiqueta"><Printer size={16}/></button>
+                                  <button onClick={() => openModal(p)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded mr-1"><Edit2 size={16}/></button>
+                                  <button onClick={() => handleDelete(p.codigo)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                               </td>
                           </tr>
                       ))}
@@ -203,15 +508,41 @@ const Inventory: React.FC = () => {
       }
 
       if (activeTab === 'STOCK') {
-        const filtered = stock.filter(s => s.descripcionAccesorio?.toLowerCase().includes(searchTerm.toLowerCase()));
+        const filtered = stock.filter(s => {
+            const term = searchTerm.toLowerCase();
+            return s.descripcionAccesorio?.toLowerCase().includes(term) ||
+                   s.codInventario.toLowerCase().includes(term); // Buscar por codInventario
+        });
         return (
             <table className="w-full text-left">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase"><tr><th className="p-3">SKU</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3 text-center">Cant.</th><th className="p-3 text-right">P. Venta</th><th className="p-3">Ubicación</th><th className="p-3 text-right">Acciones</th></tr></thead>
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0">
+                    <tr>
+                        <th className="p-3">SKU</th>
+                        <th className="p-3">Descripción</th>
+                        <th className="p-3">Categoría</th>
+                        <th className="p-3 text-center">Cant.</th>
+                        <th className="p-3 text-right">P. Venta</th>
+                        <th className="p-3">Ubicación</th>
+                        <th className="p-3 text-right">Acciones</th>
+                    </tr>
+                </thead>
                 <tbody className="divide-y divide-slate-100">
                     {filtered.map(s => (
                         <tr key={s.codInventario} className="hover:bg-slate-50 text-sm">
-                            <td className="p-3 font-mono text-slate-500 text-xs">{s.codInventario}</td><td className="p-3 font-bold text-slate-700">{s.descripcionAccesorio}</td><td className="p-3 text-xs">{s.categoriaAccesorio}</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded-md font-bold text-xs ${s.cantidad > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{s.cantidad}</span></td><td className="p-3 text-right font-bold text-emerald-600">L. {Number(s.precioVenta).toFixed(2)}</td><td className="p-3 text-xs">{s.nombreUbicacion || s.idubicacion}</td><td className="p-3 text-right">
-                                <button onClick={() => handlePrintLabel(s, 'STOCK')} className="text-slate-400 hover:text-slate-600 p-1.5 rounded mr-1"><Printer size={16}/></button><button onClick={() => openModal(s)} className="text-blue-500 p-1.5 rounded mr-1"><Edit2 size={16}/></button><button onClick={() => handleDelete(s.codInventario)} className="text-red-500 p-1.5 rounded"><Trash2 size={16}/></button>
+                            <td className="p-3 font-mono text-slate-500 text-xs">{s.codInventario}</td>
+                            <td className="p-3 font-bold text-slate-700">{s.descripcionAccesorio}</td>
+                            <td className="p-3 text-xs">{s.categoriaAccesorio}</td>
+                            <td className="p-3 text-center">
+                                <span className={`px-2 py-1 rounded-md font-bold text-xs ${s.cantidad > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                    {s.cantidad}
+                                </span>
+                            </td>
+                            <td className="p-3 text-right font-bold text-emerald-600">L. {Number(s.precioVenta).toFixed(2)}</td>
+                            <td className="p-3 text-xs">{s.nombreUbicacion || s.idubicacion}</td>
+                            <td className="p-3 text-right">
+                                <button onClick={() => handlePrintLabel(s, 'STOCK')} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded mr-1" title="Imprimir Etiqueta"><Printer size={16}/></button>
+                                <button onClick={() => openModal(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded mr-1"><Edit2 size={16}/></button>
+                                <button onClick={() => handleDelete(s.codInventario)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                             </td>
                         </tr>
                     ))}
@@ -223,12 +554,18 @@ const Inventory: React.FC = () => {
       if (activeTab === 'MASTER') {
           return (
             <table className="w-full text-left">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase"><tr><th className="p-3">ID</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3 text-right">Acciones</th></tr></thead>
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0">
+                    <tr><th className="p-3">ID</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3 text-right">Acciones</th></tr>
+                </thead>
                 <tbody className="divide-y divide-slate-100">
                     {master.filter(m => m.descripcion.toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                         <tr key={m.codAccesorio} className="hover:bg-slate-50 text-sm">
-                            <td className="p-3 font-mono text-slate-500 text-xs">{m.codAccesorio}</td><td className="p-3 font-bold text-slate-700">{m.descripcion}</td><td className="p-3">{m.nombreCategoria || m.codCategoria}</td><td className="p-3 text-right">
-                                <button onClick={() => openModal(m)} className="text-blue-500 p-1.5 rounded mr-1"><Edit2 size={16}/></button><button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 p-1.5 rounded"><Trash2 size={16}/></button>
+                            <td className="p-3 font-mono text-slate-500 text-xs">{m.codAccesorio}</td>
+                            <td className="p-3 font-bold text-slate-700">{m.descripcion}</td>
+                            <td className="p-3">{m.nombreCategoria || m.codCategoria}</td>
+                            <td className="p-3 text-right">
+                                <button onClick={() => openModal(m)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded mr-1"><Edit2 size={16}/></button>
+                                <button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                             </td>
                         </tr>
                     ))}
@@ -236,63 +573,343 @@ const Inventory: React.FC = () => {
             </table>
           );
       }
-      return <div className="p-4 text-center text-slate-400">Seleccione una pestaña.</div>;
+      if (activeTab === 'CATEGORIES') {
+          return (
+             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                 {categories.map(c => (
+                     <div key={c.codCategoria} className="bg-white border border-slate-200 rounded-xl p-4 flex justify-between items-center shadow-sm">
+                         <div><p className="font-bold text-slate-700">{c.tipo}</p><p className="text-xs text-slate-400 font-mono">{c.codCategoria}</p></div>
+                         <div className="flex gap-1"><button onClick={() => openModal(c)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button><button onClick={() => handleDelete(c.codCategoria)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button></div>
+                     </div>
+                 ))}
+             </div>
+          );
+      }
+      if (activeTab === 'LOCATIONS') {
+          return (
+             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                 {locations.map(l => (
+                     <div key={l.idUbicacion} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden group">
+                         <div className={`absolute left-0 top-0 bottom-0 w-1 ${l.estado === 'Activo' ? 'bg-green-500' : 'bg-red-500'}`}/>
+                         <div className="pl-3">
+                             <div className="flex justify-between items-start"><div><h4 className="font-bold text-slate-800">{l.nombre}</h4><p className="text-xs text-slate-500">{l.descripcion}</p></div><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => openModal(l)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button><button onClick={() => handleDelete(l.idUbicacion)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button></div></div>
+                             <div className="mt-3 flex gap-2 text-xs"><span className="bg-slate-100 px-2 py-1 rounded text-slate-600 font-mono">Estante: {l.estante}</span><span className="bg-slate-100 px-2 py-1 rounded text-slate-600 font-mono">Nivel: {l.nivel}</span></div>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+          );
+      }
   };
 
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Package className="text-indigo-600"/> Gestión de Inventario</h2><p className="text-slate-500 text-sm">Control de teléfonos, accesorios y configuraciones.</p></div>
-          <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-indigo-600/20 transition-all"><PlusCircle size={20}/><span>Nuevo Registro</span></button>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Package className="text-indigo-600"/> Gestión de Inventario
+            </h2>
+            <p className="text-slate-500 text-sm">Control de teléfonos, accesorios y configuraciones.</p>
+          </div>
+          <button 
+             onClick={() => openModal()} 
+             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-indigo-600/20 transition-all"
+          >
+             <PlusCircle size={20}/>
+             <span>Nuevo Registro</span>
+          </button>
       </div>
 
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-          {[{ id: 'TELEPHONES', label: 'Teléfonos', icon: <Smartphone size={18}/> }, { id: 'STOCK', label: 'Stock Accesorios', icon: <Box size={18}/> }, { id: 'MASTER', label: 'Accesorios', icon: <Layers size={18}/> }, { id: 'CATEGORIES', label: 'Categorías', icon: <Tag size={18}/> }, { id: 'LOCATIONS', label: 'Ubicaciones', icon: <MapPin size={18}/> }].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id as InventoryTab)} className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}>{tab.icon} {tab.label}</button>
+          {[
+              { id: 'TELEPHONES', label: 'Teléfonos', icon: <Smartphone size={18}/> },
+              { id: 'STOCK', label: 'Stock Accesorios', icon: <Box size={18}/> },
+              { id: 'MASTER', label: 'Accesorios', icon: <Layers size={18}/> }, 
+              { id: 'CATEGORIES', label: 'Categorías', icon: <Tag size={18}/> },
+              { id: 'LOCATIONS', label: 'Ubicaciones', icon: <MapPin size={18}/> },
+          ].map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as InventoryTab)}
+                className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all whitespace-nowrap
+                   ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
+              >
+                  {tab.icon} {tab.label}
+              </button>
           ))}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1">
-          <div className="p-4 border-b border-slate-100 flex gap-4 bg-slate-50">
+          {(activeTab === 'TELEPHONES' || activeTab === 'STOCK' || activeTab === 'MASTER') && (
+            <div className="p-4 border-b border-slate-100 flex gap-4 bg-slate-50">
                 <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none"/>
+                    <input 
+                    type="text" 
+                    placeholder="Buscar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                    />
                 </div>
+                
                 {activeTab === 'TELEPHONES' && (
-                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none"><option value="ALL">Todos</option><option value="Disponible">Disponibles</option><option value="Vendido">Vendidos</option></select>
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <Filter size={16} className="text-slate-400"/>
+                        <select 
+                            value={statusFilter} 
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="bg-transparent text-sm font-bold text-slate-700 outline-none"
+                        >
+                            <option value="ALL">Todos</option>
+                            <option value="Disponible">Disponibles</option>
+                            <option value="Vendido">Vendidos</option>
+                        </select>
+                    </div>
                 )}
-                <button onClick={loadData} className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg border border-slate-200 bg-white"><RefreshCw size={20} /></button>
+
+                <button onClick={loadData} className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg border border-slate-200 bg-white">
+                    <RefreshCw size={20} />
+                </button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-auto">
+              {renderContent()}
           </div>
-          <div className="flex-1 overflow-auto">{renderContent()}</div>
       </div>
 
+      {/* --- MODAL FORM --- */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={`bg-white rounded-3xl w-full ${activeTab === 'TELEPHONES' || activeTab === 'STOCK' ? 'max-w-4xl' : 'max-w-md'} shadow-2xl p-0 overflow-hidden flex flex-col max-h-[90vh]`}>
+          <div className={`bg-white rounded-3xl w-full ${activeTab === 'TELEPHONES' || activeTab === 'STOCK' ? 'max-w-4xl' : 'max-w-md'} shadow-2xl p-0 overflow-hidden animate-fade-in flex flex-col max-h-[90vh]`}>
+             
+             {/* Header Modal */}
              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                <div><h3 className="text-2xl font-bold text-slate-800">{isEditing ? 'Editar' : 'Nuevo'} {activeTab}</h3></div>
+                <div>
+                    <h3 className="text-2xl font-bold text-slate-800">
+                        {isEditing ? 'Editar' : 'Nuevo'} {activeTab === 'TELEPHONES' ? 'Teléfono' : activeTab === 'STOCK' ? 'Inventario' : activeTab === 'MASTER' ? 'Accesorio' : activeTab === 'CATEGORIES' ? 'Categoría' : 'Ubicación'}
+                    </h3>
+                    <p className="text-slate-500 text-sm mt-1">Complete la información requerida</p>
+                </div>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
              </div>
+             
              <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
-             <form onSubmit={handleSubmit} className="space-y-6">
+             <form onSubmit={handleSubmit} className="space-y-8">
+                
+                {/* FORMULARIO TELEFONOS */}
                 {activeTab === 'TELEPHONES' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">IMEI 1</label><input required className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={phoneForm.imei1 || ''} onChange={e => setPhoneForm({...phoneForm, imei1: e.target.value})}/></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Marca</label><input required className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={phoneForm.marca || ''} onChange={e => setPhoneForm({...phoneForm, marca: e.target.value})}/></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Modelo</label><input required className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={phoneForm.modelo || ''} onChange={e => setPhoneForm({...phoneForm, modelo: e.target.value})}/></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Precio Venta</label><input required type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={phoneForm.precioVenta || ''} onChange={e => setPhoneForm({...phoneForm, precioVenta: Number(e.target.value)})}/></div>
+                    <div className="space-y-8">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Tag size={16}/> Identificadores</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">IMEI 1 (Principal)</label>
+                                    <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono" value={phoneForm.imei1 || ''} onChange={e => setPhoneForm({...phoneForm, imei1: e.target.value})} placeholder="Escanear o escribir..." />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">IMEI 2 (Opcional)</label>
+                                    <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-mono" value={phoneForm.imei2 || ''} onChange={e => setPhoneForm({...phoneForm, imei2: e.target.value})} placeholder="Dual SIM" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Smartphone size={16}/> Dispositivo</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Marca</label>
+                                    <input 
+                                        required 
+                                        list="brands-list"
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none placeholder:text-slate-400" 
+                                        value={phoneForm.marca || ''} 
+                                        onChange={e => setPhoneForm({...phoneForm, marca: e.target.value, modelo: ''})} 
+                                        placeholder="Ej: Samsung, Apple..."
+                                    />
+                                    <datalist id="brands-list">
+                                        {uniqueBrands.map(brand => (
+                                            <option key={brand} value={brand} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Modelo</label>
+                                    <input 
+                                        required 
+                                        list="models-list"
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none placeholder:text-slate-400" 
+                                        value={phoneForm.modelo || ''} 
+                                        onChange={e => setPhoneForm({...phoneForm, modelo: e.target.value})} 
+                                        placeholder="Ej: Galaxy S23, iPhone 14..."
+                                        disabled={!phoneForm.marca}
+                                    />
+                                    <datalist id="models-list">
+                                        {availableModels.map(model => (
+                                            <option key={model} value={model} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Layers size={16}/> Finanzas y Logística</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Precio Compra</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.precioCompra || ''} onChange={e => setPhoneForm({...phoneForm, precioCompra: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Precio Venta</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-emerald-600 text-lg" value={phoneForm.precioVenta || ''} onChange={e => setPhoneForm({...phoneForm, precioVenta: Number(e.target.value)})} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Fecha Compra</label>
+                                    <input type="date" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.fecha ? phoneForm.fecha.split('T')[0] : ''} onChange={e => setPhoneForm({...phoneForm, fecha: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Ubicación</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.idubicacion || ''} onChange={e => setPhoneForm({...phoneForm, idubicacion: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {locations.map(l => (
+                                            <option key={l.idUbicacion} value={l.idUbicacion}>
+                                                {l.nombre} - Estante: {l.estante} - Nivel: {l.nivel}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Proveedor</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={phoneForm.codProveedor || ''} onChange={e => setPhoneForm({...phoneForm, codProveedor: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
+
+                {/* FORMULARIO STOCK ACCESORIOS */}
                 {activeTab === 'STOCK' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Accesorio</label><select required className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={stockForm.codAccesorio || ''} onChange={e => setStockForm({...stockForm, codAccesorio: e.target.value})}><option value="">Seleccione...</option>{master.map(m => (<option key={m.codAccesorio} value={m.codAccesorio}>{m.descripcion}</option>))}</select></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Cantidad</label><input required type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={stockForm.cantidad || ''} onChange={e => setStockForm({...stockForm, cantidad: Number(e.target.value)})}/></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Precio Venta</label><input required type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})}/></div>
+                    <div className="space-y-8">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Box size={16}/> Producto</h4>
+                            <div>
+                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Accesorio (Maestro)</label>
+                                 <select 
+                                    required 
+                                    disabled={isEditing} 
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none disabled:bg-slate-100 text-slate-900" 
+                                    value={stockForm.codAccesorio || ''} 
+                                    onChange={e => setStockForm({...stockForm, codAccesorio: e.target.value})}
+                                 >
+                                    <option value="" className="text-slate-500">Seleccionar Accesorio...</option>
+                                    {master.map(m => (
+                                        <option key={m.codAccesorio} value={m.codAccesorio} className="text-slate-900 bg-white">
+                                            {m.descripcion}
+                                        </option>
+                                    ))}
+                                 </select>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <h4 className="text-sm font-bold text-indigo-600 uppercase mb-4 tracking-wider flex items-center gap-2"><Layers size={16}/> Detalle Inventario</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Cantidad</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-lg" value={stockForm.cantidad || ''} onChange={e => setStockForm({...stockForm, cantidad: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">P. Compra</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.precioCompra || ''} onChange={e => setStockForm({...stockForm, precioCompra: Number(e.target.value)})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">P. Venta</label>
+                                    <input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-bold text-emerald-600 text-lg" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Ubicación</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {locations.map(l => (
+                                            <option key={l.idUbicacion} value={l.idUbicacion}>
+                                                {l.nombre} - Estante: {l.estante} - Nivel: {l.nivel}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">Proveedor</label>
+                                    <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none" value={stockForm.codProveedor || ''} onChange={e => setStockForm({...stockForm, codProveedor: e.target.value})}>
+                                        <option value="">Seleccionar...</option>
+                                        {providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
+
+                {/* FORMULARIO MAESTRO */}
+                {activeTab === 'MASTER' && (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Descripción</label>
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={masterForm.descripcion || ''} onChange={e => setMasterForm({...masterForm, descripcion: e.target.value})} placeholder="Ej: Cargador Samsung Tipo C" />
+                        </div>
+                        <div>
+                             <label className="text-xs font-bold text-slate-500 uppercase">Categoría</label>
+                             <select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={masterForm.codCategoria || ''} onChange={e => setMasterForm({...masterForm, codCategoria: e.target.value})}>
+                                <option value="">-- Seleccionar --</option>
+                                {categories.map(c => <option key={c.codCategoria} value={c.codCategoria}>{c.tipo}</option>)}
+                             </select>
+                        </div>
+                    </div>
+                )}
+
+                {/* FORMULARIO CATEGORIAS */}
+                {activeTab === 'CATEGORIES' && (
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase">Nombre Categoría</label>
+                        <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={catForm.tipo || ''} onChange={e => setCatForm({...catForm, tipo: e.target.value})} />
+                    </div>
+                )}
+
+                {/* FORMULARIO UBICACIONES */}
+                {activeTab === 'LOCATIONS' && (
+                    <div className="space-y-4">
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Nombre</label>
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.nombre || ''} onChange={e => setLocForm({...locForm, nombre: e.target.value})} placeholder="Ej: Estante A1" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Descripción</label>
+                            <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.descripcion || ''} onChange={e => setLocForm({...locForm, descripcion: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Estante</label>
+                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.estante || ''} onChange={e => setLocForm({...locForm, estante: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Nivel</label>
+                                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={locForm.nivel || ''} onChange={e => setLocForm({...locForm, nivel: e.target.value})} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="pt-6 flex gap-4 border-t border-slate-100">
-                    <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-4 bg-slate-100 text-slate-600 font-bold rounded-xl">Cancelar</button>
-                    <button type="submit" className="flex-1 px-4 py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20">{isEditing ? 'Actualizar' : 'Guardar'}</button>
+                    <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
+                    <button type="submit" className="flex-1 px-4 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-colors">{isEditing ? 'Actualizar' : 'Guardar'}</button>
                 </div>
              </form>
              </div>
