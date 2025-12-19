@@ -1,3 +1,4 @@
+
 import {
   Usuario, Empleado, Rol, Caja, Permiso,
   Cliente, Proveedor, Categoria, Ubicacion, Telefono, Accesorio, Inventario, ProductoUnified,
@@ -114,6 +115,7 @@ export const CashService = {
   buySaldo: (data: any) => request('/saldos/buy', { method: 'POST', body: JSON.stringify(data) }),
   createRecarga: (data: any) => request('/recargas', { method: 'POST', body: JSON.stringify(data) }),
   getAdminBoxesStatus: () => request<any[]>('/admin/boxes/status'),
+  getBoxHistory: (idCaja: string) => request<any[]>(`/admin/boxes/${idCaja}/history`),
   reopenBox: (idArqueo: string) => request(`/arqueo/${idArqueo}/reopen`, { method: 'PUT' }),
   getSessionDetails: (idArqueo: string) => request<any>(`/arqueo/${idArqueo}/details`),
   updateInitialAmount: (idArqueo: string, monto: number) => request(`/arqueo/${idArqueo}/initial`, { method: 'PUT', body: JSON.stringify({ montoInicial: monto }) }),

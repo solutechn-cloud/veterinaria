@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { CashService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Saldo } from '../types';
-import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer } from 'lucide-react';
+import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer, History, Calendar } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -28,6 +28,7 @@ const AdminCashDashboard: React.FC = () => {
   // Manager Modal State
   const [selectedBox, setSelectedBox] = useState<BoxStatus | null>(null);
   const [sessionDetails, setSessionDetails] = useState<{arqueo: Arqueo, ingresos: Ingreso[], egresos: Egreso[]} | null>(null);
+  const [sessionsHistory, setSessionsHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'MOVIMIENTOS' | 'CONFIG'>('MOVIMIENTOS');
   
   // Calculated Totals (Local State to avoid NaN)
@@ -75,34 +76,67 @@ const AdminCashDashboard: React.FC = () => {
     }
   };
 
-  const openManager = async (box: BoxStatus) => {
-      setSelectedBox(box);
-      setNewMontoInicial(String(box.montoInicial || 0));
+  const loadSessionById = async (idArqueo: string, boxInfo: BoxStatus) => {
       try {
-          if (box.idArqueo) {
-              const details = await CashService.getSessionDetails(box.idArqueo);
-              setSessionDetails(details);
-              
-              if (details.arqueo.fechaApertura) {
-                  const rawDate = details.arqueo.fechaApertura; 
-                  const fechaStr = rawDate.length >= 10 ? rawDate.substring(0, 10) : '';
-                  
-                  if(fechaStr) {
-                      const slds = await CashService.getSaldosByDate(fechaStr);
-                      setSaldosSession(slds || []);
-                  }
+          const details = await CashService.getSessionDetails(idArqueo);
+          setSessionDetails(details);
+          
+          // Actualizar info del "selectedBox" para que refleje la sesión histórica en la UI
+          const historicalBoxInfo: BoxStatus = {
+              ...boxInfo,
+              idArqueo: details.arqueo.idArqueo,
+              estadoArqueo: details.arqueo.estado,
+              montoInicial: Number(details.arqueo.montoInicial),
+              fechaApertura: details.arqueo.fechaApertura,
+              fechaCierre: details.arqueo.fechaCierre
+          };
+          setSelectedBox(historicalBoxInfo);
+          setNewMontoInicial(String(details.arqueo.montoInicial || 0));
+
+          if (details.arqueo.fechaApertura) {
+              const rawDate = details.arqueo.fechaApertura; 
+              const fechaStr = rawDate.length >= 10 ? rawDate.substring(0, 10) : '';
+              if(fechaStr) {
+                  const slds = await CashService.getSaldosByDate(fechaStr);
+                  setSaldosSession(slds || []);
               }
+          }
+      } catch (error) {
+          console.error(error);
+          Swal.fire('Error', 'No se pudo cargar la sesión solicitada', 'error');
+      }
+  };
+
+  const openManager = async (box: BoxStatus) => {
+      setLoading(true);
+      try {
+          // 1. Cargar historial de sesiones para este terminal
+          const history = await CashService.getBoxHistory(box.idCaja);
+          setSessionsHistory(history || []);
+          
+          // 2. Cargar detalles de la sesión actual (o última)
+          if (box.idArqueo) {
+              await loadSessionById(box.idArqueo, box);
           } else {
+              setSelectedBox(box);
               setSessionDetails(null);
               setSaldosSession([]);
           }
       } catch (error) {
           console.error(error);
-          Swal.fire('Error', 'No se pudieron cargar los detalles', 'error');
+          Swal.fire('Error', 'No se pudieron cargar los datos de auditoría', 'error');
+      } finally {
+          setLoading(false);
       }
   };
 
-  // --- PDF GENERATOR CORREGIDO (SIN CEROS) ---
+  const handleSwitchSession = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const idArq = e.target.value;
+      if (!idArq || !selectedBox) return;
+      loadSessionById(idArq, selectedBox);
+  };
+
+  // --- PDF GENERATOR ---
   const generateClosingReportPDF = (excludeRecharges: boolean = false) => {
       if (!selectedBox || !sessionDetails) return;
 
@@ -110,11 +144,9 @@ const AdminCashDashboard: React.FC = () => {
       const date = new Date().toLocaleString();
       const arqueo = sessionDetails.arqueo;
 
-      // RE-CALCULAR TOTALES AL MOMENTO PARA EL PDF (Soluciona el problema de los ceros)
       const mInicial = Number(arqueo.montoInicial ?? (arqueo as any).montoinicial ?? 0);
       const ingresosRaw = sessionDetails.ingresos;
       
-      // Filtrar recargas si se solicita
       let ingresosList = ingresosRaw;
       if (excludeRecharges) {
           ingresosList = ingresosRaw.filter(i => {
@@ -126,27 +158,26 @@ const AdminCashDashboard: React.FC = () => {
       const tIngresosPDF = ingresosList.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
       const tGastosPDF = sessionDetails.egresos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
       const mFinalPDF = (mInicial + tIngresosPDF) - tGastosPDF;
-      // Ganancia real basada en costo (solo ingresos totales)
       const gananciaPDF = sessionDetails.ingresos.reduce((acc, curr) => acc + (Number(curr.monto || 0) - Number(curr.costo || 0)), 0);
 
       // HEADER
-      doc.setFillColor(30, 41, 59); // Slate 800
+      doc.setFillColor(30, 41, 59);
       doc.rect(0, 0, 210, 30, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
-      const title = excludeRecharges ? "REPORTE DE CAJA (SIN RECARGAS)" : "REPORTE DE CIERRE DE CAJA (ADMIN)";
+      const title = excludeRecharges ? "REPORTE DE VENTAS (SIN RECARGAS)" : "REPORTE COMPLETO DE CAJA";
       doc.text(title, 105, 12, { align: 'center' });
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Generado: ${date} | Original: ${arqueo.fechaCierre || 'N/A'}`, 105, 22, { align: 'center' });
-      doc.text(`Cajero: ${selectedBox.nombreEmpleado} | Caja: ${selectedBox.idCaja}`, 105, 27, { align: 'center' });
+      doc.text(`Generado: ${date} | Sesión: ${arqueo.idArqueo}`, 105, 22, { align: 'center' });
+      doc.text(`Terminal: ${selectedBox.nombreCaja} | Cajero: ${selectedBox.nombreEmpleado}`, 105, 27, { align: 'center' });
 
       // SUMMARY SECTION
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text("RESUMEN FINANCIERO GLOBAL", 14, 40);
+      doc.text("RESUMEN DE AUDITORÍA", 14, 40);
       
       const tigo = saldosSession.find(s => s.red === 'TIGO');
       const claro = saldosSession.find(s => s.red === 'CLARO');
@@ -193,28 +224,16 @@ const AdminCashDashboard: React.FC = () => {
 
       // DETALLES
       doc.setFontSize(11);
-      const detalleTitle = excludeRecharges ? "DETALLE DE INGRESOS (Ventas de Productos/Servicios)" : "DETALLE DE INGRESOS (Completo)";
+      const detalleTitle = excludeRecharges ? "DETALLE DE MOVIMIENTOS (Solo Productos/Servicios)" : "DETALLE DE MOVIMIENTOS (Completo)";
       doc.text(detalleTitle, 14, finalY);
       
-      let sumCosto = 0;
-      let sumVenta = 0;
-      let sumGanancia = 0;
+      let sumCosto = 0, sumVenta = 0, sumGanancia = 0;
 
       const incomeRows = ingresosList.map(i => {
-          const costo = Number(i.costo || 0);
-          const monto = Number(i.monto || 0);
+          const costo = Number(i.costo || 0), monto = Number(i.monto || 0);
           const gananciaItem = monto - costo;
-
-          sumCosto += costo;
-          sumVenta += monto;
-          sumGanancia += gananciaItem;
-
-          return [
-              i.descripcion, 
-              `L. ${costo.toFixed(2)}`, 
-              `L. ${monto.toFixed(2)}`,
-              `L. ${gananciaItem.toFixed(2)}`
-          ];
+          sumCosto += costo; sumVenta += monto; sumGanancia += gananciaItem;
+          return [i.descripcion, `L. ${costo.toFixed(2)}`, `L. ${monto.toFixed(2)}`, `L. ${gananciaItem.toFixed(2)}`];
       });
 
       // @ts-ignore
@@ -224,40 +243,20 @@ const AdminCashDashboard: React.FC = () => {
           body: incomeRows,
           theme: 'striped',
           headStyles: { fillColor: [16, 185, 129] },
-          columnStyles: { 
-              1: { halign: 'right' }, 
-              2: { halign: 'right', fontStyle: 'bold' },
-              3: { halign: 'right', fontStyle: 'bold', textColor: [0, 100, 0] }
-          },
-          foot: [[
-              'TOTALES', 
-              `L. ${sumCosto.toFixed(2)}`, 
-              `L. ${sumVenta.toFixed(2)}`, 
-              `L. ${sumGanancia.toFixed(2)}`
-          ]],
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right', fontStyle: 'bold' }, 3: { halign: 'right', fontStyle: 'bold', textColor: [0, 100, 0] } },
+          foot: [['TOTALES', `L. ${sumCosto.toFixed(2)}`, `L. ${sumVenta.toFixed(2)}`, `L. ${sumGanancia.toFixed(2)}`]],
           footStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', halign: 'right' }
       });
 
       finalY = (doc as any).lastAutoTable.finalY + 10;
-
       doc.setFontSize(11);
-      doc.text("DETALLE DE GASTOS / SALIDAS", 14, finalY);
+      doc.text("DETALLE DE EGRESOS", 14, finalY);
       
-      const expenseRows = sessionDetails.egresos.map(e => {
-          return [e.descripcion, `L. ${(Number(e.monto)||0).toFixed(2)}`];
-      });
-
+      const expenseRows = sessionDetails.egresos.map(e => [e.descripcion, `L. ${(Number(e.monto)||0).toFixed(2)}`]);
       // @ts-ignore
-      doc.autoTable({
-          startY: finalY + 3,
-          head: [['Descripción', 'Monto']],
-          body: expenseRows,
-          theme: 'striped',
-          headStyles: { fillColor: [239, 68, 68] },
-          columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
-      });
+      doc.autoTable({ startY: finalY + 3, head: [['Descripción', 'Monto']], body: expenseRows, theme: 'striped', headStyles: { fillColor: [239, 68, 68] }, columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } } });
 
-      const fileName = excludeRecharges ? `Reporte_NoRecargas_${selectedBox.idArqueo}.pdf` : `Reporte_Admin_${selectedBox.idArqueo}.pdf`;
+      const fileName = excludeRecharges ? `Reporte_Ventas_Sin_Recargas_${arqueo.idArqueo}.pdf` : `Reporte_Completo_${arqueo.idArqueo}.pdf`;
       doc.save(fileName);
   };
 
@@ -432,20 +431,19 @@ const AdminCashDashboard: React.FC = () => {
                            </p>
                        </div>
                        <div className="flex gap-2">
-                           {/* BOTONES PDF DE CIERRE DISPONIBLES EN CUALQUIER ESTADO SI HAY SESION */}
                            <button 
                                onClick={() => generateClosingReportPDF(true)}
                                className="hidden md:flex bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
                                title="Reporte sin incluir recargas"
                            >
-                               <Printer size={16}/> PDF (Ventas)
+                               <Printer size={16}/> Ventas Sin Recargas
                            </button>
                            <button 
                                onClick={() => generateClosingReportPDF(false)}
                                className="hidden md:flex bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
                                title="Reporte completo de cierre"
                            >
-                               <FileText size={16}/> PDF (Completo)
+                               <FileText size={16}/> Ventas con Recargas
                            </button>
                            <button onClick={() => setSelectedBox(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-500"/></button>
                        </div>
@@ -462,6 +460,29 @@ const AdminCashDashboard: React.FC = () => {
                                <button onClick={() => setActiveTab('CONFIG')} className={`flex-1 min-w-fit px-4 py-2.5 md:p-3 rounded-xl text-left font-bold text-sm flex items-center justify-center md:justify-start gap-2 md:gap-3 transition-all whitespace-nowrap ${activeTab === 'CONFIG' ? 'bg-white shadow-md text-indigo-600 border border-indigo-100' : 'text-slate-500 hover:bg-slate-100'}`}>
                                    <Settings size={18}/> <span>Configuración</span>
                                </button>
+                           </div>
+
+                           {/* SESSION HISTORY SELECTOR (AUDITORIA ANTERIOR) */}
+                           <div className="p-4 border-t border-slate-200">
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Sesiones Anteriores</label>
+                               <div className="relative">
+                                   <History className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14}/>
+                                   <select 
+                                       className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none"
+                                       value={selectedBox.idArqueo}
+                                       onChange={handleSwitchSession}
+                                   >
+                                       {sessionsHistory.map(s => (
+                                           <option key={s.idArqueo} value={s.idArqueo}>
+                                               {new Date(s.fechaApertura).toLocaleDateString()} - {s.idArqueo}
+                                           </option>
+                                       ))}
+                                   </select>
+                                   <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                       <Calendar size={12}/>
+                                   </div>
+                               </div>
+                               <p className="text-[9px] text-slate-400 mt-2 italic">Selecciona una sesión para auditar movimientos de días anteriores.</p>
                            </div>
                            
                            <div className="hidden md:block flex-1"></div>
@@ -483,7 +504,7 @@ const AdminCashDashboard: React.FC = () => {
                        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/30">
                            
                            {activeTab === 'MOVIMIENTOS' && (
-                               <div className="space-y-6">
+                               <div className="space-y-6 animate-fade-in">
                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-3 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center">
                                            <h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm md:text-base"><ArrowUpCircle size={18}/> Ingresos y Ventas ({sessionDetails.ingresos.length})</h3>
@@ -549,7 +570,7 @@ const AdminCashDashboard: React.FC = () => {
                            )}
 
                            {activeTab === 'CONFIG' && (
-                               <div className="space-y-6">
+                               <div className="space-y-6 animate-fade-in">
                                    <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
                                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Edit2 size={18}/> Corrección de Monto Inicial</h3>
                                        <div className="flex flex-col md:flex-row gap-4 md:items-end">

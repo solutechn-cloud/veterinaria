@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp } = require('../config/db');
@@ -84,17 +85,19 @@ router.get('/arqueo/:id/details', authenticateToken, async (req, res) => {
         if (arqRes.rows.length === 0) return res.status(404).json({ error: 'Sesión no encontrada' });
         const arq = arqRes.rows[0];
         const fechaIni = arq.fechaapertura;
+        // Para sesiones cerradas, limitar al momento del cierre
+        const fechaFin = arq.fechacierre || '9999-12-31';
 
         const ingRes = await pool.query(
             `SELECT idIngreso as "idIngreso", descripcion, monto, costo, fechaCreacion as "fechaCreacion" 
-             FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 ORDER BY fechaCreacion ASC`,
-            [arq.idcaja, fechaIni]
+             FROM ingresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion ASC`,
+            [arq.idcaja, fechaIni, fechaFin]
         );
 
         const egrRes = await pool.query(
             `SELECT idegresos as "idegresos", descripcion, monto, fechaCreacion as "fechaCreacion" 
-             FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 ORDER BY fechaCreacion ASC`,
-            [arq.idcaja, fechaIni]
+             FROM egresos WHERE idCaja = $1 AND fechaCreacion >= $2 AND fechaCreacion <= $3 ORDER BY fechaCreacion ASC`,
+            [arq.idcaja, fechaIni, fechaFin]
         );
 
         res.json({
@@ -121,6 +124,24 @@ router.put('/arqueo/:id/initial', authenticateToken, async (req, res) => {
         if (result.rows.length > 0) await updateArqueoBalance(result.rows[0].idcaja);
         res.json({ message: 'Monto inicial actualizado' });
     } catch (e) { handleDbError(res, e); }
+});
+
+// --- HISTORIAL DE SESIONES POR CAJA ---
+router.get('/admin/boxes/:idCaja/history', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT a.idArqueo as "idArqueo", a.fechaApertura as "fechaApertura", a.fechaCierre as "fechaCierre",
+                   a.montoInicial as "montoInicial", a.montoFinal as "montoFinal", a.estado,
+                   u.usuario, (e.nombre || ' ' || e.apellido) as "nombreEmpleado"
+            FROM arqueo a
+            JOIN usuarios u ON a.idUsuario = u.codUsuario
+            JOIN empleado e ON u.identidad = e.identidad
+            WHERE a.idCaja = $1
+            ORDER BY a.fechaApertura DESC
+            LIMIT 50
+        `, [req.params.idCaja]);
+        res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
 });
 
 // --- SALDOS STATUS ---
