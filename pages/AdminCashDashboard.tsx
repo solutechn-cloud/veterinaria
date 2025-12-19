@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { CashService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Saldo } from '../types';
@@ -47,7 +48,7 @@ const AdminCashDashboard: React.FC = () => {
 
   useEffect(() => {
       if (sessionDetails) {
-          // Robust mapping for potential case-sensitivity from DB
+          // Robust mapping para evitar problemas de mayúsculas/minúsculas de la BD
           const ingresos = sessionDetails.ingresos.reduce((acc, curr) => acc + Number(curr.monto || (curr as any).Monto || 0), 0);
           const egresos = sessionDetails.egresos.reduce((acc, curr) => acc + Number(curr.monto || (curr as any).Monto || 0), 0);
           const inicial = Number(sessionDetails.arqueo.montoInicial ?? (sessionDetails.arqueo as any).montoinicial ?? 0);
@@ -101,6 +102,7 @@ const AdminCashDashboard: React.FC = () => {
       }
   };
 
+  // --- PDF GENERATOR CORREGIDO (SIN CEROS) ---
   const generateClosingReportPDF = (excludeRecharges: boolean = false) => {
       if (!selectedBox || !sessionDetails) return;
 
@@ -108,7 +110,7 @@ const AdminCashDashboard: React.FC = () => {
       const date = new Date().toLocaleString();
       const arqueo = sessionDetails.arqueo;
 
-      // RE-CALCULAR TOTALES AL MOMENTO PARA EL PDF (Previene ceros por asincronía)
+      // RE-CALCULAR TOTALES AL MOMENTO PARA EL PDF (Soluciona el problema de los ceros)
       const mInicial = Number(arqueo.montoInicial ?? (arqueo as any).montoinicial ?? 0);
       const ingresosRaw = sessionDetails.ingresos;
       
@@ -117,13 +119,14 @@ const AdminCashDashboard: React.FC = () => {
       if (excludeRecharges) {
           ingresosList = ingresosRaw.filter(i => {
               const desc = (i.descripcion || "").toUpperCase();
-              return !desc.includes('RECARGA') && !desc.includes('PAQUETE') && !desc.includes('SALDO');
+              return !desc.includes('RECARGA') && !desc.includes('PAQUETE') && !desc.includes('SALDO') && !desc.includes('TIGO') && !desc.includes('CLARO');
           });
       }
 
       const tIngresosPDF = ingresosList.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
       const tGastosPDF = sessionDetails.egresos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
       const mFinalPDF = (mInicial + tIngresosPDF) - tGastosPDF;
+      // Ganancia real basada en costo (solo ingresos totales)
       const gananciaPDF = sessionDetails.ingresos.reduce((acc, curr) => acc + (Number(curr.monto || 0) - Number(curr.costo || 0)), 0);
 
       // HEADER
@@ -429,24 +432,21 @@ const AdminCashDashboard: React.FC = () => {
                            </p>
                        </div>
                        <div className="flex gap-2">
-                           {selectedBox.estadoArqueo === 'Cerrada' && (
-                               <>
-                                   <button 
-                                       onClick={() => generateClosingReportPDF(true)}
-                                       className="hidden md:flex bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
-                                       title="Reporte sin incluir recargas"
-                                   >
-                                       <Printer size={16}/> PDF (Sin Recargas)
-                                   </button>
-                                   <button 
-                                       onClick={() => generateClosingReportPDF(false)}
-                                       className="hidden md:flex bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
-                                       title="Reporte completo de cierre"
-                                   >
-                                       <FileText size={16}/> Reporte Cierre
-                                   </button>
-                               </>
-                           )}
+                           {/* BOTONES PDF DE CIERRE DISPONIBLES EN CUALQUIER ESTADO SI HAY SESION */}
+                           <button 
+                               onClick={() => generateClosingReportPDF(true)}
+                               className="hidden md:flex bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
+                               title="Reporte sin incluir recargas"
+                           >
+                               <Printer size={16}/> PDF (Ventas)
+                           </button>
+                           <button 
+                               onClick={() => generateClosingReportPDF(false)}
+                               className="hidden md:flex bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
+                               title="Reporte completo de cierre"
+                           >
+                               <FileText size={16}/> PDF (Completo)
+                           </button>
                            <button onClick={() => setSelectedBox(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-500"/></button>
                        </div>
                    </div>
@@ -471,7 +471,7 @@ const AdminCashDashboard: React.FC = () => {
                                    <p className="text-xs text-indigo-300 uppercase font-bold mb-1">Efectivo Calculado</p>
                                    <p className="text-2xl md:text-3xl font-bold tracking-tight">L. {localTotals.finalCalculado.toFixed(2)}</p>
                                    <div className="mt-3 text-[10px] md:text-xs opacity-70 flex justify-between border-t border-indigo-700/50 pt-2 gap-2">
-                                       <div className="flex flex-col"><span>Ini</span><span className="font-bold">{localTotals.finalCalculado - localTotals.totalIngresos + localTotals.totalEgresos}</span></div>
+                                       <div className="flex flex-col"><span>Ini</span><span className="font-bold">{Number(sessionDetails.arqueo.montoInicial || 0).toFixed(0)}</span></div>
                                        <div className="flex flex-col text-center"><span>Ing</span><span className="font-bold text-emerald-300">+{localTotals.totalIngresos.toFixed(0)}</span></div>
                                        <div className="flex flex-col text-right"><span>Egr</span><span className="font-bold text-red-300">-{localTotals.totalEgresos.toFixed(0)}</span></div>
                                    </div>
@@ -616,9 +616,6 @@ const AdminCashDashboard: React.FC = () => {
                                                   La caja fue cerrada el {new Date(selectedBox.fechaCierre || '').toLocaleString()}. Si esto fue un error, puede reabrirla para continuar operando.
                                               </p>
                                               <div className="flex gap-2 w-full md:w-auto">
-                                                  <button onClick={() => generateClosingReportPDF(false)} className="md:hidden flex-1 bg-white border border-amber-200 text-amber-800 px-4 py-3 rounded-lg font-bold shadow-sm flex justify-center items-center gap-2">
-                                                      <FileText size={16}/> PDF
-                                                  </button>
                                                   <button onClick={() => handleReopenBox(selectedBox.idArqueo)} className="flex-1 bg-amber-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-amber-700 shadow-lg whitespace-nowrap">
                                                       Reabrir Sesión
                                                   </button>

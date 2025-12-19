@@ -5,25 +5,31 @@ const bcrypt = require('bcryptjs');
 const { pool, generateNextId, handleDbError } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// --- PANEL DE CONTROL DE CAJAS ---
+// --- PANEL DE CONTROL DE CAJAS (CORREGIDO PARA TRAER ÚLTIMA SESIÓN) ---
 router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     try {
+        // Esta consulta usa DISTINCT ON para obtener el arqueo más reciente de cada caja,
+        // sin importar si está activo o cerrado.
         const query = `
             SELECT 
                 c.idCaja as "idCaja", 
                 c.nombre as "nombreCaja", 
-                a.idArqueo as "idArqueo", 
-                a.estado as "estadoArqueo", 
-                COALESCE(a.montoInicial, 0) as "montoInicial", 
-                COALESCE(a.montoFinal, 0) as "montoFinal", 
-                COALESCE(a.ganancia, 0) as "ganancia", 
-                a.fechaApertura as "fechaApertura", 
-                a.fechaCierre as "fechaCierre",
+                last_arq.idArqueo as "idArqueo", 
+                last_arq.estado as "estadoArqueo", 
+                COALESCE(last_arq.montoInicial, 0) as "montoInicial", 
+                COALESCE(last_arq.montoFinal, 0) as "montoFinal", 
+                COALESCE(last_arq.ganancia, 0) as "ganancia", 
+                last_arq.fechaApertura as "fechaApertura", 
+                last_arq.fechaCierre as "fechaCierre",
                 u.usuario,
                 (e.nombre || ' ' || e.apellido) as "nombreEmpleado"
             FROM caja c
-            LEFT JOIN arqueo a ON c.idCaja = a.idCaja AND a.estado = 'Activo'
-            LEFT JOIN usuarios u ON a.idUsuario = u.codUsuario
+            LEFT JOIN LATERAL (
+                SELECT * FROM arqueo a 
+                WHERE a.idCaja = c.idCaja 
+                ORDER BY a.fechaApertura DESC LIMIT 1
+            ) last_arq ON true
+            LEFT JOIN usuarios u ON last_arq.idUsuario = u.codUsuario
             LEFT JOIN empleado e ON u.identidad = e.identidad
             ORDER BY c.idCaja ASC
         `;
@@ -32,7 +38,7 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- USUARIOS ---
+// --- EL RESTO DE RUTAS SE MANTIENEN IGUAL ---
 router.get('/users', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -81,7 +87,6 @@ router.delete('/users/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- EMPLEADOS ---
 router.get('/empleados', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT identidad, nombre, apellido, direccion, telefono, estado FROM empleado');
@@ -114,7 +119,6 @@ router.delete('/empleados/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- ROLES & PERMISOS ---
 router.get('/roles', authenticateToken, async (req, res) => {
     try {
         const roles = await pool.query('SELECT idrol, nombre, estado FROM roles');
@@ -174,7 +178,6 @@ router.get('/permisos', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- CAJAS ---
 router.get('/cajas', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT idCaja as "idCaja", nombre, estado FROM caja');
@@ -206,7 +209,6 @@ router.delete('/cajas/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- CONFIGURACIÓN EMPRESA ---
 router.get('/config', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query(`SELECT nombreEmpresa as "nombreEmpresa", rtn, direccion, telefono, correo, cai, rangoInicial as "rangoInicial", rangoFinal as "rangoFinal", TO_CHAR(fechaLimite, 'YYYY-MM-DD') as "fechaLimite", isv, mensajeFinal as "mensajeFinal" FROM configuracion LIMIT 1`);
@@ -229,7 +231,6 @@ router.put('/config', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- SCHEMA ---
 router.get('/schema', authenticateToken, async (req, res) => {
     try {
         const colsQuery = `
