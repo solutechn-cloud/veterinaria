@@ -1,4 +1,5 @@
 
+
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
 export interface Usuario {
@@ -207,6 +208,9 @@ export interface Egreso {
   monto: number;
   fechaCreacion?: string;
   estado: string;
+  // Added missing properties to support categorization and partner assignment
+  categoria?: string;
+  idSocioAsignado?: number | null;
 }
 
 export interface Saldo {
