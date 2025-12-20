@@ -2,10 +2,11 @@
 import React, { useEffect, useState } from 'react';
 import { CashService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Saldo } from '../types';
-import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer, History, Calendar } from 'lucide-react';
+import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer, History, Calendar, Ticket } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { useNavigate } from 'react-router-dom';
 
 interface BoxStatus {
     idCaja: string;
@@ -22,6 +23,7 @@ interface BoxStatus {
 }
 
 const AdminCashDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [boxes, setBoxes] = useState<BoxStatus[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -134,6 +136,16 @@ const AdminCashDashboard: React.FC = () => {
       const idArq = e.target.value;
       if (!idArq || !selectedBox) return;
       loadSessionById(idArq, selectedBox);
+  };
+
+  // Función para extraer el ID de factura de la descripción y navegar al POS
+  const handleEditInvoice = (descripcion: string) => {
+      const match = descripcion.match(/#(FACT-\d+)/);
+      if (match && match[1]) {
+          navigate('/pos', { state: { editSaleId: match[1] } });
+      } else {
+          Swal.fire('Info', 'No se pudo identificar un número de factura válido.', 'info');
+      }
   };
 
   // --- PDF GENERATOR ---
@@ -419,33 +431,36 @@ const AdminCashDashboard: React.FC = () => {
                <div className="bg-white w-full h-full md:h-[90vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in">
                    
                    {/* Modal Header */}
-                   <div className="bg-slate-50 p-4 md:p-5 border-b border-slate-200 flex justify-between items-start md:items-center shrink-0">
-                       <div className="flex-1 min-w-0 pr-4">
-                           <h2 className="text-lg md:text-xl font-bold text-slate-800 flex flex-col md:flex-row md:items-center gap-1 md:gap-2 leading-tight">
-                               <span className="truncate">{selectedBox.nombreCaja}</span> 
-                               <span className="text-xs font-normal text-slate-500 bg-white border px-2 py-0.5 rounded-full w-fit">Sesión: {selectedBox.idArqueo}</span>
-                           </h2>
-                           <p className="text-xs md:text-sm text-slate-500 mt-1 truncate">
-                               Cajero: <strong>{selectedBox.nombreEmpleado}</strong> | 
-                               Estado: <span className={selectedBox.estadoArqueo === 'Activo' ? 'text-emerald-600 font-bold' : 'text-slate-600 font-bold'}>{selectedBox.estadoArqueo}</span>
-                           </p>
+                   <div className="bg-slate-50 p-4 md:p-5 border-b border-slate-200 flex flex-col gap-4 shrink-0">
+                       <div className="flex justify-between items-start">
+                           <div className="flex-1 min-w-0 pr-4">
+                               <h2 className="text-lg md:text-xl font-bold text-slate-800 flex flex-col md:flex-row md:items-center gap-1 md:gap-2 leading-tight">
+                                   <span className="truncate">{selectedBox.nombreCaja}</span> 
+                                   <span className="text-xs font-normal text-slate-500 bg-white border px-2 py-0.5 rounded-full w-fit">Sesión: {selectedBox.idArqueo}</span>
+                               </h2>
+                               <p className="text-xs md:text-sm text-slate-500 mt-1 truncate">
+                                   Cajero: <strong>{selectedBox.nombreEmpleado}</strong> | 
+                                   Estado: <span className={selectedBox.estadoArqueo === 'Activo' ? 'text-emerald-600 font-bold' : 'text-slate-600 font-bold'}>{selectedBox.estadoArqueo}</span>
+                               </p>
+                           </div>
+                           <button onClick={() => setSelectedBox(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-500"/></button>
                        </div>
-                       <div className="flex gap-2">
+                       
+                       <div className="flex flex-wrap gap-2">
                            <button 
                                onClick={() => generateClosingReportPDF(true)}
-                               className="hidden md:flex bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
+                               className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"
                                title="Reporte sin incluir recargas"
                            >
                                <Printer size={16}/> Ventas Sin Recargas
                            </button>
                            <button 
                                onClick={() => generateClosingReportPDF(false)}
-                               className="hidden md:flex bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold items-center gap-2 shadow-sm transition-colors"
+                               className="flex-1 md:flex-none bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"
                                title="Reporte completo de cierre"
                            >
                                <FileText size={16}/> Ventas con Recargas
                            </button>
-                           <button onClick={() => setSelectedBox(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24} className="text-slate-500"/></button>
                        </div>
                    </div>
 
@@ -510,27 +525,64 @@ const AdminCashDashboard: React.FC = () => {
                                            <h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm md:text-base"><ArrowUpCircle size={18}/> Ingresos y Ventas ({sessionDetails.ingresos.length})</h3>
                                        </div>
                                        <div className="overflow-x-auto">
-                                           <table className="w-full text-sm text-left min-w-[500px]">
-                                               <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead>
+                                           <table className="w-full text-[10px] md:text-sm text-left min-w-[500px]">
+                                               <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase">
+                                                   <tr>
+                                                       <th className="p-3">Hora</th>
+                                                       <th className="p-3">Descripción</th>
+                                                       <th className="p-3">Costo</th>
+                                                       <th className="p-3">Venta</th>
+                                                       <th className="p-3 text-right">Acción</th>
+                                                   </tr>
+                                               </thead>
                                                <tbody>
-                                                   {sessionDetails.ingresos.map(ing => (
-                                                       <tr key={ing.idIngreso} className="border-b hover:bg-slate-50 group">
-                                                           <td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
-                                                           <td className="p-3 min-w-[150px]">
-                                                               {editingItem.id === ing.idIngreso ? <input className="border p-1 rounded w-full" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} /> : <span className="line-clamp-2">{ing.descripcion}</span>}
-                                                           </td>
-                                                           <td className="p-3 font-bold text-emerald-600 whitespace-nowrap">
-                                                               {editingItem.id === ing.idIngreso ? <input type="number" className="border p-1 rounded w-20" value={editForm.monto} onChange={e=>setEditForm({...editForm, monto: e.target.value})} /> : `L. ${Number(ing.monto).toFixed(2)}`}
-                                                           </td>
-                                                           <td className="p-3 text-right">
-                                                               {editingItem.id === ing.idIngreso ? (
-                                                                   <div className="flex justify-end gap-1"><button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded"><Save size={16}/></button><button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded"><X size={16}/></button></div>
-                                                               ) : (
-                                                                   <div className="flex justify-end gap-1"><button onClick={() => startEdit(ing, 'INGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(ing.idIngreso, 'INGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded"><Trash2 size={16}/></button></div>
-                                                               )}
-                                                           </td>
-                                                       </tr>
-                                                   ))}
+                                                   {sessionDetails.ingresos.map(ing => {
+                                                       const isInvoice = ing.descripcion.includes('Factura #');
+                                                       return (
+                                                           <tr key={ing.idIngreso} className="border-b hover:bg-slate-50 group">
+                                                               <td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td>
+                                                               <td className="p-3">
+                                                                   {editingItem.id === ing.idIngreso ? (
+                                                                       <input className="border p-1 rounded w-full bg-slate-50 text-xs" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} />
+                                                                   ) : (
+                                                                       <span className="line-clamp-1 font-medium">{ing.descripcion}</span>
+                                                                   )}
+                                                               </td>
+                                                               <td className="p-3 text-slate-500 italic">
+                                                                   {editingItem.id === ing.idIngreso ? (
+                                                                       <input type="number" className="border p-1 rounded w-16 bg-red-50 font-bold" value={editForm.costo} onChange={e=>setEditForm({...editForm, costo: e.target.value})} />
+                                                                   ) : (
+                                                                       `L. ${Number(ing.costo || 0).toFixed(2)}`
+                                                                   )}
+                                                               </td>
+                                                               <td className="p-3 font-bold text-emerald-600 whitespace-nowrap">
+                                                                   {editingItem.id === ing.idIngreso ? (
+                                                                       <input type="number" className="border p-1 rounded w-20 bg-emerald-50 font-bold" value={editForm.monto} onChange={e=>setEditForm({...editForm, monto: e.target.value})} />
+                                                                   ) : (
+                                                                       `L. ${Number(ing.monto).toFixed(2)}`
+                                                                   )}
+                                                               </td>
+                                                               <td className="p-3 text-right">
+                                                                   {editingItem.id === ing.idIngreso ? (
+                                                                       <div className="flex justify-end gap-1">
+                                                                           <button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded" title="Guardar"><Save size={16}/></button>
+                                                                           <button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded" title="Cancelar"><X size={16}/></button>
+                                                                       </div>
+                                                                   ) : (
+                                                                       <div className="flex justify-end gap-1">
+                                                                           {isInvoice && (
+                                                                               <button onClick={() => handleEditInvoice(ing.descripcion)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors" title="Modificar Factura en POS">
+                                                                                   <Ticket size={16}/>
+                                                                               </button>
+                                                                           )}
+                                                                           <button onClick={() => startEdit(ing, 'INGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded transition-colors" title="Editar Auditoría"><Edit2 size={16}/></button>
+                                                                           <button onClick={() => deleteTransaction(ing.idIngreso, 'INGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded transition-colors" title="Eliminar"><Trash2 size={16}/></button>
+                                                                       </div>
+                                                                   )}
+                                                               </td>
+                                                           </tr>
+                                                       );
+                                                   })}
                                                </tbody>
                                            </table>
                                        </div>
@@ -541,8 +593,8 @@ const AdminCashDashboard: React.FC = () => {
                                            <h3 className="font-bold text-red-800 flex items-center gap-2 text-sm md:text-base"><ArrowDownCircle size={18}/> Gastos y Salidas ({sessionDetails.egresos.length})</h3>
                                        </div>
                                        <div className="overflow-x-auto">
-                                           <table className="w-full text-sm text-left min-w-[500px]">
-                                               <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead>
+                                           <table className="w-full text-[10px] md:text-sm text-left min-w-[500px]">
+                                               <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead>
                                                <tbody>
                                                    {sessionDetails.egresos.map(egr => (
                                                        <tr key={egr.idegresos} className="border-b hover:bg-slate-50 group">
