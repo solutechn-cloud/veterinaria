@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
-import { CashService } from '../services/api';
-import { Arqueo, Ingreso, Egreso, Saldo } from '../types';
+import { CashService, SalesService } from '../services/api';
+import { Arqueo, Ingreso, Egreso, Saldo, DetalleVenta } from '../types';
 import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer, History, Calendar, Ticket } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
@@ -148,6 +148,61 @@ const AdminCashDashboard: React.FC = () => {
       }
   };
 
+  // Nueva función para ver los productos de una factura sin salir del dashboard
+  const handleViewInvoiceDetails = async (descripcion: string) => {
+      const match = descripcion.match(/#(FACT-\d+)/);
+      if (!match || !match[1]) return;
+      
+      const saleId = match[1];
+      
+      Swal.fire({
+          title: 'Cargando detalle...',
+          allowOutsideClick: false,
+          didOpen: () => { Swal.showLoading(); }
+      });
+
+      try {
+          const detalles = await SalesService.getDetallesVenta(saleId);
+          Swal.close();
+
+          const tableHtml = `
+            <div class="overflow-x-auto mt-4">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-slate-100">
+                    <th class="p-2 border font-bold">Cant.</th>
+                    <th class="p-2 border font-bold">Producto/Servicio</th>
+                    <th class="p-2 border font-bold text-right">Precio</th>
+                    <th class="p-2 border font-bold text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${detalles.map(d => `
+                    <tr>
+                      <td class="p-2 border">${d.cantidad}</td>
+                      <td class="p-2 border font-medium">${d.descripcionProducto}</td>
+                      <td class="p-2 border text-right">L. ${Number(d.precioVenta).toFixed(2)}</td>
+                      <td class="p-2 border text-right font-bold">L. ${(Number(d.cantidad) * Number(d.precioVenta)).toFixed(2)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+
+          Swal.fire({
+              title: `<span class="text-indigo-600">Detalle: ${saleId}</span>`,
+              html: tableHtml,
+              width: '600px',
+              confirmButtonText: 'Cerrar',
+              confirmButtonColor: '#4f46e5'
+          });
+
+      } catch (error) {
+          Swal.fire('Error', 'No se pudo obtener el detalle de la factura', 'error');
+      }
+  };
+
   // --- PDF GENERATOR ---
   const generateClosingReportPDF = (excludeRecharges: boolean = false) => {
       if (!selectedBox || !sessionDetails) return;
@@ -161,9 +216,10 @@ const AdminCashDashboard: React.FC = () => {
       
       let ingresosList = ingresosRaw;
       if (excludeRecharges) {
+          // MODIFICADO: Ahora solo filtra lo que contenga estrictamente "RECARGA"
           ingresosList = ingresosRaw.filter(i => {
               const desc = (i.descripcion || "").toUpperCase();
-              return !desc.includes('RECARGA') && !desc.includes('PAQUETE') && !desc.includes('SALDO') && !desc.includes('TIGO') && !desc.includes('CLARO');
+              return !desc.includes('RECARGA');
           });
       }
 
@@ -571,9 +627,14 @@ const AdminCashDashboard: React.FC = () => {
                                                                    ) : (
                                                                        <div className="flex justify-end gap-1">
                                                                            {isInvoice && (
-                                                                               <button onClick={() => handleEditInvoice(ing.descripcion)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors" title="Modificar Factura en POS">
-                                                                                   <Ticket size={16}/>
-                                                                               </button>
+                                                                               <>
+                                                                                   <button onClick={() => handleViewInvoiceDetails(ing.descripcion)} className="text-blue-600 hover:bg-blue-50 p-1 rounded transition-colors" title="Ver Detalle de Productos">
+                                                                                       <Eye size={16}/>
+                                                                                   </button>
+                                                                                   <button onClick={() => handleEditInvoice(ing.descripcion)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors" title="Modificar Factura en POS">
+                                                                                       <Ticket size={16}/>
+                                                                                   </button>
+                                                                               </>
                                                                            )}
                                                                            <button onClick={() => startEdit(ing, 'INGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded transition-colors" title="Editar Auditoría"><Edit2 size={16}/></button>
                                                                            <button onClick={() => deleteTransaction(ing.idIngreso, 'INGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded transition-colors" title="Eliminar"><Trash2 size={16}/></button>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, PackagesService, ConfigService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete, EmpresaConfig } from '../types';
@@ -518,7 +517,8 @@ const CashRegister: React.FC = () => {
      if(!arqueo) return;
      const result = await Swal.fire({ 
          title: '¿Cerrar Caja?', text: 'Se calcularán ganancias y se cerrará el turno.', 
-         icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar Caja', confirmButtonText: 'Sí, Cerrar Caja', confirmButtonColor: '#ef4444'
+         // fix: Removed duplicate confirmButtonText property from object literal
+         icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar Caja', confirmButtonColor: '#ef4444'
      });
      if(result.isConfirmed) {
        try {
