@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, PackagesService, ConfigService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Venta, Saldo, Paquete, EmpresaConfig } from '../types';
@@ -15,7 +16,7 @@ type TabType = 'INGRESOS' | 'EGRESOS' | 'VENTAS' | 'RECARGAS';
 // Helper robusto para números a letras (Soporta miles y millones)
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
-    const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+    const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CUARENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
     const diez_veinte = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
     const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
 
@@ -104,23 +105,39 @@ const CashRegister: React.FC = () => {
   const [showRecargaModal, setShowRecargaModal] = useState<{red: 'TIGO' | 'CLARO', tipo: 'RECARGA' | 'PAQUETE'} | null>(null);
   const [recargaForm, setRecargaForm] = useState({ tipo: 'RECARGA', monto: '', precio: '', paqueteId: '' });
 
-  // Obtener fecha local en formato YYYY-MM-DD
+  // Obtener fecha local en formato YYYY-MM-DD garantizando hora de Honduras
   const getLocalDate = () => {
-    const d = new Date();
-    const offset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/Tegucigalpa',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    };
+    const formatter = new Intl.DateTimeFormat('en-US', options);
+    const parts = formatter.formatToParts(new Date());
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+    return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
   };
 
-  // Obtener Timestamp exacto (YYYY-MM-DD HH:mm:ss) para enviar a BD
+  // Obtener Timestamp exacto (YYYY-MM-DD HH:mm:ss) para enviar a BD garantizando hora de Honduras
   const getFullLocalTimestamp = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    const secs = String(d.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+    const now = new Date();
+    const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/Tegucigalpa',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    const formatter = new Intl.DateTimeFormat('en-US', options);
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '00';
+    
+    // Construcción manual YYYY-MM-DD HH:mm:ss
+    return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
   };
 
   useEffect(() => {
@@ -501,7 +518,7 @@ const CashRegister: React.FC = () => {
      if(!arqueo) return;
      const result = await Swal.fire({ 
          title: '¿Cerrar Caja?', text: 'Se calcularán ganancias y se cerrará el turno.', 
-         icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar Caja', confirmButtonColor: '#ef4444'
+         icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar Caja', confirmButtonText: 'Sí, Cerrar Caja', confirmButtonColor: '#ef4444'
      });
      if(result.isConfirmed) {
        try {
@@ -785,6 +802,7 @@ const CashRegister: React.FC = () => {
          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl animate-fade-in">
                <h3 className="font-bold text-lg mb-4">{isEditingEgreso ? 'Editar Gasto' : 'Registrar Gasto'}</h3>
+               {/* fix: Changed setEditEgresoForm to setEgresoForm which is the correct state setter */}
                <div className="space-y-4"><input className="w-full p-3 border rounded-xl" placeholder="Descripción del gasto" value={egresoForm.descripcion} onChange={e => setEgresoForm({...egresoForm, descripcion:e.target.value})} /><input type="number" className="w-full p-3 border rounded-xl font-bold text-red-600" placeholder="Monto" value={egresoForm.monto} onChange={e => setEgresoForm({...egresoForm, monto:e.target.value})} /><div className="flex gap-2 mt-4"><button onClick={() => setShowEgresoModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</button><button onClick={handleEgresoAction} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg">Guardar</button></div></div>
             </div>
          </div>
