@@ -7,6 +7,7 @@ const pool = new Pool({
 });
 
 // --- HELPER TIMEZONE HONDURAS (ROBUSTO) ---
+// Esta función garantiza que el servidor devuelva la fecha/hora de Honduras sin importar dónde esté físicamente.
 const getLocalTimestamp = () => {
     try {
         const now = new Date();
@@ -24,15 +25,17 @@ const getLocalTimestamp = () => {
         const parts = formatter.formatToParts(now);
         
         const getPart = (type) => parts.find(p => p.type === type).value;
+        // Formato: YYYY-MM-DD HH:MM:SS
         return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
     } catch (err) {
         console.error("Error generando fecha local:", err);
         const d = new Date();
-        d.setHours(d.getHours() - 6);
+        d.setHours(d.getHours() - 6); // Fallback manual UTC-6
         return d.toISOString().replace('T', ' ').substring(0, 19);
     }
 };
 
+// Asegurar el timezone en cada nueva conexión al pool
 pool.on('connect', (client) => {
     client.query("SET TIME ZONE 'America/Tegucigalpa'")
         .catch(err => console.error('Error setting timezone', err));
@@ -64,40 +67,36 @@ async function generateNextId(table, column, prefix, client = pool) {
   }
 }
 
-// Función CRÍTICA: Actualizar balance en tiempo real
+// Función CRÍTICA: Actualizar balance del arqueo activo sumando ingresos/egresos de HOY (Honduras)
 async function updateArqueoBalance(idCaja, client = pool) {
     try {
         const arqRes = await client.query(
-            `SELECT idArqueo as "idArqueo", montoInicial as "montoInicial", 
-             TO_CHAR(fechaApertura, 'YYYY-MM-DD HH24:MI:SS') as "fechaAperturaStr"
+            `SELECT idArqueo as "idArqueo", montoInicial as "montoInicial"
              FROM arqueo 
              WHERE idCaja = $1 AND estado = 'Activo'`, 
             [idCaja]
         );
         
-        if (arqRes.rows.length === 0) {
-            return; 
-        }
+        if (arqRes.rows.length === 0) return;
 
-        const { idArqueo, montoInicial, fechaAperturaStr } = arqRes.rows[0];
+        const { idArqueo, montoInicial } = arqRes.rows[0];
         
-        // CORRECCIÓN DE ZONA HORARIA: Se añade un buffer de 12 horas al inicio de la sesión
-        // para capturar movimientos que pudieran tener desajuste de hora servidor vs local.
+        // Sumar movimientos filtrando estrictamente por la fecha de Honduras
+        const hndDate = getLocalTimestamp().substring(0, 10);
+
         const ingRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
             FROM ingresos 
             WHERE idCaja = $1 
-            AND fechaCreacion >= ($2::timestamp - interval '12 hours')
-            AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = TO_CHAR($2::timestamp, 'YYYY-MM-DD')
-        `, [idCaja, fechaAperturaStr]);
+            AND TO_CHAR(fechaCreacion AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $2
+        `, [idCaja, hndDate]);
 
         const egrRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total
             FROM egresos 
             WHERE idCaja = $1 
-            AND fechaCreacion >= ($2::timestamp - interval '12 hours')
-            AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = TO_CHAR($2::timestamp, 'YYYY-MM-DD')
-        `, [idCaja, fechaAperturaStr]);
+            AND TO_CHAR(fechaCreacion AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $2
+        `, [idCaja, hndDate]);
 
         const totalIngresos = Number(ingRes.rows[0].total);
         const totalCostos = Number(ingRes.rows[0].costo);
@@ -126,8 +125,6 @@ async function updateArqueoBalance(idCaja, client = pool) {
 
 const handleDbError = (res, err) => {
   console.error('[DB ERROR HANDLER]:', err); 
-  if (err.code === '23503') return res.status(409).json({ error: 'No se puede eliminar/crear: Registro relacionado a otra entidad.' });
-  if (err.code === '23505') return res.status(409).json({ error: 'El registro ya existe (Duplicado).' });
   res.status(500).json({ error: err.message || 'Error interno del servidor' });
 };
 
