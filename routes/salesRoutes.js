@@ -29,17 +29,26 @@ router.put('/clientes/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
+// HISTORIAL CORREGIDO: Filtra por el vendedor actual para evitar ver ventas de otras cajas
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; 
+        const { codUsuario } = req.user; // Obtenemos el usuario autenticado
+
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
+            WHERE v.codVendedor = $1
         `;
-        const params = [];
-        if (fecha) { query += ` WHERE TO_CHAR(v.fecha, 'YYYY-MM-DD') = $1`; params.push(fecha); }
+        const params = [codUsuario];
+        
+        if (fecha) { 
+            query += ` AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $2`; 
+            params.push(fecha); 
+        }
+        
         query += ` ORDER BY v.codVenta DESC`;
         const result = await pool.query(query, params);
         res.json(result.rows);
@@ -77,10 +86,10 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     let totalCosto = 0;
     for (const item of detalles) {
-        if (item.tipoProducto === 'TELEFONO') {
+        if (item.idTelefono) {
             const tel = await client.query("SELECT precioCompra FROM telefonos WHERE codigo = $1", [item.idTelefono]);
             totalCosto += Number(tel.rows[0]?.preciocompra || 0);
-        } else if (item.tipoProducto === 'ACCESORIO') {
+        } else if (item.idInventario) {
             const inv = await client.query('SELECT precioCompra FROM inventario WHERE codInventario = $1', [item.idInventario]);
             totalCosto += (Number(inv.rows[0]?.preciocompra || 0) * Number(item.cantidad));
         }
@@ -88,8 +97,8 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     await client.query(
-      `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado) 
-       VALUES ($1, $2, $3, $4, $5, $6, 'Venta POS')`,
+      `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
+       VALUES ($1, $2, $3, $4, $5, $6, 'Venta POS', 'Venta Producto Externo')`,
       [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCosto, hndTime]
     );
 
@@ -100,10 +109,10 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     for (const item of detalles) {
       const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
-      if (item.tipoProducto === 'TELEFONO') {
+      if (item.idTelefono) {
         await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [item.idTelefono]);
         await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idTelefono, idIngreso, cantidad, precioVenta, estado) VALUES ($1,$2,$3,$4,1,$5,'Activo')`, [codDetalle, codVenta, item.idTelefono, idIngreso, item.precioVenta]);
-      } else if (item.tipoProducto === 'ACCESORIO') {
+      } else if (item.idInventario) {
         await client.query("UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2", [item.cantidad, item.idInventario]);
         await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idIngreso, cantidad, precioVenta, estado) VALUES ($1,$2,$3,$4,$5,$6,'Activo')`, [codDetalle, codVenta, item.idInventario, idIngreso, item.cantidad, item.precioVenta]);
       }
@@ -124,12 +133,12 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
         await client.query('BEGIN');
 
-        const oldDetails = await client.query('SELECT idIngreso, idTelefono, idAccesorio, cantidad FROM detalleventa WHERE idVenta = $1', [codVenta]);
+        const oldDetails = await client.query('SELECT idIngreso, idTelefono, idAccesorio as "idAccesorio", cantidad FROM detalleventa WHERE idVenta = $1', [codVenta]);
         const originalIdIngreso = oldDetails.rows[0]?.idingreso;
 
         for (const det of oldDetails.rows) {
             if (det.idtelefono) await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
-            else if (det.idaccesorio) await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, det.idaccesorio]);
+            else if (det.idAccesorio) await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, det.idAccesorio]);
         }
 
         await client.query('DELETE FROM detalleventa WHERE idVenta = $1', [codVenta]);
@@ -139,7 +148,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         for (const item of detalles) {
              const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
              let itemCosto = 0;
-             if (item.tipoProducto === 'TELEFONO') {
+             if (item.idTelefono) {
                 const tel = await client.query("SELECT precioCompra FROM telefonos WHERE codigo = $1", [item.idTelefono]);
                 itemCosto = Number(tel.rows[0]?.preciocompra || 0);
                 await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [item.idTelefono]);
@@ -170,12 +179,12 @@ router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
         const { idCaja } = req.user;
         await client.query('BEGIN');
         
-        const details = await client.query('SELECT idTelefono, idAccesorio, idIngreso, cantidad FROM detalleventa WHERE idVenta = $1', [codVenta]);
+        const details = await client.query('SELECT idTelefono, idAccesorio as "idAccesorio", idIngreso, cantidad FROM detalleventa WHERE idVenta = $1', [codVenta]);
         let idIngresoAEliminar = null;
 
         for (const det of details.rows) {
             if(det.idtelefono) await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [det.idtelefono]);
-            else if (det.idaccesorio) await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, det.idaccesorio]);
+            else if (det.idAccesorio) await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [det.cantidad, det.idAccesorio]);
             if (det.idingreso) idIngresoAEliminar = det.idingreso;
         }
 

@@ -70,10 +70,10 @@ router.post('/arqueo/close', authenticateToken, async (req, res) => {
         await client.query('BEGIN');
         await updateArqueoBalance(idCaja, client);
         
-        // Obtener saldos finales de recargas para el reporte
-        const saldosRes = await client.query(`SELECT red, saldoFinal FROM saldos WHERE TO_CHAR(fecha, 'YYYY-MM-DD') = $1`, [hndDate]);
-        const saldoTigo = saldosRes.rows.find(s => s.red === 'TIGO')?.saldofinal || 0;
-        const saldoClaro = saldosRes.rows.find(s => s.red === 'CLARO')?.saldofinal || 0;
+        // CORRECCIÓN: Obtener saldos finales de recargas asegurando nombres de columnas
+        const saldosRes = await client.query(`SELECT red, saldoFinal as "saldoFinal" FROM saldos WHERE TO_CHAR(fecha, 'YYYY-MM-DD') = $1`, [hndDate]);
+        const saldoTigo = saldosRes.rows.find(s => s.red === 'TIGO')?.saldoFinal || 0;
+        const saldoClaro = saldosRes.rows.find(s => s.red === 'CLARO')?.saldoFinal || 0;
 
         await client.query(`UPDATE arqueo SET estado = 'Cerrada', fechaCierre = $1, saldoTigoFinal = $2, saldoClaroFinal = $3 WHERE idArqueo = $4`, [getLocalTimestamp(), saldoTigo, saldoClaro, idArqueo]);
         
@@ -133,7 +133,7 @@ router.post('/egresos', authenticateToken, async (req, res) => {
 router.get('/saldos/today', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query;
-        const r = await pool.query(`SELECT idsaldos, red, saldoInicio, saldoComprado, saldoFinal, fecha FROM saldos WHERE TO_CHAR(fecha, 'YYYY-MM-DD') = $1`, [fecha]);
+        const r = await pool.query(`SELECT idsaldos, red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha FROM saldos WHERE TO_CHAR(fecha, 'YYYY-MM-DD') = $1`, [fecha]);
         res.json(r.rows);
     } catch(e) { handleDbError(res, e); }
 });

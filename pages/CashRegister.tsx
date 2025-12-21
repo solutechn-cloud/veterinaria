@@ -143,13 +143,13 @@ const CashRegister: React.FC = () => {
      }
   };
 
-  // --- REPORTE DE CIERRE CORREGIDO (RESUMEN FINANCIERO Y SALDOS) ---
+  // --- REPORTE DE CIERRE CORREGIDO ---
   const generateClosingReportPDF = (resumen: any, ingresosList: Ingreso[], egresosList: Egreso[], user: any) => {
     const doc = new jsPDF();
     const isAdmin = user.rol === 'Administrador' || hasPermission('VER_ADMIN');
     const date = new Date().toLocaleString();
 
-    // Normalización de llaves (Postgres devuelve minúsculas por defecto)
+    // Normalización de llaves: Postgres devuelve minúsculas por defecto
     const mInicial = Number(resumen.montoinicial || resumen.montoInicial || 0);
     const tVentas = Number(resumen.totalventas || resumen.totalVentas || 0);
     const tGastos = Number(resumen.totalgastos || resumen.TotalGastos || 0);
@@ -301,7 +301,10 @@ const CashRegister: React.FC = () => {
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
   const totalGastos = egresos.reduce((a,b) => a + Number(b.monto), 0);
   const cashCalculated = arqueo ? (Number(arqueo.montoInicial) + totalIngresos) - totalGastos : 0;
-  const getSaldoRed = (red: string) => saldos.find(x => x.red === red)?.saldoFinal || 0;
+  const getSaldoRed = (red: string) => {
+      const s = saldos.find(x => x.red === red);
+      return s ? Number(s.saldoFinal) : 0;
+  };
 
   if (isLoading) return <div className="flex justify-center items-center h-full text-slate-400 gap-3"><RefreshCw className="animate-spin"/> Cargando...</div>;
 
