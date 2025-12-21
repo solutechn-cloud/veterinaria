@@ -39,8 +39,14 @@ const AdminCashDashboard: React.FC = () => {
 
   // Edit States
   const [editingItem, setEditingItem] = useState<{id: string, type: 'INGRESO'|'EGRESO'|null}>({id:'', type: null});
-  // FIX: Added 'categoria' and 'id_socio_asignado' to the initial state of editForm to match the structure used in startEdit and saveEdit
-  const [editForm, setEditForm] = useState({ descripcion: '', monto: '', costo: '', categoria: '', id_socio_asignado: '' });
+  // FIX: Estado unificado para evitar errores de propiedades inexistentes
+  const [editForm, setEditForm] = useState({ 
+    descripcion: '', 
+    monto: '', 
+    costo: '', 
+    subtipo: '' as string, 
+    idSocio: '' as string 
+  });
   const [newMontoInicial, setNewMontoInicial] = useState<string>('');
 
   // Creation Modals
@@ -131,7 +137,7 @@ const AdminCashDashboard: React.FC = () => {
         setNewForm({ descripcion: '', monto: '', costo: '0', subtipo: '', idSocio: '' });
         await openManager(selectedBox);
         loadData();
-        Swal.fire('Éxito', 'Movimiento registrado correctamente.', 'success');
+        Swal.fire('Éxito', 'Movimiento registrado.', 'success');
     } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
   };
 
@@ -149,12 +155,12 @@ const AdminCashDashboard: React.FC = () => {
       try {
           const detalles = await SalesService.getDetallesVenta(saleId);
           Swal.close();
-          const tableHtml = `<div class="overflow-x-auto mt-4 text-left"><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border font-bold">Cant.</th><th class="p-2 border font-bold">Descripción</th><th class="p-2 border font-bold text-right">Total</th></tr></thead><tbody>${detalles.map(d => `<tr><td class="p-2 border text-center">${d.cantidad}</td><td class="p-2 border font-medium">${d.descripcionProducto}</td><td class="p-2 border text-right font-bold">L. ${(Number(d.cantidad) * Number(d.precioVenta)).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
+          const tableHtml = `<div class="overflow-x-auto mt-4 text-left"><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border font-bold">Cant.</th><th class="p-2 border font-bold">Descripción</th><th class="p-2 border font-bold text-right">Total</th></tr></thead><tbody>${detalles.map(d => `<tr><td class="p-2 border text-center">${d.cantidad}</td><td class="p-2 border font-medium">${d.descripcionProducto || 'N/A'}</td><td class="p-2 border text-right font-bold">L. ${(Number(d.cantidad) * Number(d.precioVenta)).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
           Swal.fire({ title: `Factura: ${saleId}`, html: tableHtml, width: '600px', confirmButtonColor: '#4f46e5' });
       } catch (error) { Swal.fire('Error', 'No se pudo obtener el detalle.', 'error'); }
   };
 
-  // --- REPORTE PDF MEJORADO (SIN SOLAPAMIENTO Y COLORES SOLICITADOS) ---
+  // --- REPORTE PDF CORREGIDO (ESPACIADO Y COLORES) ---
   const generateClosingReportPDF = (excludeRecharges: boolean = false) => {
       if (!selectedBox || !sessionDetails) return;
       const doc = new jsPDF();
@@ -185,8 +191,8 @@ const AdminCashDashboard: React.FC = () => {
       // @ts-ignore
       doc.autoTable({ startY: 50, head: [['Plataforma', 'Saldo Final']], body: [['TIGO', `L. ${Number(tigoS).toFixed(2)}`], ['CLARO', `L. ${Number(claroS).toFixed(2)}`]], theme: 'grid', headStyles: { fillColor: [15, 23, 42] }, columnStyles: { 1: { halign: 'right', textColor: [0, 128, 0], fontStyle: 'bold' } }, margin: { left: 110 } });
       
-      // MARGEN DE SEGURIDAD PARA EVITAR SOLAPAMIENTO
-      let finalY = (doc as any).lastAutoTable.finalY + 15; 
+      // MARGEN DE SEGURIDAD PARA EVITAR SOLAPAMIENTO (20MM ADICIONALES)
+      let finalY = (doc as any).lastAutoTable.finalY + 20; 
       doc.setTextColor(0); doc.setFontSize(11); doc.text("DETALLE DE INGRESOS (Completo)", 14, finalY);
       const incomeRows = ingresosList.map(i => [i.descripcion, `L. ${Number(i.costo||0).toFixed(2)}`, `L. ${Number(i.monto||0).toFixed(2)}`, `L. ${(Number(i.monto||0)-Number(i.costo||0)).toFixed(2)}`]);
       // @ts-ignore
@@ -194,7 +200,7 @@ const AdminCashDashboard: React.FC = () => {
           startY: finalY + 5, head: [['Descripción', 'Costo', 'Venta', 'Ganancia']], 
           body: [...incomeRows, [{content: 'TOTALES', styles: {halign: 'right', fontStyle: 'bold'}}, `L. ${tCostoIn.toFixed(2)}`, `L. ${tVentaIn.toFixed(2)}`, `L. ${tGananciaIn.toFixed(2)}` ]], 
           theme: 'striped', headStyles: { fillColor: [16, 185, 129] }, columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } },
-          // COLOR OSCURO PARA LA FILA DE TOTALES
+          // COLOR AZUL MARINO PARA TOTALES
           didParseCell: (data) => { if(data.row.index === incomeRows.length) { data.cell.styles.fillColor = [30, 41, 59]; data.cell.styles.textColor = [255, 255, 255]; } }
       });
 
@@ -234,13 +240,13 @@ const AdminCashDashboard: React.FC = () => {
 
   const startEdit = (item: Ingreso | Egreso, type: 'INGRESO' | 'EGRESO') => {
       setEditingItem({ id: type === 'INGRESO' ? (item as Ingreso).idIngreso : (item as Egreso).idegresos, type });
-      // FIX: Ensure all properties defined in the new editForm state are provided
+      // Se inicializa el formulario con todos los campos para evitar el error de undefined
       setEditForm({ 
           descripcion: item.descripcion, 
           monto: String(item.monto), 
-          costo: type === 'INGRESO' ? String((item as Ingreso).costo || 0) : '0', 
-          categoria: (item as any).subtipo_egreso || (item as any).subtipo_movimiento || '', 
-          id_socio_asignado: (item as any).id_socio_asignado ? String((item as any).id_socio_asignado) : '' 
+          costo: type === 'INGRESO' ? String((item as Ingreso).costo || 0) : '0',
+          subtipo: (item as any).subtipo_egreso || (item as any).subtipo_movimiento || '',
+          idSocio: (item as any).id_socio_asignado ? String((item as any).id_socio_asignado) : ''
       });
   };
 
@@ -248,8 +254,7 @@ const AdminCashDashboard: React.FC = () => {
       if(!editingItem.type || !selectedBox) return;
       try {
           if(editingItem.type === 'INGRESO') await CashService.updateIngreso(editingItem.id, { descripcion: editForm.descripcion, monto: Number(editForm.monto), costo: Number(editForm.costo) });
-          // FIX: Properties 'categoria' and 'id_socio_asignado' now correctly exist on editForm
-          else await CashService.updateEgreso(editingItem.id, { descripcion: editForm.descripcion, monto: Number(editForm.monto), subtipo_egreso: editForm.categoria, id_socio_asignado: editForm.id_socio_asignado || null });
+          else await CashService.updateEgreso(editingItem.id, { descripcion: editForm.descripcion, monto: Number(editForm.monto), subtipo_egreso: editForm.subtipo, id_socio_asignado: editForm.idSocio ? Number(editForm.idSocio) : null });
           setEditingItem({id:'', type: null}); openManager(selectedBox); loadData(); Swal.fire('Guardado', 'Registro actualizado', 'success');
       } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
@@ -314,17 +319,18 @@ const AdminCashDashboard: React.FC = () => {
                                <div className="space-y-6 animate-fade-in">
                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-3 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center"><h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm md:text-base"><ArrowUpCircle size={18}/> Ingresos y Ventas</h3><button onClick={() => { setShowNewModal('INGRESO'); setNewForm({ descripcion: '', monto: '', costo: '0', subtipo: 'Reparacion', idSocio: '' }); }} className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm hover:bg-emerald-700 transition-colors"><PlusCircle size={14}/> Nuevo Ingreso</button></div>
-                                       <div className="overflow-x-auto"><table className="w-full text-[10px] md:text-sm text-left min-w-[500px]"><thead className="bg-slate-50 text-slate-500 text-[10px] uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Costo</th><th className="p-3">Venta</th><th className="p-3 text-right">Acción</th></tr></thead><tbody>{sessionDetails.ingresos.length === 0 ? (<tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Sin registros.</td></tr>) : sessionDetails.ingresos.map(ing => (<tr key={ing.idIngreso} className="border-b hover:bg-slate-50 group"><td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td><td className="p-3">{editingItem.id === ing.idIngreso ? (<input className="border p-1 rounded w-full text-xs" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} />) : (<div className="flex items-center gap-2"><span>{ing.descripcion}</span>{ing.descripcion.includes('Factura #') && (<button onClick={() => handleViewInvoiceDetails(ing.descripcion)} className="p-1 text-indigo-600 bg-indigo-50 rounded hover:bg-indigo-100"><Eye size={12}/></button>)}</div>)}</td><td className="p-3 text-slate-500">L. {Number(ing.costo || 0).toFixed(2)}</td><td className="p-3 font-bold text-emerald-600">L. {Number(ing.monto).toFixed(2)}</td><td className="p-3 text-right"><div className="flex justify-end gap-1">{editingItem.id === ing.idIngreso ? (<><button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded"><Save size={16}/></button><button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded"><X size={16}/></button></>) : (<>{ing.descripcion.includes('Factura #') && (<button onClick={() => handleEditInvoice(ing.descripcion)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded"><Ticket size={16}/></button>)}<button onClick={() => startEdit(ing, 'INGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(ing.idIngreso, 'INGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
+                                       <div className="overflow-x-auto"><table className="w-full text-[10px] md:text-sm text-left min-w-[500px]"><thead className="bg-slate-50 text-slate-500 text-[10px] uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Costo</th><th className="p-3">Venta</th><th className="p-3 text-right">Acción</th></tr></thead><tbody>{sessionDetails.ingresos.length === 0 ? (<tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Sin registros.</td></tr>) : sessionDetails.ingresos.map(ing => (<tr key={ing.idIngreso} className="border-b hover:bg-slate-50 group"><td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{ing.fechaCreacion ? new Date(ing.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td><td className="p-3">{editingItem.id === ing.idIngreso ? (<div className="flex flex-col gap-1"><input className="border p-1 rounded w-full text-xs" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} /><div className="flex gap-1"><input type="number" className="border p-1 rounded w-1/2 text-xs" value={editForm.monto} onChange={e=>setEditForm({...editForm, monto: e.target.value})} placeholder="Venta"/><input type="number" className="border p-1 rounded w-1/2 text-xs" value={editForm.costo} onChange={e=>setEditForm({...editForm, costo: e.target.value})} placeholder="Costo"/></div></div>) : (<div className="flex items-center gap-2"><span>{ing.descripcion}</span>{ing.descripcion.includes('Factura #') && (<button onClick={() => handleViewInvoiceDetails(ing.descripcion)} className="p-1 text-indigo-600 bg-indigo-50 rounded hover:bg-indigo-100"><Eye size={12}/></button>)}</div>)}</td><td className="p-3 text-slate-500">L. {Number(ing.costo || 0).toFixed(2)}</td><td className="p-3 font-bold text-emerald-600">L. {Number(ing.monto).toFixed(2)}</td><td className="p-3 text-right"><div className="flex justify-end gap-1">{editingItem.id === ing.idIngreso ? (<><button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded"><Save size={16}/></button><button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded"><X size={16}/></button></>) : (<>{ing.descripcion.includes('Factura #') && (<button onClick={() => handleEditInvoice(ing.descripcion)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded"><Ticket size={16}/></button>)}<button onClick={() => startEdit(ing, 'INGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(ing.idIngreso, 'INGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
                                    </div>
                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-3 bg-red-50 border-b border-red-100 flex justify-between items-center"><h3 className="font-bold text-red-800 flex items-center gap-2 text-sm md:text-base"><ArrowDownCircle size={18}/> Gastos y Salidas</h3><button onClick={() => { setShowNewModal('EGRESO'); setNewForm({ descripcion: '', monto: '', costo: '0', subtipo: 'Gasto Operativo', idSocio: '' }); }} className="bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm hover:bg-red-700 transition-colors"><PlusCircle size={14}/> Nuevo Gasto</button></div>
-                                       <div className="overflow-x-auto"><table className="w-full text-[10px] md:text-sm text-left min-w-[500px]"><thead className="bg-slate-50 text-slate-500 text-[10px] uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead><tbody>{sessionDetails.egresos.length === 0 ? (<tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Sin registros.</td></tr>) : sessionDetails.egresos.map(egr => (<tr key={egr.idegresos} className="border-b hover:bg-slate-50 group"><td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{egr.fechaCreacion ? new Date(egr.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td><td className="p-3">{editingItem.id === egr.idegresos ? <input className="border p-1 rounded w-full" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} /> : egr.descripcion}</td><td className="p-3 font-bold text-red-600">L. {Number(egr.monto).toFixed(2)}</td><td className="p-3 text-right"><div className="flex justify-end gap-1">{editingItem.id === egr.idegresos ? (<><button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded"><Save size={16}/></button><button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded"><X size={16}/></button></>) : (<><button onClick={() => startEdit(egr, 'EGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(egr.idegresos, 'EGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
+                                       <div className="overflow-x-auto"><table className="w-full text-[10px] md:text-sm text-left min-w-[500px]"><thead className="bg-slate-50 text-slate-500 text-[10px] uppercase"><tr><th className="p-3">Hora</th><th className="p-3">Descripción</th><th className="p-3">Monto</th><th className="p-3 text-right">Acción</th></tr></thead><tbody>{sessionDetails.egresos.length === 0 ? (<tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Sin registros.</td></tr>) : sessionDetails.egresos.map(egr => (<tr key={egr.idegresos} className="border-b hover:bg-slate-50 group"><td className="p-3 text-xs text-slate-400 font-mono whitespace-nowrap">{egr.fechaCreacion ? new Date(egr.fechaCreacion).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-'}</td><td className="p-3">{editingItem.id === egr.idegresos ? (<div className="flex flex-col gap-1"><input className="border p-1 rounded w-full" value={editForm.descripcion} onChange={e=>setEditForm({...editForm, descripcion: e.target.value})} /><input type="number" className="border p-1 rounded w-full text-xs" value={editForm.monto} onChange={e=>setEditForm({...editForm, monto: e.target.value})} placeholder="Monto"/></div>) : egr.descripcion}</td><td className="p-3 font-bold text-red-600">L. {Number(egr.monto).toFixed(2)}</td><td className="p-3 text-right"><div className="flex justify-end gap-1">{editingItem.id === egr.idegresos ? (<><button onClick={saveEdit} className="bg-emerald-100 text-emerald-700 p-1.5 rounded"><Save size={16}/></button><button onClick={() => setEditingItem({id:'', type:null})} className="bg-slate-100 text-slate-600 p-1.5 rounded"><X size={16}/></button></>) : (<><button onClick={() => startEdit(egr, 'EGRESO')} className="text-slate-400 hover:text-blue-500 p-1 rounded"><Edit2 size={16}/></button><button onClick={() => deleteTransaction(egr.idegresos, 'EGRESO')} className="text-slate-400 hover:text-red-500 p-1 rounded"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
                                    </div>
                                </div>
                            )}
                            {activeTab === 'CONFIG' && (
                                <div className="space-y-6 animate-fade-in">
                                    <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Edit2 size={18}/> Corrección de Monto Inicial</h3><div className="flex flex-col md:flex-row gap-4 md:items-end"><div className="flex-1"><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Monto Inicial (L.)</label><input type="number" className="w-full p-3 border border-slate-300 rounded-lg font-bold text-lg" value={newMontoInicial} onChange={e => setNewMontoInicial(e.target.value)}/></div><button onClick={handleUpdateInitial} className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg w-full md:w-auto">Actualizar y Recalcular</button></div></div>
+                                   <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Smartphone size={18}/> Saldos de Recargas</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{saldosSession.map(saldo => (<div key={saldo.idsaldos} className={`p-4 rounded-xl border ${saldo.red === 'TIGO' ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}><div className="flex justify-between items-start mb-2"><span className={`font-bold ${saldo.red === 'TIGO' ? 'text-blue-700' : 'text-red-700'}`}>{saldo.red}</span><button onClick={() => setEditingSaldo(saldo)} className="text-slate-400 hover:text-indigo-600"><Edit2 size={16}/></button></div>{editingSaldo?.idsaldos === saldo.idsaldos ? (<div className="space-y-2"><div><label className="text-[10px] font-bold uppercase text-slate-500">Saldo Inicial</label><input type="number" className="w-full p-1 border rounded text-sm" value={editingSaldo.saldoInicio} onChange={e=>setEditingSaldo({...editingSaldo, saldoInicio: Number(e.target.value)})}/></div><div><label className="text-[10px] font-bold uppercase text-slate-500">Saldo Final</label><input type="number" className="w-full p-1 border rounded text-sm" value={editingSaldo.saldoFinal} onChange={e=>setEditingSaldo({...editingSaldo, saldoFinal: Number(e.target.value)})}/></div><div className="flex gap-2 mt-2"><button onClick={handleSaveSaldo} className="bg-indigo-600 text-white px-2 py-1 rounded text-xs font-bold w-full">Guardar</button><button onClick={() => setEditingSaldo(null)} className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-xs font-bold w-full">Cancelar</button></div></div>) : (<div className="text-sm space-y-1"><div className="flex justify-between"><span>Inicial:</span> <strong>L. {Number(saldo.saldoInicio).toFixed(2)}</strong></div><div className="flex justify-between border-t border-black/10 pt-1 mt-1"><span>Actual:</span> <strong>L. {Number(saldo.saldoFinal).toFixed(2)}</strong></div></div>)}</div>))}</div></div>
                                </div>
                            )}
                        </div>
