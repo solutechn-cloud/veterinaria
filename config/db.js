@@ -6,8 +6,6 @@ const pool = new Pool({
   ssl: process.env.DB_INTERNAL_URL ? false : { rejectUnauthorized: false }
 });
 
-// --- HELPER TIMEZONE HONDURAS (ROBUSTO) ---
-// Esta función garantiza que el servidor devuelva la fecha/hora de Honduras sin importar dónde esté físicamente.
 const getLocalTimestamp = () => {
     try {
         const now = new Date();
@@ -23,19 +21,15 @@ const getLocalTimestamp = () => {
         };
         const formatter = new Intl.DateTimeFormat('en-US', options);
         const parts = formatter.formatToParts(now);
-        
         const getPart = (type) => parts.find(p => p.type === type).value;
-        // Formato: YYYY-MM-DD HH:MM:SS
         return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
     } catch (err) {
-        console.error("Error generando fecha local:", err);
         const d = new Date();
-        d.setHours(d.getHours() - 6); // Fallback manual UTC-6
+        d.setHours(d.getHours() - 6);
         return d.toISOString().replace('T', ' ').substring(0, 19);
     }
 };
 
-// Asegurar el timezone en cada nueva conexión al pool
 pool.on('connect', (client) => {
     client.query("SET TIME ZONE 'America/Tegucigalpa'")
         .catch(err => console.error('Error setting timezone', err));
@@ -51,7 +45,6 @@ async function generateNextId(table, column, prefix, client = pool) {
       LIMIT 1
     `;
     const result = await client.query(query);
-    
     let maxNum = 0;
     if(result.rows.length > 0) {
       const parts = result.rows[0].id.split(`${prefix}-`);
@@ -59,49 +52,41 @@ async function generateNextId(table, column, prefix, client = pool) {
         maxNum = parseInt(parts[1], 10);
       }
     }
-    const nextNum = maxNum + 1;
-    return `${prefix}-${nextNum.toString().padStart(4, '0')}`;
-  } catch (err) {
-    console.error(`Error generando ID para ${table}:`, err);
-    throw err;
-  }
+    return `${prefix}-${(maxNum + 1).toString().padStart(4, '0')}`;
+  } catch (err) { throw err; }
 }
 
-// Función CRÍTICA: Actualizar balance del arqueo activo sumando ingresos/egresos de HOY (Honduras)
 async function updateArqueoBalance(idCaja, client = pool) {
     try {
         const arqRes = await client.query(
-            `SELECT idArqueo as "idArqueo", montoInicial as "montoInicial"
-             FROM arqueo 
-             WHERE idCaja = $1 AND estado = 'Activo'`, 
+            `SELECT idArqueo, montoInicial FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'`, 
             [idCaja]
         );
-        
         if (arqRes.rows.length === 0) return;
 
-        const { idArqueo, montoInicial } = arqRes.rows[0];
-        
-        // Sumar movimientos filtrando estrictamente por la fecha de Honduras
+        const { idarqueo, montoinicial } = arqRes.rows[0];
         const hndDate = getLocalTimestamp().substring(0, 10);
 
+        // Sumar Ingresos
         const ingRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
             FROM ingresos 
             WHERE idCaja = $1 
-            AND TO_CHAR(fechaCreacion AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $2
+            AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2
         `, [idCaja, hndDate]);
 
+        // Sumar Egresos
         const egrRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total
             FROM egresos 
             WHERE idCaja = $1 
-            AND TO_CHAR(fechaCreacion AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $2
+            AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2
         `, [idCaja, hndDate]);
 
         const totalIngresos = Number(ingRes.rows[0].total);
         const totalCostos = Number(ingRes.rows[0].costo);
         const totalEgresos = Number(egrRes.rows[0].total);
-        const baseInicial = Number(montoInicial);
+        const baseInicial = Number(montoinicial);
 
         const montoFinal = (baseInicial + totalIngresos) - totalEgresos;
         const ganancia = totalIngresos - totalCostos;
@@ -115,17 +100,15 @@ async function updateArqueoBalance(idCaja, client = pool) {
                 montoFinal = $4,
                 ganancia = $5
             WHERE idArqueo = $6
-        `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idArqueo]);
-        
+        `, [totalIngresos, totalCostos, totalEgresos, montoFinal, ganancia, idarqueo]);
     } catch (err) {
-        console.error("[CRITICAL ERROR] Fallo actualizando balance:", err);
+        console.error("Error updateArqueoBalance:", err);
         throw err;
     }
 }
 
 const handleDbError = (res, err) => {
-  console.error('[DB ERROR HANDLER]:', err); 
-  res.status(500).json({ error: err.message || 'Error interno del servidor' });
+  res.status(500).json({ error: err.message || 'Error interno' });
 };
 
 module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp };
