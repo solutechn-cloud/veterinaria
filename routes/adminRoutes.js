@@ -5,6 +5,53 @@ const bcrypt = require('bcryptjs');
 const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
+// --- CONFIGURACIÓN DE EMPRESA (FALTANTE) ---
+router.get('/config', authenticateToken, async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM config WHERE id = 1');
+        if (r.rows.length === 0) {
+            // Devolver objeto por defecto si no existe
+            return res.json({
+                nombreEmpresa: 'SmartCloud ERP',
+                rtn: '',
+                direccion: '',
+                telefono: '',
+                correo: '',
+                cai: '',
+                rangoInicial: '',
+                rangoFinal: '',
+                fechaLimite: '',
+                isv: 15,
+                mensajeFinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
+            });
+        }
+        res.json(r.rows[0]);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.put('/config', authenticateToken, async (req, res) => {
+    try {
+        const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal } = req.body;
+        await pool.query(`
+            INSERT INTO config (id, nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal)
+            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (id) DO UPDATE SET
+                nombreEmpresa = EXCLUDED.nombreEmpresa,
+                rtn = EXCLUDED.rtn,
+                direccion = EXCLUDED.direccion,
+                telefono = EXCLUDED.telefono,
+                correo = EXCLUDED.correo,
+                cai = EXCLUDED.cai,
+                rangoInicial = EXCLUDED.rangoInicial,
+                rangoFinal = EXCLUDED.rangoFinal,
+                fechaLimite = EXCLUDED.fechaLimite,
+                isv = EXCLUDED.isv,
+                mensajeFinal = EXCLUDED.mensajeFinal
+        `, [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal]);
+        res.json({ message: 'Configuración actualizada' });
+    } catch(e) { handleDbError(res, e); }
+});
+
 // --- PANEL DE CONTROL DE CAJAS ---
 router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     try {
@@ -47,7 +94,7 @@ router.get('/admin/boxes/:id/history', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// GESTIÓN DE SALDOS ADMINISTRATIVOS (Movidp aquí para evitar 404)
+// GESTIÓN DE SALDOS ADMINISTRATIVOS
 router.get('/admin/saldos', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query;
