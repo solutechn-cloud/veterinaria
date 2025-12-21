@@ -54,6 +54,7 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
             SELECT 
                 v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
                 v.tipoCompra as "tipoCompra", COALESCE(v.isv, 0) as "isv", COALESCE(v.descuento, 0) as "descuento",
+                v.monto_prima as "montoPrima", v.monto_financiamiento as "montoFinanciado",
                 c.nombre || ' ' || c.apellido as "nombreCliente", c.direccion as "direccionCliente",
                 COALESCE(e.nombre || ' ' || e.apellido, u.usuario) as "nombreVendedor"
             FROM ventas v
@@ -70,7 +71,7 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
 router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { identidadCliente, tipoCompra, total, detalles, isv, descuento } = req.body;
+    const { identidadCliente, tipoCompra, total, detalles, isv, descuento, montoPrima, montoFinanciado } = req.body;
     const { codUsuario, idCaja } = req.user;
     
     await client.query('BEGIN');
@@ -89,15 +90,23 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     }
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
+    
+    // LÓGICA ESPECIAL: En KrediYa, el monto que entra a caja es la PRIMA. 
+    // El resto queda en "tránsito/bancos" contablemente.
+    const montoIngresoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
+    const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta POS';
+    
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
-       VALUES ($1, $2, $3, $4, $5, $6, 'Venta POS', 'Venta POS')`,
-      [idIngreso, idCaja, `Venta Factura #${codVenta}`, total, totalCosto, hndTime]
+       VALUES ($1, $2, $3, $4, $5, $6, 'Venta POS', $7)`,
+      [idIngreso, idCaja, `Venta Factura #${codVenta}${tipoCompra === 'KrediYa' ? ' (KrediYa)' : ''}`, montoIngresoCaja, totalCosto, hndTime, subtipoMovimiento]
     );
 
+    // Guardamos la venta con los campos de financiamiento
     await client.query(
-      `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento) VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8)`,
-      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra || 'Contado', isv || 0, descuento || 0]
+      `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento) 
+       VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8, $9, $10)`,
+      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0]
     );
 
     for (const item of detalles) {
@@ -121,7 +130,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         const codVenta = req.params.id;
-        const { total, detalles } = req.body;
+        const { total, detalles, tipoCompra, montoPrima, montoFinanciado } = req.body;
         const { idCaja } = req.user;
 
         await client.query('BEGIN');
@@ -155,9 +164,16 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         }
 
         if (idIngreso) {
-            await client.query('UPDATE ingresos SET monto = $1, costo = $2 WHERE idIngreso = $3', [total, totalCosto, idIngreso]);
+            const montoActualizadoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
+            const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta POS';
+            await client.query('UPDATE ingresos SET monto = $1, costo = $2, subtipo_movimiento = $3 WHERE idIngreso = $4', [montoActualizadoCaja, totalCosto, subtipoActualizado, idIngreso]);
         }
-        await client.query('UPDATE ventas SET total = $1 WHERE codVenta = $2', [total, codVenta]);
+        
+        await client.query(
+            'UPDATE ventas SET total = $1, tipoCompra = $2, monto_prima = $3, monto_financiamiento = $4 WHERE codVenta = $5', 
+            [total, tipoCompra, montoPrima || 0, montoFinanciado || 0, codVenta]
+        );
+
         await updateArqueoBalance(idCaja, client);
         await client.query('COMMIT');
         res.json({ codVenta });
@@ -166,7 +182,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
 router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
     try {
-        // SQL CORREGIDO: Triple Join para asegurar que la descripción del accesorio nunca sea NULL
         const query = `
             SELECT 
                 dv.codDetalleVenta as "codDetalleVenta", 

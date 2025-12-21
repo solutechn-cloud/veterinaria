@@ -71,18 +71,17 @@ export interface Cliente {
   fechaCreacion?: string;
 }
 
-export interface Proveedor {
-  codProveedor: string;
-  nombre: string;
-  telefono: string;
-  direccion: string;
-}
-
+/** 
+ * Added missing Categoria interface 
+ */
 export interface Categoria {
   codCategoria: string;
   tipo: string;
 }
 
+/** 
+ * Added missing Ubicacion interface 
+ */
 export interface Ubicacion {
   idUbicacion: string;
   nombre: string;
@@ -92,10 +91,24 @@ export interface Ubicacion {
   estado: EstadoGeneral;
 }
 
+/** 
+ * Added missing Proveedor interface 
+ */
+export interface Proveedor {
+  codProveedor: string;
+  nombre: string;
+  telefono: string;
+  direccion: string;
+  fechaCreacion?: string;
+}
+
+/** 
+ * Added missing Telefono interface 
+ */
 export interface Telefono {
   codigo: string;
   imei1: string;
-  imei2?: string;
+  imei2: string;
   marca: string;
   modelo: string;
   precioCompra: number;
@@ -107,6 +120,9 @@ export interface Telefono {
   nombreUbicacion?: string;
 }
 
+/** 
+ * Added missing Accesorio interface 
+ */
 export interface Accesorio {
   codAccesorio: string;
   codCategoria: string;
@@ -114,6 +130,9 @@ export interface Accesorio {
   nombreCategoria?: string;
 }
 
+/** 
+ * Added missing Inventario interface 
+ */
 export interface Inventario {
   codInventario: string;
   codAccesorio: string;
@@ -129,17 +148,50 @@ export interface Inventario {
   nombreUbicacion?: string;
 }
 
+/** 
+ * Added missing ProductoUnified interface for POS usage 
+ */
 export interface ProductoUnified {
   id: string;
-  tipo: 'TELEFONO' | 'ACCESORIO';
+  tipo: 'TELEFONO' | 'ACCESORIO' | 'SERVICIO';
   nombre: string;
   codigo: string;
   precioVenta: number;
   stock: number;
   imei?: string;
   ubicacion: string;
-  marca?: string;       
-  categoria?: string;   
+  marca?: string;
+  categoria?: string;
+}
+
+export interface Venta {
+  codVenta: string;
+  fecha: string;
+  codVendedor?: string;
+  identidadCliente: string;
+  nombreCliente?: string;
+  total: number;
+  estado: EstadoGeneral;
+  tipoCompra: 'Contado' | 'Credito' | 'KrediYa';
+  isv?: number;
+  descuento?: number;
+  montoPrima?: number;
+  montoFinanciado?: number;
+  detalles?: DetalleVenta[];
+  nombreVendedor?: string; 
+  direccionCliente?: string;
+}
+
+export interface VentaPayload {
+  identidadCliente: string;
+  tipoCompra: 'Contado' | 'Credito' | 'KrediYa'; 
+  total: number;
+  isv?: number;
+  descuento?: number;
+  montoPrima?: number;
+  montoFinanciado?: number;
+  detalles: Partial<DetalleVenta>[];
+  fecha?: string;
 }
 
 export interface DetalleVenta {
@@ -154,32 +206,6 @@ export interface DetalleVenta {
   descripcionProducto?: string;
   tipoProducto?: 'TELEFONO' | 'ACCESORIO' | 'SERVICIO';
   estado?: EstadoGeneral;
-}
-
-export interface Venta {
-  codVenta: string;
-  fecha: string;
-  codVendedor?: string;
-  identidadCliente: string;
-  nombreCliente?: string;
-  total: number;
-  estado: EstadoGeneral;
-  tipoCompra: 'Contado' | 'Credito';
-  isv?: number;
-  descuento?: number;
-  detalles?: DetalleVenta[];
-  nombreVendedor?: string; 
-  direccionCliente?: string;
-}
-
-export interface VentaPayload {
-  identidadCliente: string;
-  tipoCompra: 'Contado' | 'Credito'; 
-  total: number;
-  isv?: number;
-  descuento?: number;
-  detalles: Partial<DetalleVenta>[];
-  fecha?: string;
 }
 
 export interface Arqueo {

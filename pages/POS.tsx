@@ -2,14 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService, ClientService, SalesService, ConfigService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente, EmpresaConfig, VentaPayload } from '../types';
-import { Search, ShoppingCart, Trash2, Smartphone, Zap, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Grid, Filter, Tag, LayoutGrid } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Smartphone, Zap, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Grid, Filter, Tag, LayoutGrid, Wallet } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-// Helper robusto para números a letras (Facturación SAR Honduras)
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
     const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
@@ -65,8 +64,9 @@ const POS: React.FC = () => {
   const [mobileTab, setMobileTab] = useState<'CATALOG' | 'CART'>('CATALOG');
 
   const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [paymentType, setPaymentType] = useState<'Contado' | 'Credito'>('Contado');
+  const [paymentType, setPaymentType] = useState<'Contado' | 'Credito' | 'KrediYa'>('Contado');
   const [discount, setDiscount] = useState<number>(0);
+  const [primaAmount, setPrimaAmount] = useState<number>(0);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
@@ -117,8 +117,9 @@ const POS: React.FC = () => {
         setIsEditing(true);
         setEditingSaleId(saleId);
         setSelectedClientId(header.identidadCliente);
-        setPaymentType(header.tipoCompra === 'Credito' ? 'Credito' : 'Contado');
+        setPaymentType(header.tipoCompra);
         setDiscount(Number(header.descuento) || 0);
+        setPrimaAmount(Number(header.montoPrima) || 0);
         setCart(details.map(d => ({
           ...d,
           cantidad: Number(d.cantidad),
@@ -187,10 +188,10 @@ const POS: React.FC = () => {
     const isvRate = (companyConfig?.isv || 15) / 100;
     const subtotal = conDescuento / (1 + isvRate);
     const isv = conDescuento - subtotal;
-    return { bruto, subtotal, isv, total: conDescuento };
-  }, [cart, discount, companyConfig]);
+    const financiado = paymentType === 'KrediYa' ? Math.max(0, conDescuento - primaAmount) : 0;
+    return { bruto, subtotal, isv, total: conDescuento, financiado };
+  }, [cart, discount, companyConfig, paymentType, primaAmount]);
 
-  // --- GENERACIÓN DE PDF LEGAL ---
   const generateInvoicePDF = (saleId: string) => {
       const client = clients.find(c => c.identidad === selectedClientId);
       const doc = new jsPDF();
@@ -256,11 +257,17 @@ const POS: React.FC = () => {
       finalY += 6;
       if(discount > 0) { doc.text("Descuentos:", totalsX, finalY); doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"}); finalY += 6; }
       doc.text("I.S.V.:", totalsX, finalY); doc.text(`L. ${totals.isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-      finalY += 2;
+      finalY += 6;
+      if(paymentType === 'KrediYa') {
+          doc.text("Prima Recibida:", totalsX, finalY); doc.text(`L. ${primaAmount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 6;
+          doc.setFont("helvetica", "bold"); doc.text("SALDO KREDIYA:", totalsX, finalY); doc.text(`L. ${totals.financiado.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 6;
+      }
       doc.setDrawColor(primaryColor); doc.line(totalsX, finalY, pageWidth - 14, finalY);
       finalY += 6;
       doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor); doc.setFontSize(11);
-      doc.text("TOTAL A PAGAR:", totalsX, finalY); doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      doc.text("TOTAL FACTURA:", totalsX, finalY); doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
       doc.setTextColor(grayColor); doc.setFontSize(8); doc.text("SON: " + numeroALetras(totals.total), 14, finalY);
 
       let footerY = pageHeight - 35;
@@ -279,6 +286,11 @@ const POS: React.FC = () => {
     if (cart.length === 0) return;
     if (!selectedClientId) return Swal.fire('Cliente Requerido', 'Seleccione un cliente.', 'warning');
     
+    if (paymentType === 'KrediYa') {
+        if (primaAmount <= 0) return Swal.fire('Prima Requerida', 'La venta KrediYa requiere un pago inicial (Prima).', 'warning');
+        if (primaAmount >= totals.total) return Swal.fire('Monto Inválido', 'La prima no puede ser mayor o igual al total. Use "Contado" en su lugar.', 'error');
+    }
+
     try {
       setIsLoading(true);
       const payload: VentaPayload = {
@@ -287,6 +299,8 @@ const POS: React.FC = () => {
         total: totals.total,
         isv: totals.isv,
         descuento: discount,
+        montoPrima: paymentType === 'KrediYa' ? primaAmount : 0,
+        montoFinanciado: totals.financiado,
         detalles: cart
       };
 
@@ -322,6 +336,7 @@ const POS: React.FC = () => {
   const resetPOS = () => {
     setCart([]);
     setDiscount(0);
+    setPrimaAmount(0);
     setSelectedClientId('');
     setIsEditing(false);
     setEditingSaleId(null);
@@ -379,9 +394,10 @@ const POS: React.FC = () => {
         <div className={`w-full lg:w-[400px] flex-col bg-white rounded-3xl shadow-xl border border-slate-200 h-full ${mobileTab === 'CART' ? 'flex' : 'hidden lg:flex'}`}>
           <div className={`p-5 border-b space-y-4 shrink-0 bg-[#1e293b] text-white rounded-t-3xl`}>
             <div className="flex justify-between items-center"><h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-2"><Zap className={isEditing ? 'text-amber-400' : 'text-indigo-400'} size={18} /> {isEditing ? `EDITANDO #${editingSaleId}` : 'VENTA ACTUAL'}</h3>{isEditing && <button onClick={resetPOS} className="text-[10px] font-black uppercase bg-red-500/20 text-red-400 px-2 py-1 rounded">Cancelar</button>}{!isEditing && cart.length > 0 && <button onClick={() => setCart([])} className="text-slate-400 hover:text-white"><Trash2 size={18}/></button>}</div>
-            <div className="grid grid-cols-2 gap-2">
-               <button onClick={() => setPaymentType('Contado')} className={`py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === 'Contado' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>Contado</button>
-               <button onClick={() => setPaymentType('Credito')} className={`py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === 'Credito' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>Crédito</button>
+            <div className="grid grid-cols-3 gap-1">
+               <button onClick={() => setPaymentType('Contado')} className={`py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === 'Contado' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>Contado</button>
+               <button onClick={() => setPaymentType('KrediYa')} className={`py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === 'KrediYa' ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>KrediYa</button>
+               <button onClick={() => setPaymentType('Credito')} className={`py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === 'Credito' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>Crédito</button>
             </div>
             <div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><select value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)} className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border-none rounded-xl text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"><option value="">CONSUMIDOR FINAL</option>{clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}</select><button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg"><UserPlus size={14}/></button></div>
           </div>
@@ -395,10 +411,21 @@ const POS: React.FC = () => {
             <div className="space-y-1.5 mb-4">
               <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>Subtotal</span><span>L. {totals.subtotal.toFixed(2)}</span></div>
               <div className="flex justify-between items-center py-1 border-y border-slate-50"><div className="flex items-center gap-2"><Tag size={12} className="text-red-500"/><span className="text-[10px] font-black text-red-500 uppercase">Descuento</span></div><input type="number" value={discount} onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))} className="w-20 text-right py-1 px-2 border border-slate-100 rounded-lg bg-slate-50 text-[11px] font-black text-slate-800 outline-none focus:ring-2 focus:ring-red-500/20" onFocus={e => e.target.select()} /></div>
+              
+              {paymentType === 'KrediYa' && (
+                  <div className="animate-fade-in space-y-2 pt-1">
+                      <div className="flex justify-between items-center py-1.5 bg-emerald-50 px-3 rounded-xl border border-emerald-100">
+                          <div className="flex items-center gap-2"><Wallet size={12} className="text-emerald-600"/><span className="text-[10px] font-black text-emerald-600 uppercase">Pago Prima</span></div>
+                          <input type="number" value={primaAmount} onChange={(e) => setPrimaAmount(Math.max(0, Number(e.target.value)))} className="w-24 text-right py-1 px-2 border border-emerald-200 rounded-lg bg-white text-[12px] font-black text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" onFocus={e => e.target.select()} />
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-wider px-1"><span>Saldo a Financiar:</span><span className="text-slate-800">L. {totals.financiado.toFixed(2)}</span></div>
+                  </div>
+              )}
+
               <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>ISV ({companyConfig?.isv || 15}%)</span><span>L. {totals.isv.toFixed(2)}</span></div>
               <div className="flex justify-between items-end pt-3"><span className="font-black text-xs text-slate-800 uppercase tracking-widest">Total Neto</span><span className="font-black text-2xl text-indigo-600 tracking-tighter">L. {totals.total.toFixed(2)}</span></div>
             </div>
-            <button className={`w-full flex items-center justify-center gap-3 px-4 py-4 rounded-2xl text-white font-black transition-all shadow-xl disabled:bg-slate-200 disabled:shadow-none text-xs tracking-[0.2em] active:scale-95 ${isEditing ? 'bg-amber-600 shadow-amber-600/20' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700'}`} disabled={cart.length === 0 || isLoading} onClick={handleCheckout}>{isLoading ? <RefreshCw className="animate-spin" size={18}/> : <Check size={18} strokeWidth={3}/>} {isEditing ? 'ACTUALIZAR VENTA' : 'FACTURAR'}</button>
+            <button className={`w-full flex items-center justify-center gap-3 px-4 py-4 rounded-2xl text-white font-black transition-all shadow-xl disabled:bg-slate-200 disabled:shadow-none text-xs tracking-[0.2em] active:scale-95 ${isEditing ? 'bg-amber-600 shadow-amber-600/20' : (paymentType === 'KrediYa' ? 'bg-emerald-600 shadow-emerald-600/20' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700')}`} disabled={cart.length === 0 || isLoading} onClick={handleCheckout}>{isLoading ? <RefreshCw className="animate-spin" size={18}/> : <Check size={18} strokeWidth={3}/>} {isEditing ? 'ACTUALIZAR VENTA' : 'FACTURAR'}</button>
           </div>
         </div>
       </div>
