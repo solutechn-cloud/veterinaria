@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { pool, generateNextId, handleDbError } = require('../config/db');
+const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // --- PANEL DE CONTROL DE CAJAS ---
@@ -36,23 +36,23 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// HISTORIAL DE SESIONES DE UNA CAJA (CORRIGE EL ERROR 404)
 router.get('/admin/boxes/:id/history', authenticateToken, async (req, res) => {
     try {
         const query = `
-            SELECT 
-                idArqueo as "idArqueo", 
-                fechaApertura as "fechaApertura", 
-                fechaCierre as "fechaCierre", 
-                montoInicial as "montoInicial", 
-                montoFinal as "montoFinal", 
-                estado
-            FROM arqueo 
-            WHERE idCaja = $1 
-            ORDER BY fechaApertura DESC
+            SELECT idArqueo as "idArqueo", fechaApertura as "fechaApertura", fechaCierre as "fechaCierre", montoInicial as "montoInicial", montoFinal as "montoFinal", estado
+            FROM arqueo WHERE idCaja = $1 ORDER BY fechaApertura DESC
         `;
         const result = await pool.query(query, [req.params.id]);
         res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
+// GESTIÓN DE SALDOS ADMINISTRATIVOS (Movidp aquí para evitar 404)
+router.get('/admin/saldos', authenticateToken, async (req, res) => {
+    try {
+        const { fecha } = req.query;
+        const r = await pool.query(`SELECT idsaldos, red, saldoInicio as "saldoInicio", saldoFinal as "saldoFinal" FROM saldos WHERE TO_CHAR(fecha, 'YYYY-MM-DD') = $1`, [fecha]);
+        res.json(r.rows);
     } catch(e) { handleDbError(res, e); }
 });
 
@@ -223,46 +223,6 @@ router.delete('/cajas/:id', authenticateToken, async (req, res) => {
     try {
         await pool.query('DELETE FROM caja WHERE idCaja=$1', [req.params.id]);
         res.json({ message: 'OK' });
-    } catch(e) { handleDbError(res, e); }
-});
-
-router.get('/config', authenticateToken, async (req, res) => {
-    try {
-        const r = await pool.query(`SELECT nombreEmpresa as "nombreEmpresa", rtn, direccion, telefono, correo, cai, rangoInicial as "rangoInicial", rangoFinal as "rangoFinal", TO_CHAR(fechaLimite, 'YYYY-MM-DD') as "fechaLimite", isv, mensajeFinal as "mensajeFinal" FROM configuracion LIMIT 1`);
-        res.json(r.rows[0]);
-    } catch(e) { handleDbError(res, e); }
-});
-
-router.put('/config', authenticateToken, async (req, res) => {
-    try {
-        const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal } = req.body;
-        const check = await pool.query('SELECT 1 FROM configuracion LIMIT 1');
-        if (check.rows.length === 0) {
-            await pool.query(`INSERT INTO configuracion (nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-                [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal]);
-        } else {
-            await pool.query(`UPDATE configuracion SET nombreEmpresa=$1, rtn=$2, direccion=$3, telefono=$4, correo=$5, cai=$6, rangoInicial=$7, rangoFinal=$8, fechaLimite=$9, isv=$10, mensajeFinal=$11`,
-                [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal]);
-        }
-        res.json({ message: 'OK' });
-    } catch(e) { handleDbError(res, e); }
-});
-
-router.get('/schema', authenticateToken, async (req, res) => {
-    try {
-        const colsQuery = `
-            SELECT table_name, column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            ORDER BY table_name, ordinal_position;
-        `;
-        const colsResult = await pool.query(colsQuery);
-        const schema = colsResult.rows.reduce((acc, row) => {
-            if (!acc[row.table_name]) acc[row.table_name] = { columns: [], relations: [] };
-            acc[row.table_name].columns.push({ name: row.column_name, type: row.data_type });
-            return acc;
-        }, {});
-        res.json(schema);
     } catch(e) { handleDbError(res, e); }
 });
 

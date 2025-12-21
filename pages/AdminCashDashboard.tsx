@@ -39,7 +39,6 @@ const AdminCashDashboard: React.FC = () => {
 
   // Edit States
   const [editingItem, setEditingItem] = useState<{id: string, type: 'INGRESO'|'EGRESO'|null}>({id:'', type: null});
-  // FIX: Estado unificado para evitar errores de propiedades inexistentes
   const [editForm, setEditForm] = useState({ 
     descripcion: '', 
     monto: '', 
@@ -155,20 +154,22 @@ const AdminCashDashboard: React.FC = () => {
       try {
           const detalles = await SalesService.getDetallesVenta(saleId);
           Swal.close();
-          const tableHtml = `<div class="overflow-x-auto mt-4 text-left"><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border font-bold">Cant.</th><th class="p-2 border font-bold">Descripción</th><th class="p-2 border font-bold text-right">Total</th></tr></thead><tbody>${detalles.map(d => `<tr><td class="p-2 border text-center">${d.cantidad}</td><td class="p-2 border font-medium">${d.descripcionProducto || 'N/A'}</td><td class="p-2 border text-right font-bold">L. ${(Number(d.cantidad) * Number(d.precioVenta)).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
+          const tableHtml = `<div class="overflow-x-auto mt-4 text-left"><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border font-bold">Cant.</th><th class="p-2 border font-bold">Descripción</th><th class="p-2 border font-bold text-right">Total</th></tr></thead><tbody>${detalles.map(d => `<tr><td class="p-2 border text-center">${d.cantidad}</td><td class="p-2 border font-medium">${d.descripcionProducto || 'Producto Genérico'}</td><td class="p-2 border text-right font-bold">L. ${(Number(d.cantidad) * Number(d.precioVenta)).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
           Swal.fire({ title: `Factura: ${saleId}`, html: tableHtml, width: '600px', confirmButtonColor: '#4f46e5' });
       } catch (error) { Swal.fire('Error', 'No se pudo obtener el detalle.', 'error'); }
   };
 
-  // --- REPORTE PDF CORREGIDO (ESPACIADO Y COLORES) ---
+  // --- REPORTE PDF CORREGIDO DEFINITIVAMENTE (CÁLCULO DINÁMICO DE Y PARA EVITAR SOLAPAMIENTO) ---
   const generateClosingReportPDF = (excludeRecharges: boolean = false) => {
       if (!selectedBox || !sessionDetails) return;
       const doc = new jsPDF();
       const date = new Date().toLocaleString();
       const arqueo = sessionDetails.arqueo;
       const mInicial = Number(arqueo.montoInicial ?? 0);
+      
       let ingresosList = sessionDetails.ingresos;
       if (excludeRecharges) ingresosList = ingresosList.filter(i => !(i.descripcion || "").toUpperCase().includes('RECARGA'));
+
       const tCostoIn = ingresosList.reduce((a, b) => a + Number(b.costo || 0), 0);
       const tVentaIn = ingresosList.reduce((a, b) => a + Number(b.monto || 0), 0);
       const tGananciaIn = tVentaIn - tCostoIn;
@@ -183,33 +184,42 @@ const AdminCashDashboard: React.FC = () => {
       doc.text(`Cajero: ${selectedBox.nombreEmpleado} | Caja: ${selectedBox.idCaja}`, 105, 28, { align: 'center' });
 
       doc.setTextColor(0); doc.setFontSize(11); doc.text("RESUMEN FINANCIERO GLOBAL", 14, 45);
-      const summaryData = [['Monto Inicial', `L. ${mInicial.toFixed(2)}`],['(+) Total Ingresos', `L. ${tVentaIn.toFixed(2)}`],['(-) Total Gastos', `L. ${tGastos.toFixed(2)}`],['(=) Efectivo Calculado', `L. ${mFinal.toFixed(2)}`],['Ganancia Estimada', `L. ${tGananciaIn.toFixed(2)}`]];
+      const summaryData = [
+          ['Monto Inicial', `L. ${mInicial.toFixed(2)}`],
+          ['(+) Total Ingresos', `L. ${tVentaIn.toFixed(2)}`],
+          ['(-) Total Gastos', `L. ${tGastos.toFixed(2)}`],
+          ['(=) Efectivo Calculado', `L. ${mFinal.toFixed(2)}`],
+          ['Ganancia Estimada', `L. ${tGananciaIn.toFixed(2)}`]
+      ];
       // @ts-ignore
       doc.autoTable({ startY: 50, head: [['Concepto', 'Monto']], body: summaryData, theme: 'grid', headStyles: { fillColor: [79, 70, 229] }, columnStyles: { 1: { halign: 'right' } }, margin: { right: 110 } });
+      const ySummary = (doc as any).lastAutoTable.finalY;
+
       const tigoS = saldosSession.find(s => s.red === 'TIGO')?.saldoFinal || 0;
       const claroS = saldosSession.find(s => s.red === 'CLARO')?.saldoFinal || 0;
       // @ts-ignore
       doc.autoTable({ startY: 50, head: [['Plataforma', 'Saldo Final']], body: [['TIGO', `L. ${Number(tigoS).toFixed(2)}`], ['CLARO', `L. ${Number(claroS).toFixed(2)}`]], theme: 'grid', headStyles: { fillColor: [15, 23, 42] }, columnStyles: { 1: { halign: 'right', textColor: [0, 128, 0], fontStyle: 'bold' } }, margin: { left: 110 } });
+      const yPlatforms = (doc as any).lastAutoTable.finalY;
+
+      // SOLUCIÓN DEFINITIVA: Máximo entre ambas tablas para que el título no se monte
+      let currentY = Math.max(ySummary, yPlatforms) + 25; 
       
-      // MARGEN DE SEGURIDAD PARA EVITAR SOLAPAMIENTO (20MM ADICIONALES)
-      let finalY = (doc as any).lastAutoTable.finalY + 20; 
-      doc.setTextColor(0); doc.setFontSize(11); doc.text("DETALLE DE INGRESOS (Completo)", 14, finalY);
+      doc.setTextColor(0); doc.setFontSize(11); doc.text("DETALLE DE INGRESOS (Completo)", 14, currentY);
       const incomeRows = ingresosList.map(i => [i.descripcion, `L. ${Number(i.costo||0).toFixed(2)}`, `L. ${Number(i.monto||0).toFixed(2)}`, `L. ${(Number(i.monto||0)-Number(i.costo||0)).toFixed(2)}`]);
       // @ts-ignore
       doc.autoTable({ 
-          startY: finalY + 5, head: [['Descripción', 'Costo', 'Venta', 'Ganancia']], 
+          startY: currentY + 5, head: [['Descripción', 'Costo', 'Venta', 'Ganancia']], 
           body: [...incomeRows, [{content: 'TOTALES', styles: {halign: 'right', fontStyle: 'bold'}}, `L. ${tCostoIn.toFixed(2)}`, `L. ${tVentaIn.toFixed(2)}`, `L. ${tGananciaIn.toFixed(2)}` ]], 
           theme: 'striped', headStyles: { fillColor: [16, 185, 129] }, columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } },
-          // COLOR AZUL MARINO PARA TOTALES
           didParseCell: (data) => { if(data.row.index === incomeRows.length) { data.cell.styles.fillColor = [30, 41, 59]; data.cell.styles.textColor = [255, 255, 255]; } }
       });
 
-      finalY = (doc as any).lastAutoTable.finalY + 12;
-      doc.text("DETALLE DE GASTOS / SALIDAS", 14, finalY);
+      currentY = (doc as any).lastAutoTable.finalY + 12;
+      doc.text("DETALLE DE GASTOS / SALIDAS", 14, currentY);
       const expenseRows = sessionDetails.egresos.map(e => [e.descripcion, `L. ${Number(e.monto||0).toFixed(2)}`]);
       // @ts-ignore
       doc.autoTable({ 
-          startY: finalY + 5, head: [['Descripción', 'Monto']], body: [...expenseRows, [{content: 'TOTAL GASTOS', styles: {halign: 'right', fontStyle: 'bold'}}, `L. ${tGastos.toFixed(2)}` ]], 
+          startY: currentY + 5, head: [['Descripción', 'Monto']], body: [...expenseRows, [{content: 'TOTAL GASTOS', styles: {halign: 'right', fontStyle: 'bold'}}, `L. ${tGastos.toFixed(2)}` ]], 
           theme: 'striped', headStyles: { fillColor: [239, 68, 68] }, columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
           didParseCell: (data) => { if(data.row.index === expenseRows.length) { data.cell.styles.fillColor = [30, 41, 59]; data.cell.styles.textColor = [255, 255, 255]; } }
       });
@@ -240,7 +250,6 @@ const AdminCashDashboard: React.FC = () => {
 
   const startEdit = (item: Ingreso | Egreso, type: 'INGRESO' | 'EGRESO') => {
       setEditingItem({ id: type === 'INGRESO' ? (item as Ingreso).idIngreso : (item as Egreso).idegresos, type });
-      // Se inicializa el formulario con todos los campos para evitar el error de undefined
       setEditForm({ 
           descripcion: item.descripcion, 
           monto: String(item.monto), 
