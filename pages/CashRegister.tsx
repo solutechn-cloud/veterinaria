@@ -143,7 +143,7 @@ const CashRegister: React.FC = () => {
 
   const handleCloseBox = async () => {
      if(!arqueo) return;
-     const result = await Swal.fire({ title: '¿Cerrar Turno?', text: 'Se guardará el saldo final.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar', confirmButtonColor: '#ef4444' });
+     const result = await Swal.fire({ title: '¿Cerrar Caja?', text: 'Se guardará el saldo final y se calcularán ganancias.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, Cerrar Caja', confirmButtonColor: '#ef4444' });
      if(result.isConfirmed) {
        try {
          const res = await CashService.closeCaja(arqueo.idArqueo);
@@ -154,21 +154,119 @@ const CashRegister: React.FC = () => {
      }
   };
 
+  // --- REPORTE DE CIERRE COMPLETO RESTAURADO ---
   const generateClosingReportPDF = (resumen: any, ingresosList: Ingreso[], egresosList: Egreso[], user: any) => {
-      const doc = new jsPDF();
-      doc.setFillColor(30, 41, 59); doc.rect(0, 0, 210, 30, 'F');
-      doc.setTextColor(255); doc.setFontSize(18); doc.text("REPORTE DE CIERRE", 105, 15, { align: 'center' });
-      // @ts-ignore
-      doc.autoTable({ startY: 40, head: [['Concepto', 'Monto']], body: [['Monto Inicial', `L. ${resumen.montoInicial}`], ['Ingresos', `L. ${resumen.totalVentas}`], ['Efectivo Final', `L. ${resumen.montoFinal}`]] });
-      doc.save(`Cierre_${user.idCaja}.pdf`);
+    const doc = new jsPDF();
+    const isAdmin = user.rol === 'Administrador' || hasPermission('VER_ADMIN');
+    const date = new Date().toLocaleString();
+
+    // HEADER
+    doc.setFillColor(30, 41, 59); 
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text("REPORTE DE CIERRE DE CAJA", 105, 12, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Fecha: ${date} | Cajero: ${user.nombreEmpleado} | Caja: ${user.idCaja}`, 105, 22, { align: 'center' });
+
+    // SUMMARY SECTION
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text("RESUMEN FINANCIERO", 14, 40);
+    
+    const mInicial = Number(resumen.montoInicial) || 0;
+    const tVentas = Number(resumen.totalVentas) || 0;
+    const tGastos = Number(resumen.TotalGastos) || 0;
+    const mFinal = Number(resumen.montoFinal) || 0;
+    const ganancia = Number(resumen.ganancia) || 0;
+    const sTigo = Number(resumen.saldoTigoFinal) || 0;
+    const sClaro = Number(resumen.saldoClaroFinal) || 0;
+
+    const summaryData = [
+        ['Monto Inicial', `L. ${mInicial.toFixed(2)}`],
+        ['(+) Total Ingresos', `L. ${tVentas.toFixed(2)}`],
+        ['(-) Total Gastos', `L. ${tGastos.toFixed(2)}`],
+        ['(=) Efectivo Calculado', `L. ${mFinal.toFixed(2)}`]
+    ];
+    
+    if(isAdmin) { summaryData.push(['Ganancia Estimada', `L. ${ganancia.toFixed(2)}`]); }
+
+    // @ts-ignore
+    doc.autoTable({
+        startY: 45,
+        head: [['Concepto', 'Monto']],
+        body: summaryData,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+        columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
+        margin: { right: 110 } 
+    });
+    
+    // @ts-ignore
+    doc.autoTable({
+        startY: 45,
+        head: [['Plataforma', 'Saldo Final']],
+        body: [['TIGO', `L. ${sTigo.toFixed(2)}`], ['CLARO', `L. ${sClaro.toFixed(2)}`]],
+        theme: 'grid',
+        headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+        columnStyles: { 1: { halign: 'right', textColor: [0, 100, 0], fontStyle: 'bold' } },
+        margin: { left: 110 } 
+    });
+    
+    // @ts-ignore
+    let finalY = Math.max(doc.lastAutoTable.finalY, 45 + (summaryData.length * 10)) + 15;
+
+    doc.setFontSize(11);
+    doc.text("DETALLE DE INGRESOS", 14, finalY);
+    
+    const incomeColumns = isAdmin ? ['Hora', 'Descripción', 'Costo', 'Monto'] : ['Hora', 'Descripción', 'Monto'];
+    const incomeRows = ingresosList.map(i => {
+        const time = i.fechaCreacion ? i.fechaCreacion.split(' ')[1] : '-';
+        return isAdmin 
+          ? [time, i.descripcion, `L. ${(Number(i.costo)||0).toFixed(2)}`, `L. ${(Number(i.monto)||0).toFixed(2)}`]
+          : [time, i.descripcion, `L. ${(Number(i.monto)||0).toFixed(2)}`];
+    });
+
+    // @ts-ignore
+    doc.autoTable({
+        startY: finalY + 3,
+        head: [incomeColumns],
+        body: incomeRows,
+        theme: 'striped',
+        headStyles: { fillColor: [16, 185, 129] },
+        columnStyles: { 2: { halign: 'right' }, 3: isAdmin ? { halign: 'right', fontStyle: 'bold' } : undefined }
+    });
+
+    // @ts-ignore
+    finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.text("DETALLE DE GASTOS / SALIDAS", 14, finalY);
+    
+    const expenseRows = egresosList.map(e => {
+        const time = e.fechaCreacion ? e.fechaCreacion.split(' ')[1] : '-';
+        return [time, e.descripcion, `L. ${(Number(e.monto)||0).toFixed(2)}`];
+    });
+
+    // @ts-ignore
+    doc.autoTable({
+        startY: finalY + 3,
+        head: [['Hora', 'Descripción', 'Monto']],
+        body: expenseRows,
+        theme: 'striped',
+        headStyles: { fillColor: [239, 68, 68] },
+        columnStyles: { 2: { halign: 'right', fontStyle: 'bold' } }
+    });
+
+    doc.save(`Cierre_Caja_${user.idCaja}_${getHndDateOnly()}.pdf`);
   };
 
-  // --- REIMPRESIÓN DE FACTURA PROFESIONAL (ESTILO POS) ---
   const handleReprintInvoice = async (idVenta: string) => {
     try {
         const sale = await SalesService.getVenta(idVenta);
         const details = await SalesService.getDetallesVenta(idVenta);
-        
         if (!sale) return Swal.fire('Error', 'Venta no encontrada', 'error');
 
         const doc = new jsPDF();
@@ -180,76 +278,43 @@ const CashRegister: React.FC = () => {
         const grayColor = "#64748b";      
         const lightGray = "#f1f5f9";      
 
-        // Header geométrico
-        doc.setFillColor(primaryColor);
-        doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
+        doc.setFillColor(primaryColor); doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
         doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
-        doc.setFillColor(accentColor);
-        doc.triangle(0, 0, 100, 0, 0, 50, 'F');
+        doc.setFillColor(accentColor); doc.triangle(0, 0, 100, 0, 0, 50, 'F');
 
-        // Info Empresa
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
         doc.text(config.nombreEmpresa.toUpperCase(), 35, 18);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9);
         doc.text(config.direccion || '', 35, 24);
         doc.text(`Tel: ${config.telefono} | ${config.correo || ''}`, 35, 29);
 
-        // Título Factura
-        doc.setFontSize(24);
-        doc.setFont("helvetica", "bold");
-        doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 28, { align: "right" });
+        doc.setFontSize(24); doc.setFont("helvetica", "bold"); doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
+        doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 28, { align: "right" });
 
         const topInfoY = 60;
-        doc.setFillColor(lightGray);
-        doc.roundedRect(14, topInfoY, 90, 35, 3, 3, 'F');
-        
-        // Info Cliente
-        doc.setTextColor(primaryColor);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
+        doc.setFillColor(lightGray); doc.roundedRect(14, topInfoY, 90, 35, 3, 3, 'F');
+        doc.setTextColor(primaryColor); doc.setFontSize(10); doc.setFont("helvetica", "bold");
         doc.text("FACTURAR A:", 18, topInfoY + 6);
-        
-        doc.setTextColor(0, 0, 0);
-        doc.setFont("helvetica", "bold");
-        doc.text(sale.nombreCliente || "CONSUMIDOR FINAL", 18, topInfoY + 12);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(grayColor);
-        doc.text(`RTN/DNI: ${sale.identidadCliente || "N/A"}`, 18, topInfoY + 17);
+        doc.setTextColor(0, 0, 0); doc.text(sale.nombreCliente || "CONSUMIDOR FINAL", 18, topInfoY + 12);
+        doc.setFontSize(9); doc.setTextColor(grayColor); doc.text(`RTN/DNI: ${sale.identidadCliente || "N/A"}`, 18, topInfoY + 17);
         doc.text(`${sale.direccionCliente || "N/A"}`, 18, topInfoY + 22);
 
-        // Bloque SAR
         const rightColX = 115;
         doc.setFont("helvetica", "bold"); doc.setTextColor(grayColor);
         doc.text("FECHA EMISIÓN:", rightColX, topInfoY + 5);
         doc.setTextColor(0,0,0); doc.text(new Date(sale.fecha).toLocaleDateString(), rightColX + 45, topInfoY + 5);
-        
         doc.setTextColor(grayColor); doc.text("R.T.N. EMISOR:", rightColX, topInfoY + 10);
         doc.setTextColor(0,0,0); doc.text(config.rtn || 'N/A', rightColX + 45, topInfoY + 10);
-
         doc.setTextColor(grayColor); doc.text("CAI:", rightColX, topInfoY + 15);
         doc.setTextColor(0,0,0); doc.text(config.cai || 'N/A', rightColX + 45, topInfoY + 15);
-
         doc.setTextColor(grayColor); doc.text("VENDEDOR:", rightColX, topInfoY + 20);
         doc.setTextColor(0,0,0); doc.text(sale.nombreVendedor || "CAJERO", rightColX + 45, topInfoY + 20);
 
-        // Tabla de Detalles
         // @ts-ignore
         doc.autoTable({
             startY: topInfoY + 40,
             head: [['CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']],
-            body: details.map(item => [
-                item.cantidad,
-                item.descripcionProducto,
-                `L. ${Number(item.precioVenta).toFixed(2)}`,
-                `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`
-            ]),
+            body: details.map(item => [item.cantidad, item.descripcionProducto, `L. ${Number(item.precioVenta).toFixed(2)}`, `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`]),
             theme: 'striped',
             styles: { fontSize: 9, cellPadding: 3, textColor: [50, 50, 50] },
             headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
@@ -259,59 +324,45 @@ const CashRegister: React.FC = () => {
 
         // @ts-ignore
         let finalY = doc.lastAutoTable.finalY + 5;
-        const totalsX = 130;
-
-        // Totales
         const total = Number(sale.total);
         const isv = Number(sale.isv || 0);
         const discount = Number(sale.descuento || 0);
         const subtotal = (total + discount) - isv;
 
         doc.setFontSize(9); doc.setTextColor(0);
-        doc.text("Subtotal:", totalsX, finalY); doc.text(`L. ${subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+        doc.text("Subtotal:", 130, finalY); doc.text(`L. ${subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
         finalY += 6;
-        if(discount > 0) {
-            doc.text("Descuentos:", totalsX, finalY); doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-            finalY += 6;
-        }
-        doc.text("I.S.V.:", totalsX, finalY); doc.text(`L. ${isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+        if(discount > 0) { doc.text("Descuentos:", 130, finalY); doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"}); finalY += 6; }
+        doc.text("I.S.V.:", 130, finalY); doc.text(`L. ${isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
         finalY += 2;
-        doc.setDrawColor(primaryColor); doc.line(totalsX, finalY, pageWidth - 14, finalY);
+        doc.setDrawColor(primaryColor); doc.line(130, finalY, pageWidth - 14, finalY);
         finalY += 6;
-
         doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor); doc.setFontSize(11);
-        doc.text("TOTAL A PAGAR:", totalsX, finalY); doc.text(`L. ${total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+        doc.text("TOTAL A PAGAR:", 130, finalY); doc.text(`L. ${total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+        doc.setTextColor(grayColor); doc.setFontSize(8); doc.text("SON: " + numeroALetras(total), 14, finalY);
 
-        // Conversión Letras
-        doc.setTextColor(grayColor); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-        doc.text("SON: " + numeroALetras(total), 14, finalY);
-
-        // Footer Legal
-        const pageHeightFinal = doc.internal.pageSize.height;
-        let footerY = pageHeightFinal - 35;
+        let footerY = pageHeight - 35;
         doc.setFont("helvetica", "normal"); doc.setTextColor(grayColor); doc.setFontSize(7);
         doc.text(`Rango Autorizado: ${config.rangoInicial || '000-001-01-00000001'} al ${config.rangoFinal || '000-001-01-00002000'}`, 14, footerY);
         doc.text(`Fecha Límite Emisión: ${config.fechaLimite || 'N/A'}`, 14, footerY + 4);
         doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 8);
-
         doc.setFillColor(lightGray); doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
         doc.setTextColor(primaryColor); doc.setFontSize(9);
         doc.text(config.mensajeFinal || "LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
 
         doc.save(`Factura_${sale.codVenta}_reimpresion.pdf`);
-    } catch (e:any) {
-        Swal.fire('Error', 'No se pudo generar la factura: ' + e.message, 'error');
-    }
+    } catch (e:any) { Swal.fire('Error', 'No se pudo generar la factura: ' + e.message, 'error'); }
   };
 
   // --- ACTIONS ---
   const handleIngresoAction = async () => {
     if (!ingresoForm.descripcion || !ingresoForm.monto) {
-        return Swal.fire('Campos Requeridos', 'Por favor complete la descripción y el monto.', 'warning');
+        return Swal.fire('Campos Requeridos', 'Complete descripción y monto.', 'warning');
     }
 
     try {
         if (ingresoForm.irAPos && !isEditingIngreso) {
+            // El usuario quiere una factura formal, enviamos la descripción LIMPIA al POS
             navigate('/pos', { state: { customItem: { descripcion: ingresoForm.descripcion, precio: Number(ingresoForm.monto) } } });
             return;
         }
@@ -334,7 +385,7 @@ const CashRegister: React.FC = () => {
          return Swal.fire('Campos Requeridos', 'Complete descripción y monto.', 'warning');
      }
      
-     const needsPartner = (egresoForm.subtipo === 'Gasto Personal Socio' || egresoForm.subtipo === 'Nomina');
+     const needsPartner = (egresoForm.subtipo === 'Retiro Personal' || egresoForm.subtipo === 'Nomina');
      if (needsPartner && !egresoForm.idSocio) {
          return Swal.fire('Socio Requerido', 'Debe seleccionar un socio para este tipo de retiro.', 'warning');
      }
@@ -390,7 +441,7 @@ const CashRegister: React.FC = () => {
     try { await CashService.createRecarga({ red: showRecargaModal.red, tipo: showRecargaModal.tipo, descripcion: desc, precioCobrado: montoCobrado, precioPagado: montoPagado, fechaLocal: getHndDateOnly() }); setShowRecargaModal(null); loadData(); Swal.fire('Éxito', 'Recarga realizada', 'success'); } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
   };
 
-  // --- OPEN MODALS HELPERS ---
+  // --- OPEN MODALS HELPERS (Reseteo de Estado) ---
   const openNewIngreso = () => {
       setIsEditingIngreso(false);
       setIngresoForm({ id: '', descripcion: '', monto: '', costo: '', subtipo: 'Reparacion', irAPos: true });
@@ -420,7 +471,7 @@ const CashRegister: React.FC = () => {
   const cashInBoxCalculated = arqueo ? (Number(arqueo.montoInicial) + totalIngresos) - totalGastos : 0;
   const getSaldoRed = (red: string) => saldos.find(x => x.red === red)?.saldoFinal || 0;
 
-  if (isLoading) return <div className="flex flex-col justify-center items-center h-full text-slate-400 gap-4"><RefreshCw className="animate-spin" size={32}/><span>Cargando Turno de Honduras...</span></div>;
+  if (isLoading) return <div className="flex flex-col justify-center items-center h-full text-slate-400 gap-4"><RefreshCw className="animate-spin" size={32}/><span>Cargando Turno...</span></div>;
 
   if (!arqueo) {
       return (
@@ -508,7 +559,7 @@ const CashRegister: React.FC = () => {
                   {ventas.length === 0 ? (<tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">No hay ventas registradas hoy.</td></tr>) : ventas.map(v => (
                   <tr key={v.codVenta} className={`border-b hover:bg-slate-50 transition-colors ${v.estado === 'Anulada' ? 'opacity-40 bg-slate-50' : ''}`}><td className="p-3 font-mono text-xs">{v.codVenta}</td><td className="p-3">{v.nombreCliente}</td><td className={`p-3 font-bold ${v.estado === 'Anulada' ? 'line-through text-slate-400' : ''}`}>L. {Number(v.total).toFixed(2)}</td><td className="p-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v.estado === 'Anulada' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{v.estado}</span></td>
                   <td className="p-3 text-right flex justify-end gap-1">
-                      <button onClick={() => handleReprintInvoice(v.codVenta)} className="p-1.5 text-slate-500 hover:text-indigo-600 transition-colors" title="Reimprimir Factura Profesional"><Printer size={16}/></button>
+                      <button onClick={() => handleReprintInvoice(v.codVenta)} className="p-1.5 text-slate-500 hover:text-indigo-600 transition-colors" title="Reimprimir Factura"><Printer size={16}/></button>
                       {v.estado !== 'Anulada' && (<><button onClick={() => navigate('/pos', { state: { editSaleId: v.codVenta } })} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar"><Edit2 size={16}/></button><button onClick={() => handleAnularVenta(v.codVenta)} className="p-1.5 text-red-400 hover:text-red-600" title="Anular"><Ban size={16}/></button></>)}
                   </td></tr>))}</tbody></table></div>
            </div>
@@ -525,10 +576,9 @@ const CashRegister: React.FC = () => {
                       <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Clasificación</label>
                         <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" value={ingresoForm.subtipo} onChange={e => setIngresoForm({...ingresoForm, subtipo: e.target.value as any})}>
                           <option value="Reparacion">Servicio de Reparación</option>
-                          <option value="Venta Prestado">Venta Producto Prestado</option>
+                          <option value="Venta Producto Externo">Venta Producto Externo</option>
                           <option value="KrediYa_Prima">KrediYa (Pago de Prima)</option>
-                          <option value="Cobro Consignacion">Cobro a Otros Negocios</option>
-                          <option value="Ajuste">Ajuste de Caja</option>
+                          <option value="Cobros Venta a Negocios Externos">Cobros Venta a Negocios Externos</option>
                         </select>
                       </div>
                   )}
@@ -539,7 +589,7 @@ const CashRegister: React.FC = () => {
                   </div>
                   {!isEditingIngreso && (
                     <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
-                        <input type="checkbox" id="irAPosIn" checked={ingresoForm.irAPos} onChange={e => setIngresoForm({...ingresoForm, irAPos: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded"/><label htmlFor="irAPosIn" className="text-xs font-bold text-indigo-700 cursor-pointer">Facturar en POS</label>
+                        <input type="checkbox" id="irAPosIn" checked={ingresoForm.irAPos} onChange={e => setIngresoForm({...ingresoForm, irAPos: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded"/><label htmlFor="irAPosIn" className="text-xs font-bold text-indigo-700 cursor-pointer">Facturar en Punto de Venta</label>
                     </div>
                   )}
                   <button onClick={handleIngresoAction} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg hover:bg-emerald-700 transition-all text-sm tracking-widest mt-4 uppercase active:scale-[0.98]">GUARDAR MOVIMIENTO</button>
@@ -559,18 +609,18 @@ const CashRegister: React.FC = () => {
                         value={egresoForm.subtipo} 
                         onChange={e => {
                             const newSub = e.target.value as SubtipoEgreso;
-                            setEgresoForm({...egresoForm, subtipo: newSub, idSocio: (newSub === 'Gasto Personal Socio' || newSub === 'Nomina') ? egresoForm.idSocio : ''});
+                            setEgresoForm({...egresoForm, subtipo: newSub, idSocio: (newSub === 'Retiro Personal' || newSub === 'Nomina') ? egresoForm.idSocio : ''});
                         }}
                     >
                       <option value="Gasto Operativo">Gasto Operativo</option>
-                      <option value="Pago a Tecnico">Pago Servicio de Reparación</option>
-                      <option value="Pago a Tienda Externa">Pago Inventario Externo</option>
-                      <option value="Gasto Personal Socio">Retiro Personal</option>
+                      <option value="Pago Servicio de Reparación">Pago Servicio de Reparación</option>
+                      <option value="Pago Inventario Externo">Pago Inventario Externo</option>
+                      <option value="Retiro Personal">Retiro Personal</option>
                       <option value="Nomina">Pago de Empleado (Nómina)</option>
                       <option value="Compra Inventario">Compra de Mercadería</option>
                     </select>
                   </div>
-                  {(egresoForm.subtipo === 'Gasto Personal Socio' || egresoForm.subtipo === 'Nomina') && (
+                  {(egresoForm.subtipo === 'Retiro Personal' || egresoForm.subtipo === 'Nomina') && (
                       <div className="animate-fade-in"><label className="text-[10px] font-black text-indigo-500 uppercase mb-1 block">Vincular a Socio</label>
                         <select className="w-full p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm font-bold text-indigo-700" value={egresoForm.idSocio} onChange={e => setEgresoForm({...egresoForm, idSocio: e.target.value})}>
                           <option value="">-- Seleccionar Socio --</option>

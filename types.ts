@@ -1,9 +1,9 @@
 
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
-// Nuevos Tipos para Clasificación Profesional
-export type SubtipoIngreso = 'Venta Inventario' | 'Venta Prestado' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'KrediYa_Deposito' | 'Cobro Consignacion' | 'Ajuste';
-export type SubtipoEgreso = 'Gasto Operativo' | 'Gasto Personal Socio' | 'Pago a Tecnico' | 'Pago a Tienda Externa' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario';
+// Clasificación Actualizada según requerimiento
+export type SubtipoIngreso = 'Venta Producto Externo' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos';
+export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario';
 
 export interface Usuario {
   codUsuario: string;
@@ -193,6 +193,10 @@ export interface Arqueo {
   estado: 'Activo' | 'Cerrada';
   totalVentas?: number;
   ganancia?: number;
+  saldoTigoFinal?: number;
+  saldoClaroFinal?: number;
+  totalCostos?: number;
+  TotalGastos?: number;
 }
 
 export interface Ingreso {
@@ -244,9 +248,6 @@ export interface Socio {
   fechaIngreso?: string;
 }
 
-// --- NUEVOS TIPOS PARA CONFIGURACIÓN Y COSTOS ---
-
-/* fix: Added EmpresaConfig interface for company settings */
 export interface EmpresaConfig {
   nombreEmpresa: string;
   rtn: string;
@@ -261,10 +262,8 @@ export interface EmpresaConfig {
   mensajeFinal: string;
 }
 
-/* fix: Added TipoCosto union type */
 export type TipoCosto = 'Costo Directo' | 'Costo Indirecto';
 
-/* fix: Added Costo interface */
 export interface Costo {
   codCostos: string;
   tipo: TipoCosto;
@@ -273,9 +272,6 @@ export interface Costo {
   estado: EstadoGeneral;
 }
 
-// --- NUEVOS TIPOS PARA DISEÑADOR DE ETIQUETAS ---
-
-/* fix: Added LabelElement interface for designer elements */
 export interface LabelElement {
   id: string;
   type: 'TEXT' | 'BARCODE' | 'QR' | 'IMAGE' | 'SHAPE' | 'DETAIL_TABLE';
@@ -300,7 +296,6 @@ export interface LabelElement {
   isStretchWithOverflow?: boolean;
 }
 
-/* fix: Added LabelTemplate interface */
 export interface LabelTemplate {
   id: string;
   name: string;
@@ -313,9 +308,6 @@ export interface LabelTemplate {
   elements: LabelElement[];
 }
 
-// --- TIPOS ADICIONALES PARA CONTABILIDAD ---
-
-/* fix: Added missing accounting interfaces used in api service */
 export interface GastoContable {
   idGasto: string;
   descripcion: string;
