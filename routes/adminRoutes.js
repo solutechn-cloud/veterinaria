@@ -5,11 +5,9 @@ const bcrypt = require('bcryptjs');
 const { pool, generateNextId, handleDbError } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// --- PANEL DE CONTROL DE CAJAS (CORREGIDO PARA TRAER ÚLTIMA SESIÓN) ---
+// --- PANEL DE CONTROL DE CAJAS ---
 router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     try {
-        // Esta consulta usa DISTINCT ON para obtener el arqueo más reciente de cada caja,
-        // sin importar si está activo o cerrado.
         const query = `
             SELECT 
                 c.idCaja as "idCaja", 
@@ -38,7 +36,26 @@ router.get('/admin/boxes/status', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
-// --- EL RESTO DE RUTAS SE MANTIENEN IGUAL ---
+// HISTORIAL DE SESIONES DE UNA CAJA (CORRIGE EL ERROR 404)
+router.get('/admin/boxes/:id/history', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                idArqueo as "idArqueo", 
+                fechaApertura as "fechaApertura", 
+                fechaCierre as "fechaCierre", 
+                montoInicial as "montoInicial", 
+                montoFinal as "montoFinal", 
+                estado
+            FROM arqueo 
+            WHERE idCaja = $1 
+            ORDER BY fechaApertura DESC
+        `;
+        const result = await pool.query(query, [req.params.id]);
+        res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
 router.get('/users', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
