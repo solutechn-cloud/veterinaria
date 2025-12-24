@@ -97,7 +97,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     
-    // CORRECCIÓN VALOR ENUM: Se usa 'Venta' en lugar de 'Venta Producto Externo' para cumplir con PostgreSQL
+    // VALOR NORMALIZADO: 'Venta' (Asegúrate de ejecutar el script SQL proporcionado)
     const montoIngresoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
     const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
     
@@ -168,7 +168,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         }
 
         if (idIngreso) {
-            // CORRECCIÓN VALOR ENUM: Se usa 'Venta' en lugar de 'Venta Producto Externo'
+            // VALOR NORMALIZADO: 'Venta'
             const montoActualizadoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
             const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
             await client.query('UPDATE ingresos SET monto = $1, costo = $2, subtipo_movimiento = $3 WHERE idIngreso = $4', [montoActualizadoCaja, totalCosto, subtipoActualizado, idIngreso]);
