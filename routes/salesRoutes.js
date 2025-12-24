@@ -32,7 +32,7 @@ router.put('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; 
-        const { codUsuario } = req.user; // Filtrar por el usuario actual para evitar ver otras cajas
+        const { codUsuario } = req.user;
         
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
@@ -97,7 +97,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     
-    // VALOR NORMALIZADO: 'Venta' (Asegúrate de ejecutar el script SQL proporcionado)
+    // El ingreso a caja solo es la PRIMA si es KrediYa, o el TOTAL si es Contado.
     const montoIngresoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
     const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
     
@@ -107,6 +107,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       [idIngreso, idCaja, `Venta Factura #${codVenta}${tipoCompra === 'KrediYa' ? ' (Prima KrediYa)' : ''}`, montoIngresoCaja, totalCosto, hndTime, subtipoMovimiento]
     );
 
+    // INSERT EN VENTAS USANDO LOS NOMBRES DE COLUMNA QUE ACABAMOS DE CREAR
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento) 
        VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8, $9, $10)`,
@@ -168,7 +169,6 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         }
 
         if (idIngreso) {
-            // VALOR NORMALIZADO: 'Venta'
             const montoActualizadoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
             const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
             await client.query('UPDATE ingresos SET monto = $1, costo = $2, subtipo_movimiento = $3 WHERE idIngreso = $4', [montoActualizadoCaja, totalCosto, subtipoActualizado, idIngreso]);

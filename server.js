@@ -85,6 +85,15 @@ const initDB = async () => {
 
             DO $$ 
             BEGIN 
+                -- MIGRACIÓN VENTAS (COLUMNAS FALTANTES)
+                BEGIN
+                    ALTER TABLE ventas ADD COLUMN monto_prima NUMERIC(10,2) DEFAULT 0;
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                BEGIN
+                    ALTER TABLE ventas ADD COLUMN monto_financiamiento NUMERIC(10,2) DEFAULT 0;
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
                 -- Columna para categorizar egresos
                 BEGIN
                     ALTER TABLE egresos ADD COLUMN categoria VARCHAR(50) DEFAULT 'Gasto Operativo';
@@ -105,6 +114,7 @@ const initDB = async () => {
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
             END $$;
         `);
+        console.log("DB Initialization and Migrations complete.");
     } catch (err) { console.error("Error init DB:", err); }
 };
 initDB();
