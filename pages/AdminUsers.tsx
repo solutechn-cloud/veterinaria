@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario, Empleado, Rol, Caja, EstadoGeneral, Permiso } from '../types';
 import { AdminService } from '../services/api';
-import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2, CheckCircle, AlertCircle, CheckSquare, Square } from 'lucide-react';
+import { Users, Shield, Box, Briefcase, PlusCircle, X, Edit2, Trash2, CheckCircle, AlertCircle, CheckSquare, Square, RefreshCw } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 type Tab = 'USERS' | 'EMPLOYEES' | 'ROLES' | 'CAJAS';
@@ -19,7 +19,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const [roles, setRoles] = useState<Rol[]>([]);
   const [cajas, setCajas] = useState<Caja[]>([]);
   const [permisos, setPermisos] = useState<Permiso[]>([]);
-  const [loading, useState] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -28,17 +28,13 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   // Forms State
   const [userForm, setUserForm] = useState({ usuario: '', password: '', identidad: '', idrol: '', idCaja: '', estado: 'Activo' });
   const [empForm, setEmpForm] = useState({ identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo' });
-  // Expanded Rol Form
   const [rolForm, setRolForm] = useState<{nombre: string, estado: string, permisos: string[]}>({ nombre: '', estado: 'Activo', permisos: [] });
-  // Simple Form for Caja
   const [simpleForm, setSimpleForm] = useState({ nombre: '', estado: 'Activo' });
 
-  // Sync activeTab when initialView prop changes (User navigation)
   useEffect(() => {
     setActiveTab(initialView);
   }, [initialView]);
 
-  // Load data whenever tab changes
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -92,11 +88,10 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     setIsEditing(!!data);
     setCurrentId(data ? (data.codUsuario || data.identidad || data.idrol || data.idCaja) : null);
 
-    // Reset Forms based on current tab
     if (activeTab === 'USERS') {
       setUserForm(data ? { 
         usuario: data.usuario || '', 
-        password: '', // Never fill password
+        password: '', 
         identidad: data.identidad || '', 
         idrol: data.idrol || '', 
         idCaja: data.idCaja || '',
@@ -204,7 +199,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     }
   };
 
-  // Agrupar permisos por modulo
   const groupedPermisos = permisos.reduce((acc, curr) => {
       if(!acc[curr.modulo]) acc[curr.modulo] = [];
       acc[curr.modulo].push(curr);
@@ -223,12 +217,17 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
           </h2>
           <p className="text-slate-500 mt-1 text-sm">Administración del sistema</p>
         </div>
-        <button 
-            onClick={() => openModal()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all w-full md:w-auto justify-center"
-          >
-            <PlusCircle size={18} /> Nuevo Registro
-          </button>
+        <div className="flex gap-2">
+            <button onClick={loadData} className="p-2.5 text-slate-500 hover:bg-white rounded-xl border border-transparent hover:border-slate-200">
+                <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+            </button>
+            <button 
+                onClick={() => openModal()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all w-full md:w-auto justify-center"
+            >
+                <PlusCircle size={18} /> Nuevo Registro
+            </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-1 flex flex-col relative">
@@ -340,7 +339,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
              
              <form onSubmit={handleSubmit} className="space-y-4">
                 
-                {/* --- FORMULARIO USUARIOS --- */}
                 {activeTab === 'USERS' && (
                     <>
                         <div>
@@ -392,7 +390,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                     </>
                 )}
 
-                {/* --- FORMULARIO EMPLEADOS --- */}
                 {activeTab === 'EMPLOYEES' && (
                     <>
                          <div>
@@ -425,7 +422,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                     </>
                 )}
 
-                {/* --- FORMULARIO ROLES (AVANZADO) --- */}
                 {activeTab === 'ROLES' && (
                     <>
                         <div className="grid grid-cols-2 gap-4">
@@ -447,7 +443,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                         <div className="mt-4">
                             <label className="text-xs font-bold text-slate-500 uppercase block mb-3">Asignar Permisos</label>
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 max-h-[300px] overflow-y-auto">
-                                {/* // Fix: Explicitly cast Object.entries to fix inferred 'unknown' type for 'perms' */}
                                 {(Object.entries(groupedPermisos) as [string, Permiso[]][]).map(([modulo, perms]) => (
                                     <div key={modulo} className="mb-4 last:mb-0">
                                         <h4 className="text-xs font-bold text-indigo-600 uppercase mb-2 border-b border-indigo-100 pb-1">{modulo}</h4>
@@ -463,7 +458,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                                                         <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600' : 'bg-slate-200'}`}>
                                                             {isSelected && <CheckSquare size={14} className="text-white"/>}
                                                         </div>
-                                                        <span className={`text-sm ${isSelected ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{p.nombre}</span>
+                                                        <span className="text-sm">{p.nombre}</span>
                                                     </div>
                                                 )
                                             })}
@@ -475,7 +470,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                     </>
                 )}
 
-                {/* --- FORMULARIO CAJAS --- */}
                 {activeTab === 'CAJAS' && (
                     <>
                         <div>
@@ -495,8 +489,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                 )}
 
                 <div className="pt-4 flex gap-3">
-                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
-                   <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all">Guardar</button>
+                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200">Cancelar</button>
+                   <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20">Guardar</button>
                 </div>
              </form>
           </div>
