@@ -12,7 +12,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 // Helper robusto para números a letras (Soporta miles y millones correctamente)
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
-    const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+    const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
     const diez_veinte = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
     const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
 
@@ -71,7 +71,6 @@ const POS: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'ALL' | 'TELEFONO' | 'ACCESORIO'>('ALL');
-  // Fix: Added missing selectedCategory state to resolve filter error in POS component.
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [mobileTab, setMobileTab] = useState<'CATALOG' | 'CART'>('CATALOG');
 
@@ -204,12 +203,12 @@ const POS: React.FC = () => {
     return { bruto, subtotal, isv, total: conDescuento, financiado };
   }, [cart, discount, companyConfig, paymentType, primaAmount]);
 
-  // --- GENERACIÓN DE FACTURA (DISEÑO GEOMÉTRICO EXACTO) ---
+  // --- GENERACIÓN DE FACTURA (DISEÑO GEOMÉTRICO SEGÚN REFERENCIA) ---
   const generateInvoicePDF = (saleId: string) => {
       try {
           const client = clients.find(c => c.identidad === selectedClientId);
           const doc = new jsPDF();
-          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: '', direccion: '', isv: 15, cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '', mensajeFinal: '' } as any;
+          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: 'N/A', direccion: 'N/A', telefono: 'N/A', isv: 15, cai: 'N/A', rangoInicial: '0001', rangoFinal: '5000', fechaLimite: '30/12/2025' } as any;
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
           
@@ -218,13 +217,14 @@ const POS: React.FC = () => {
           const grayColor = "#64748b";      
           const lightGray = "#f1f5f9";      
 
-          // 1. Header Geométrico (Triángulos)
-          doc.setFillColor(accentColor);
-          doc.triangle(0, 0, pageWidth, 0, 0, 45, 'F');
+          // 1. Header Geométrico (Triángulos exactos de referencia)
           doc.setFillColor(primaryColor);
-          doc.triangle(pageWidth, 0, pageWidth, 45, 100, 0, 'F');
+          doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
+          doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
+          doc.setFillColor(accentColor);
+          doc.triangle(0, 0, 100, 0, 0, 50, 'F');
 
-          // 2. Logo (Círculos de puntos simulados)
+          // 2. Logo de puntos (Bitmap simulado por código)
           doc.setFillColor(255, 255, 255);
           for (let i = 0; i < 5; i++) {
               for (let j = 0; j < 5; j++) {
@@ -235,24 +235,25 @@ const POS: React.FC = () => {
           // 3. Info Empresa
           doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
-          doc.setFontSize(22);
-          doc.text(config.nombreEmpresa.toUpperCase(), 38, 18);
+          doc.setFontSize(18);
+          doc.text(config.nombreEmpresa.toUpperCase(), 35, 18);
           doc.setFont("helvetica", "normal");
           doc.setFontSize(9);
-          doc.text(config.direccion || '', 38, 25);
-          doc.text(`Tel: ${config.telefono} | ${config.correo || ''}`, 38, 30);
+          doc.text(config.direccion || '', 35, 24);
+          doc.text(`Tel: ${config.telefono} | ${config.correo || ''}`, 35, 29);
 
           // 4. Título Factura
-          doc.setFontSize(28);
+          doc.setFontSize(24);
           doc.setFont("helvetica", "bold");
           doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
-          doc.setFontSize(11);
-          doc.text(`NO. ${saleId}`, pageWidth - 15, 30, { align: "right" });
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.text(`NO. ${saleId}`, pageWidth - 15, 28, { align: "right" });
 
           // 5. Bloque de Cliente (Gris Redondeado)
-          const topInfoY = 55;
+          const topInfoY = 60;
           doc.setFillColor(lightGray);
-          doc.roundedRect(14, topInfoY, 95, 40, 3, 3, 'F');
+          doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
           
           doc.setTextColor(primaryColor);
           doc.setFontSize(10);
@@ -297,7 +298,7 @@ const POS: React.FC = () => {
               doc.setTextColor(grayColor);
           });
 
-          // 7. Tabla de Productos (Centrada y combinada)
+          // 7. Tabla de Productos (Centrada)
           // @ts-ignore
           doc.autoTable({
               startY: topInfoY + 45,
@@ -307,7 +308,7 @@ const POS: React.FC = () => {
                   const cod = item.idTelefono || prod?.codigo || 'N/A';
                   let desc = '';
                   if (item.tipoProducto === 'TELEFONO') {
-                      desc = prod ? `${prod.marca} ${prod.nombre}`.toUpperCase() : item.descripcionProducto?.toUpperCase();
+                      desc = prod?.nombre?.toUpperCase() || item.descripcionProducto?.toUpperCase() || '';
                   } else {
                       desc = `${prod?.categoria || ''} ${item.descripcionProducto}`.trim().toUpperCase();
                   }
@@ -477,7 +478,7 @@ const POS: React.FC = () => {
                <button onClick={loadInitialData} className="bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
             </div>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-               <button onClick={() => setSelectedType('ALL')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
+               <button onClick={() => {setSelectedType('ALL'); setSelectedCategory('ALL');}} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
                <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TELÉFONOS</button>
                <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>ACCESORIOS</button>
             </div>
