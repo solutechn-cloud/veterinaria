@@ -7,9 +7,7 @@ import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
-// Fix: Use namespace import to bypass missing named export errors in certain environments
-import * as ReactRouterDOM from 'react-router-dom';
-const { useNavigate, useLocation } = ReactRouterDOM as any;
+import { useNavigate, useLocation } from 'react-router-dom';
 
 // Helper robusto para números a letras (Soporta miles y millones correctamente)
 const numeroALetras = (num: number): string => {
@@ -234,7 +232,7 @@ const POS: React.FC = () => {
               }
           }
 
-          // 3. Info Empresa
+          // 3. Info Empresa (Cargada desde la base de datos)
           doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
           doc.setFontSize(22);
@@ -299,7 +297,7 @@ const POS: React.FC = () => {
               doc.setTextColor(grayColor);
           });
 
-          // 7. Tabla de Productos (Centrada)
+          // 7. Tabla de Productos (Centrada y con COD/Descripción combinada)
           // @ts-ignore
           doc.autoTable({
               startY: topInfoY + 45,

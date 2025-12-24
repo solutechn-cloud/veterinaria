@@ -114,7 +114,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
     
     // Descripción final combinada de los productos
-    const descripcionVenta = descArray.join(', ');
+    const descripcionVenta = descArray.length > 0 ? descArray.join(', ') : `VENTA FACTURA #${codVenta}`;
 
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
@@ -196,7 +196,7 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         if (idIngreso) {
             const montoActualizadoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
             const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
-            const descripcionActualizada = descArray.join(', ');
+            const descripcionActualizada = descArray.length > 0 ? descArray.join(', ') : `VENTA ACTUALIZADA #${codVenta}`;
             await client.query('UPDATE ingresos SET descripcion = $1, monto = $2, costo = $3, subtipo_movimiento = $4 WHERE idIngreso = $5', [descripcionActualizada, montoActualizadoCaja, totalCosto, subtipoActualizado, idIngreso]);
         }
         
