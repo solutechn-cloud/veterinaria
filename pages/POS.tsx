@@ -195,89 +195,161 @@ const POS: React.FC = () => {
   const generateInvoicePDF = (saleId: string) => {
       const client = clients.find(c => c.identidad === selectedClientId);
       const doc = new jsPDF();
-      const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD', rtn: '', direccion: '', isv: 15 } as any;
+      const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: 'N/A', direccion: 'N/A', telefono: 'N/A', isv: 15 } as any;
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
-      const primaryColor = "#1e3a8a";   
-      const accentColor = "#3b82f6";    
-      const grayColor = "#64748b";      
-      const lightGray = "#f1f5f9";      
-
-      doc.setFillColor(primaryColor); doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
-      doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
-      doc.setFillColor(accentColor); doc.triangle(0, 0, 100, 0, 0, 50, 'F');
-
-      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-      doc.text(config.nombreEmpresa.toUpperCase(), 35, 18);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      doc.text(config.direccion || '', 35, 24);
-      doc.text(`Tel: ${config.telefono} | ${config.correo || ''}`, 35, 29);
-
-      doc.setFontSize(24); doc.setFont("helvetica", "bold"); doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
-      doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(`NO. ${saleId}`, pageWidth - 15, 28, { align: "right" });
-
-      const topInfoY = 60;
-      doc.setFillColor(lightGray); doc.roundedRect(14, topInfoY, 90, 35, 3, 3, 'F');
-      doc.setTextColor(primaryColor); doc.setFontSize(10); doc.setFont("helvetica", "bold");
-      doc.text("FACTURAR A:", 18, topInfoY + 6);
       
-      doc.setTextColor(0, 0, 0); doc.text(client ? `${client.nombre} ${client.apellido}` : "CONSUMIDOR FINAL", 18, topInfoY + 12);
-      doc.setFontSize(9); doc.setTextColor(grayColor); doc.setFont("helvetica", "normal");
-      doc.text(`RTN/DNI: ${selectedClientId || "N/A"}`, 18, topInfoY + 17);
-      doc.text(`${client?.direccion || "N/A"}`, 18, topInfoY + 22);
+      const primaryColor = [30, 58, 138]; // Azul marino oscuro
+      const grayColor = [100, 116, 139]; // Gris texto
+      const lightGray = [241, 245, 249]; // Fondo gris suave
 
+      // --- HEADER ---
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      
+      // Logo y Nombre Empresa
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text(config.nombreEmpresa.toUpperCase(), 35, 18);
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(config.direccion || '', 35, 25);
+      doc.text(`Tel: ${config.telefono} | ${config.correo || ''}`, 35, 30);
+
+      // Etiqueta Factura y Número
+      doc.setFontSize(26);
+      doc.setFont("helvetica", "bold");
+      doc.text("FACTURA", pageWidth - 20, 20, { align: "right" });
+      doc.setFontSize(11);
+      doc.text(`NO. ${saleId}`, pageWidth - 20, 30, { align: "right" });
+
+      // --- INFORMACIÓN CLIENTE ---
+      const topInfoY = 55;
+      doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      doc.roundedRect(14, topInfoY, 90, 40, 3, 3, 'F');
+      
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("FACTURAR A:", 18, topInfoY + 8);
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.text(client ? `${client.nombre} ${client.apellido}`.toUpperCase() : "CONSUMIDOR FINAL", 18, topInfoY + 16);
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`RTN/DNI: ${selectedClientId || "99999999999999"}`, 18, topInfoY + 23);
+      doc.text(`${client?.direccion || "Choluteca"}`, 18, topInfoY + 28);
+
+      // --- METADATOS FACTURA ---
       const rightColX = 115;
-      doc.setFont("helvetica", "bold"); doc.setTextColor(grayColor);
-      doc.text("FECHA EMISIÓN:", rightColX, topInfoY + 5);
-      doc.setTextColor(0,0,0); doc.text(new Date().toLocaleDateString(), rightColX + 45, topInfoY + 5);
-      doc.setTextColor(grayColor); doc.text("R.T.N. EMISOR:", rightColX, topInfoY + 10);
-      doc.setTextColor(0,0,0); doc.text(config.rtn || 'N/A', rightColX + 45, topInfoY + 10);
-      doc.setTextColor(grayColor); doc.text("CAI:", rightColX, topInfoY + 15);
-      doc.setTextColor(0,0,0); doc.text(config.cai || 'N/A', rightColX + 45, topInfoY + 15);
-      doc.setTextColor(grayColor); doc.text("VENDEDOR:", rightColX, topInfoY + 20);
-      doc.setTextColor(0,0,0); doc.text(user?.nombreEmpleado?.toUpperCase() || "CAJERO", rightColX + 45, topInfoY + 20);
+      const metaLineHeight = 6;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      
+      const labels = ["FECHA EMISIÓN:", "FECHA VENCIMIENTO:", "R.T.N. EMISOR:", "CAI:", "ORDEN DE COMPRA:", "VENDEDOR:"];
+      
+      // Cálculo de fecha vencimiento (Ej: 30 días después)
+      const emissionDate = new Date();
+      const dueDate = new Date();
+      dueDate.setDate(emissionDate.getDate() + 30);
+      
+      const values = [
+          emissionDate.toLocaleDateString('es-HN'),
+          dueDate.toLocaleDateString('es-HN'),
+          config.rtn || 'N/A',
+          config.cai || 'N/A',
+          "N/A",
+          user?.nombreEmpleado || "Cajero del Sistema"
+      ];
 
+      labels.forEach((label, i) => {
+          doc.text(label, rightColX, topInfoY + 5 + (i * metaLineHeight));
+          doc.setTextColor(0,0,0);
+          doc.text(values[i], rightColX + 45, topInfoY + 5 + (i * metaLineHeight));
+          doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      });
+
+      // --- TABLA DE PRODUCTOS ---
       // @ts-ignore
       doc.autoTable({
-          startY: topInfoY + 40,
+          startY: topInfoY + 45,
           head: [['CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']],
-          body: cart.map(item => [item.cantidad, item.descripcionProducto, `L. ${Number(item.precioVenta).toFixed(2)}`, `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`]),
+          body: cart.map(item => [
+              item.cantidad, 
+              item.descripcionProducto?.toUpperCase(), 
+              `L. ${Number(item.precioVenta).toFixed(2)}`, 
+              `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`
+          ]),
           theme: 'striped',
-          styles: { fontSize: 9, cellPadding: 3 },
-          headStyles: { fillColor: primaryColor, fontStyle: 'bold', halign: 'center' },
-          columnStyles: { 0: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } },
+          styles: { fontSize: 9, cellPadding: 3, textColor: [0,0,0] },
+          headStyles: { fillColor: primaryColor, fontStyle: 'bold', halign: 'center', textColor: [255,255,255] },
+          columnStyles: { 
+              0: { halign: 'center', cellWidth: 20 }, 
+              1: { halign: 'left' },
+              2: { halign: 'right', cellWidth: 40 }, 
+              3: { halign: 'right', fontStyle: 'bold', cellWidth: 40 } 
+          },
           margin: { left: 14, right: 14 }
       });
 
+      // --- TOTALES ---
       // @ts-ignore
-      let finalY = doc.lastAutoTable.finalY + 5;
+      let finalY = doc.lastAutoTable.finalY + 8;
       const totalsX = 130;
-      doc.setFontSize(9); doc.setTextColor(0);
-      doc.text("Subtotal:", totalsX, finalY); doc.text(`L. ${totals.subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      doc.setFontSize(10);
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.setFont("helvetica", "normal");
+      
+      doc.text("Subtotal:", totalsX, finalY); 
+      doc.text(`L. ${totals.subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      
       finalY += 6;
-      if(discount > 0) { doc.text("Descuentos:", totalsX, finalY); doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"}); finalY += 6; }
-      doc.text("I.S.V.:", totalsX, finalY); doc.text(`L. ${totals.isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      doc.text("Descuentos:", totalsX, finalY); 
+      doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      
       finalY += 6;
-      if(paymentType === 'KrediYa') {
-          doc.text("Prima Recibida:", totalsX, finalY); doc.text(`L. ${primaAmount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 6;
-          doc.setFont("helvetica", "bold"); doc.text("SALDO KREDIYA:", totalsX, finalY); doc.text(`L. ${totals.financiado.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 6;
-      }
-      doc.setDrawColor(primaryColor); doc.line(totalsX, finalY, pageWidth - 14, finalY);
+      doc.text(`ISV (${companyConfig?.isv || 15}%):`, totalsX, finalY); 
+      doc.text(`L. ${totals.isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+      
       finalY += 6;
-      doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor); doc.setFontSize(11);
-      doc.text("TOTAL FACTURA:", totalsX, finalY); doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-      doc.setTextColor(grayColor); doc.setFontSize(8); doc.text("SON: " + numeroALetras(totals.total), 14, finalY);
+      doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setLineWidth(0.5);
+      doc.line(totalsX, finalY - 2, pageWidth - 14, finalY - 2);
+      
+      doc.setFont("helvetica", "bold"); 
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setFontSize(12);
+      doc.text("TOTAL A PAGAR:", totalsX, finalY + 2);
+      doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY + 2, {align: "right"});
 
-      let footerY = pageHeight - 35;
-      doc.setFontSize(7); doc.setTextColor(grayColor); doc.setFont("helvetica", "normal");
-      doc.text(`Rango Autorizado: ${config.rangoInicial || '000-001-01-00000001'} al ${config.rangoFinal || '000-001-01-00002000'}`, 14, footerY);
-      doc.text(`Fecha Límite Emisión: ${config.fechaLimite || 'N/A'}`, 14, footerY + 4);
-      doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 8);
-      doc.setFillColor(lightGray); doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
-      doc.setTextColor(primaryColor); doc.setFontSize(9);
-      doc.text(config.mensajeFinal || "LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
+      // Cantidad en letras
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.setFontSize(9);
+      doc.text("SON: " + numeroALetras(totals.total), 14, finalY + 15);
+
+      // --- FOOTER LEGAL ---
+      let footerY = pageHeight - 45;
+      doc.setFontSize(8); 
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.setFont("helvetica", "normal");
+      
+      doc.text(`Rango Autorizado: ${config.rangoInicial || '0001 al 5000'}`, 14, footerY);
+      doc.text(`Fecha Límite de Emisión: ${config.fechaLimite || '30/12/2025'}`, 14, footerY + 5);
+      doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 10);
+      
+      // Banda Azul Inferior
+      doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
 
       doc.save(`Factura_${saleId}.pdf`);
   };
