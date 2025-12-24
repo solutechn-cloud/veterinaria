@@ -11,7 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
-type TabType = 'INGRESOS' | 'EGRESO' | 'VENTAS' | 'RECARGAS';
+// Fix: Changed 'RECARGAS' to 'RECHARGES' to match the usage in the component
+type TabType = 'INGRESOS' | 'EGRESO' | 'VENTAS' | 'RECHARGES';
 
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
@@ -75,6 +76,7 @@ const CashRegister: React.FC = () => {
   const [isEditingEgreso, setIsEditingEgreso] = useState(false);
   const [egresoForm, setEgresoForm] = useState({ id: '', descripcion: '', monto: '', subtipo: 'Gasto Operativo' as SubtipoEgreso, idSocio: '' });
   const [showSaldoModal, setShowSaldoModal] = useState(false);
+  const [isEditingEgresoModal, setIsEditingEgresoModal] = useState(false);
   const [saldoForm, setSaldoForm] = useState({ red: 'TIGO', montoPagado: '', montoRecibido: '' });
   const [showRecargaModal, setShowRecargaModal] = useState<{red: 'TIGO' | 'CLARO', tipo: 'RECARGA' | 'PAQUETE'} | null>(null);
   const [recargaForm, setRecargaForm] = useState({ tipo: 'RECARGA', monto: '', precio: '', paqueteId: '' });
@@ -143,13 +145,11 @@ const CashRegister: React.FC = () => {
      }
   };
 
-  // --- REPORTE DE CIERRE CORREGIDO ---
   const generateClosingReportPDF = (resumen: any, ingresosList: Ingreso[], egresosList: Egreso[], user: any) => {
     const doc = new jsPDF();
     const isAdmin = user.rol === 'Administrador' || hasPermission('VER_ADMIN');
     const date = new Date().toLocaleString();
 
-    // Normalización de llaves: Postgres devuelve minúsculas por defecto
     const mInicial = Number(resumen.montoinicial || resumen.montoInicial || 0);
     const tVentas = Number(resumen.totalventas || resumen.totalVentas || 0);
     const tGastos = Number(resumen.totalgastos || resumen.TotalGastos || 0);
@@ -277,7 +277,7 @@ const CashRegister: React.FC = () => {
 
   const handleBuySaldo = async () => {
       if(!saldoForm.montoPagado || !saldoForm.montoRecibido) return Swal.fire('Error', 'Complete montos', 'warning');
-      try { await CashService.buySaldo({ red: saldoForm.red, montoPagado: Number(saldoForm.montoPagado), montoRecibido: Number(saldoForm.montoRecibido), fechaLocal: getHndDateOnly() }); setShowSaldoModal(false); loadData(); } catch(err: any) { Swal.fire('Error', err.message, 'error'); }
+      try { await CashService.buySaldo({ red: saldoForm.red, montoPagado: Number(saldoForm.montoPagado), montoRecibido: Number(saldoForm.montoRecibido), fechaLocal: getHndDateOnly() }); setShowSaldoModal(false); loadData(); } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
   };
 
   const handleRecargaSubmit = async () => {
@@ -346,7 +346,7 @@ const CashRegister: React.FC = () => {
       </div>
 
       <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-slate-200">
-         {[{ id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={18}/> }, { id: 'EGRESO', label: 'Gastos/Compras', icon: <ArrowDownCircle size={18}/> }, { id: 'RECARGAS', label: 'Recargas', icon: <Smartphone size={18}/> }, { id: 'VENTAS', label: 'Historial Ventas', icon: <ShoppingCart size={18}/> }].map((tab) => (
+         {[{ id: 'INGRESOS', label: 'Ingresos', icon: <ArrowUpCircle size={18}/> }, { id: 'EGRESO', label: 'Gastos/Compras', icon: <ArrowDownCircle size={18}/> }, { id: 'RECHARGES', label: 'Recargas', icon: <Smartphone size={18}/> }, { id: 'VENTAS', label: 'Historial Ventas', icon: <ShoppingCart size={18}/> }].map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as TabType)} className={`px-6 py-3 font-bold text-sm transition-all border-b-2 flex items-center gap-2 ${activeTab === tab.id ? 'border-indigo-600 text-indigo-600 bg-indigo-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>{tab.icon} {tab.label}</button>
          ))}
       </div>
@@ -372,7 +372,7 @@ const CashRegister: React.FC = () => {
            </div>
          )}
 
-         {activeTab === 'RECARGAS' && (
+         {activeTab === 'RECHARGES' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
                {['TIGO', 'CLARO'].map(red => (
                   <div key={red} className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col ${red === 'TIGO' ? 'border-blue-100' : 'border-red-100'}`}>
@@ -409,7 +409,7 @@ const CashRegister: React.FC = () => {
                       <div><label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Clasificación</label>
                         <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" value={ingresoForm.subtipo} onChange={e => setIngresoForm({...ingresoForm, subtipo: e.target.value as any})}>
                           <option value="Reparacion">Servicio de Reparación</option>
-                          <option value="Venta Producto Externo">Venta Producto Externo</option>
+                          <option value="Venta">Venta Producto</option>
                           <option value="KrediYa_Prima">KrediYa (Pago de Prima)</option>
                           <option value="Cobros Venta a Negocios Externos">Cobros Venta a Negocios Externos</option>
                         </select>

@@ -1,8 +1,8 @@
 
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
-// Clasificación Actualizada según requerimiento
-export type SubtipoIngreso = 'Venta Producto Externo' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos';
+// Clasificación Actualizada según restricción de DB (ENUM)
+export type SubtipoIngreso = 'Venta' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos';
 export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario';
 
 export interface Usuario {
@@ -71,17 +71,11 @@ export interface Cliente {
   fechaCreacion?: string;
 }
 
-/** 
- * Added missing Categoria interface 
- */
 export interface Categoria {
   codCategoria: string;
   tipo: string;
 }
 
-/** 
- * Added missing Ubicacion interface 
- */
 export interface Ubicacion {
   idUbicacion: string;
   nombre: string;
@@ -91,9 +85,6 @@ export interface Ubicacion {
   estado: EstadoGeneral;
 }
 
-/** 
- * Added missing Proveedor interface 
- */
 export interface Proveedor {
   codProveedor: string;
   nombre: string;
@@ -102,9 +93,6 @@ export interface Proveedor {
   fechaCreacion?: string;
 }
 
-/** 
- * Added missing Telefono interface 
- */
 export interface Telefono {
   codigo: string;
   imei1: string;
@@ -120,9 +108,6 @@ export interface Telefono {
   nombreUbicacion?: string;
 }
 
-/** 
- * Added missing Accesorio interface 
- */
 export interface Accesorio {
   codAccesorio: string;
   codCategoria: string;
@@ -130,9 +115,6 @@ export interface Accesorio {
   nombreCategoria?: string;
 }
 
-/** 
- * Added missing Inventario interface 
- */
 export interface Inventario {
   codInventario: string;
   codAccesorio: string;
@@ -148,9 +130,6 @@ export interface Inventario {
   nombreUbicacion?: string;
 }
 
-/** 
- * Added missing ProductoUnified interface for POS usage 
- */
 export interface ProductoUnified {
   id: string;
   tipo: 'TELEFONO' | 'ACCESORIO' | 'SERVICIO';

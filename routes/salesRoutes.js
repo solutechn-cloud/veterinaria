@@ -97,9 +97,9 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     
-    // CORRECCIÓN VALOR ENUM: Se usa 'Venta Producto Externo' en lugar de 'Venta POS'
+    // CORRECCIÓN VALOR ENUM: Se usa 'Venta' en lugar de 'Venta Producto Externo' para cumplir con PostgreSQL
     const montoIngresoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
-    const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta Producto Externo';
+    const subtipoMovimiento = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
     
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
@@ -168,9 +168,9 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         }
 
         if (idIngreso) {
-            // CORRECCIÓN VALOR ENUM: Se usa 'Venta Producto Externo' en lugar de 'Venta POS'
+            // CORRECCIÓN VALOR ENUM: Se usa 'Venta' en lugar de 'Venta Producto Externo'
             const montoActualizadoCaja = tipoCompra === 'KrediYa' ? Number(montoPrima) : Number(total);
-            const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta Producto Externo';
+            const subtipoActualizado = tipoCompra === 'KrediYa' ? 'KrediYa_Prima' : 'Venta';
             await client.query('UPDATE ingresos SET monto = $1, costo = $2, subtipo_movimiento = $3 WHERE idIngreso = $4', [montoActualizadoCaja, totalCosto, subtipoActualizado, idIngreso]);
         }
         

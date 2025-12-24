@@ -363,7 +363,7 @@ const AdminCashDashboard: React.FC = () => {
                                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                        <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center">
                                            <h3 className="font-black text-emerald-800 flex items-center gap-2 text-sm uppercase tracking-wider"><ArrowUpCircle size={18}/> Ingresos y Ventas</h3>
-                                           <button onClick={() => { setShowNewModal('INGRESO'); setNewForm({ descripcion: '', monto: '', costo: '0', subtipo: 'Reparacion', idSocio: '' }); }} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"><PlusCircle size={14}/> Nuevo Ingreso</button>
+                                           <button onClick={() => { setShowNewModal('INGRESO'); setNewForm({ descripcion: '', monto: '', costo: '0', subtipo: 'Venta', idSocio: '' }); }} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"><PlusCircle size={14}/> Nuevo Ingreso</button>
                                        </div>
                                        <div className="overflow-x-auto">
                                            <table className="w-full text-xs md:text-sm text-left min-w-[600px]">
@@ -493,7 +493,7 @@ const AdminCashDashboard: React.FC = () => {
                            {showNewModal === 'INGRESO' ? (
                                <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" value={newForm.subtipo} onChange={e => setNewForm({...newForm, subtipo: e.target.value})}>
                                    <option value="Reparacion">Servicio de Reparación</option>
-                                   <option value="Venta Producto Externo">Venta Producto Externo</option>
+                                   <option value="Venta">Venta Producto</option>
                                    <option value="KrediYa_Prima">KrediYa (Pago de Prima)</option>
                                    <option value="Cobros Venta a Negocios Externos">Cobros Venta a Negocios Externos</option>
                                </select>
