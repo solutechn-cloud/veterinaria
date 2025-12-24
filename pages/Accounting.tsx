@@ -248,7 +248,7 @@ const Accounting: React.FC = () => {
                         <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Descripción</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" value={editForm.descripcion} onChange={e => setEditForm({...editForm, descripcion: e.target.value})} /></div>
                         <div className="grid grid-cols-2 gap-4">
                             <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Monto</label><input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold" value={editForm.monto} onChange={e => setEditForm({...editForm, monto: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Costo</label><input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl" value={editForm.costo} onChange={e => setEditForm({...editForm, costo: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Costo</label><input type="number" className="w-full p-3 bg-white border border-slate-200 rounded-xl value={editForm.costo} onChange={e => setEditForm({...editForm, costo: e.target.value})} /></div>
                         </div>
                         {editingTx.tipo === 'EGRESO' && (
                              <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Socio Asignado</label>

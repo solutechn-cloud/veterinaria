@@ -71,7 +71,7 @@ const POS: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'ALL' | 'TELEFONO' | 'ACCESORIO'>('ALL');
-  const [selectedBrand, setSelectedBrand] = useState<string>('ALL');
+  // Fix: Added missing selectedCategory state to resolve filter error in POS component.
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [mobileTab, setMobileTab] = useState<'CATALOG' | 'CART'>('CATALOG');
 
@@ -204,12 +204,12 @@ const POS: React.FC = () => {
     return { bruto, subtotal, isv, total: conDescuento, financiado };
   }, [cart, discount, companyConfig, paymentType, primaAmount]);
 
-  // --- GENERACIÓN DE FACTURA (DISEÑO EXACTO SEGÚN IMAGEN) ---
+  // --- GENERACIÓN DE FACTURA (DISEÑO GEOMÉTRICO EXACTO) ---
   const generateInvoicePDF = (saleId: string) => {
       try {
           const client = clients.find(c => c.identidad === selectedClientId);
           const doc = new jsPDF();
-          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: 'N/A', direccion: 'N/A', telefono: 'N/A', isv: 15, cai: 'N/A', rangoInicial: '0001', rangoFinal: '5000', fechaLimite: '30/12/2025' } as any;
+          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: '', direccion: '', isv: 15, cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '', mensajeFinal: '' } as any;
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
           
@@ -218,7 +218,7 @@ const POS: React.FC = () => {
           const grayColor = "#64748b";      
           const lightGray = "#f1f5f9";      
 
-          // 1. Header Geométrico
+          // 1. Header Geométrico (Triángulos)
           doc.setFillColor(accentColor);
           doc.triangle(0, 0, pageWidth, 0, 0, 45, 'F');
           doc.setFillColor(primaryColor);
@@ -232,7 +232,7 @@ const POS: React.FC = () => {
               }
           }
 
-          // 3. Info Empresa (Cargada desde la base de datos)
+          // 3. Info Empresa
           doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
           doc.setFontSize(22);
@@ -297,7 +297,7 @@ const POS: React.FC = () => {
               doc.setTextColor(grayColor);
           });
 
-          // 7. Tabla de Productos (Centrada y con COD/Descripción combinada)
+          // 7. Tabla de Productos (Centrada y combinada)
           // @ts-ignore
           doc.autoTable({
               startY: topInfoY + 45,
@@ -307,7 +307,7 @@ const POS: React.FC = () => {
                   const cod = item.idTelefono || prod?.codigo || 'N/A';
                   let desc = '';
                   if (item.tipoProducto === 'TELEFONO') {
-                      desc = prod?.nombre?.toUpperCase() || item.descripcionProducto?.toUpperCase() || '';
+                      desc = prod ? `${prod.marca} ${prod.nombre}`.toUpperCase() : item.descripcionProducto?.toUpperCase();
                   } else {
                       desc = `${prod?.categoria || ''} ${item.descripcionProducto}`.trim().toUpperCase();
                   }
@@ -459,9 +459,8 @@ const POS: React.FC = () => {
   const filteredProducts = products.filter(p => {
     const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || p.imei?.includes(searchTerm) || p.codigo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchType = selectedType === 'ALL' || p.tipo === selectedType;
-    const matchBrand = selectedType !== 'TELEFONO' || selectedBrand === 'ALL' || p.marca === selectedBrand;
-    const matchCat = selectedType !== 'ACCESORIO' || selectedCategory === 'ALL' || p.categoria === selectedCategory;
-    return matchSearch && matchType && matchBrand && matchCat;
+    const matchCat = selectedCategory === 'ALL' || p.categoria === selectedCategory;
+    return matchSearch && matchType && matchCat;
   });
 
   return (
@@ -477,26 +476,10 @@ const POS: React.FC = () => {
                <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar Producto, IMEI o Código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium" /></div>
                <button onClick={loadInitialData} className="bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
             </div>
-            <div className="flex flex-col gap-3">
-               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                  <button onClick={() => {setSelectedType('ALL'); setSelectedBrand('ALL'); setSelectedCategory('ALL');}} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
-                  <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest whitespace-nowrap flex items-center gap-2 transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}><Smartphone size={14}/> TELÉFONOS</button>
-                  <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest whitespace-nowrap flex items-center gap-2 transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}><Zap size={14}/> ACCESORIOS</button>
-               </div>
-               {selectedType === 'TELEFONO' && (
-                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1 animate-fade-in">
-                       {brands.map(b => (
-                           <button key={b} onClick={() => setSelectedBrand(b)} className={`px-3 py-1 rounded-md text-[9px] font-bold uppercase transition-all border ${selectedBrand === b ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white text-slate-400 border-slate-200'}`}>{b === 'ALL' ? 'Todas las Marcas' : b}</button>
-                       ))}
-                   </div>
-               )}
-               {selectedType === 'ACCESORIO' && (
-                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1 animate-fade-in">
-                       {categories.map(c => (
-                           <button key={c} onClick={() => setSelectedCategory(c)} className={`px-3 py-1 rounded-md text-[9px] font-bold uppercase transition-all border ${selectedCategory === c ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-white text-slate-400 border-slate-200'}`}>{c === 'ALL' ? 'Todas las Categorías' : c}</button>
-                       ))}
-                   </div>
-               )}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+               <button onClick={() => setSelectedType('ALL')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
+               <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TELÉFONOS</button>
+               <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>ACCESORIOS</button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 custom-scrollbar">
