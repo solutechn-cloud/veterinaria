@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService, ClientService, SalesService, CashService, ConfigService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente, EmpresaConfig, VentaPayload } from '../types';
-import { Search, ShoppingCart, Smartphone, Zap, RefreshCw, User, X, Check, Plus, Minus, UserPlus, LayoutGrid, Tag, Wallet, CreditCard } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Smartphone, Zap, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Grid, Filter, Tag, LayoutGrid, Wallet, CreditCard, Save } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// Helper robusto para números a letras (Soporta miles y millones correctamente)
 const numeroALetras = (num: number): string => {
     const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
     const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
@@ -203,15 +204,12 @@ const POS: React.FC = () => {
     return { bruto, subtotal, isv, total: conDescuento, financiado };
   }, [cart, discount, companyConfig, paymentType, primaAmount]);
 
-  // --- GENERACIÓN DE FACTURA ---
+  // --- GENERACIÓN DE FACTURA (DISEÑO GEOMÉTRICO EXACTO RE-RESTAURADO) ---
   const generateInvoicePDF = (saleId: string) => {
       try {
-          // PEGA TU LOGO EN BASE64 AQUÍ
-          const LOGO_BASE64 = ""; 
-
           const client = clients.find(c => c.identidad === selectedClientId);
           const doc = new jsPDF();
-          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: 'N/A', direccion: 'N/A', telefono: 'N/A', isv: 15, cai: 'N/A', rangoInicial: '0001', rangoFinal: '5000', fechaLimite: '30/12/2025' } as any;
+          const config = companyConfig || { nombreEmpresa: 'SMARTCLOUD-HN', rtn: '', direccion: '', isv: 15, cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '', mensajeFinal: '' } as any;
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
           
@@ -220,29 +218,25 @@ const POS: React.FC = () => {
           const grayColor = "#64748b";      
           const lightGray = "#f1f5f9";      
 
-          // 1. Diseño Geométrico
+          // 1. Header Geométrico (Triángulos Azul y Celeste)
           doc.setFillColor(primaryColor);
           doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
           doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
           doc.setFillColor(accentColor);
           doc.triangle(0, 0, 100, 0, 0, 50, 'F');
 
-          // 2. Logo
-          if (LOGO_BASE64) {
-              doc.addImage(LOGO_BASE64, 'PNG', 14, 8, 20, 20);
-          } else {
-              doc.setFillColor(255, 255, 255);
-              for (let i = 0; i < 5; i++) {
-                  for (let j = 0; j < 5; j++) {
-                      if ((i + j) % 2 === 0) doc.circle(18 + (i * 3), 10 + (j * 3), 0.8, 'F');
-                  }
+          // 2. Logo de puntos (Mapa de bits simulado por código)
+          doc.setFillColor(255, 255, 255);
+          for (let i = 0; i < 5; i++) {
+              for (let j = 0; j < 5; j++) {
+                  if ((i + j) % 2 === 0) doc.circle(18 + (i * 3), 10 + (j * 3), 0.8, 'F');
               }
           }
 
-          // 3. Info Empresa (Dinamizada desde BD)
+          // 3. Info Empresa vinculada a Base de Datos
           doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
-          doc.setFontSize(18);
+          doc.setFontSize(16);
           doc.text(config.nombreEmpresa.toUpperCase(), 38, 18);
           doc.setFont("helvetica", "normal");
           doc.setFontSize(9);
@@ -253,27 +247,30 @@ const POS: React.FC = () => {
           doc.setFontSize(26);
           doc.setFont("helvetica", "bold");
           doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
-          doc.setFontSize(11);
-          doc.text(`NO. ${saleId}`, pageWidth - 15, 30, { align: "right" });
+          doc.setFontSize(10);
+          doc.text(`NO. ${saleId}`, pageWidth - 15, 29, { align: "right" });
 
-          // 5. Bloque de Cliente
+          // 5. Bloque de Cliente (Caja Gris Estilizada)
           const topInfoY = 60;
           doc.setFillColor(lightGray);
           doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
+          
           doc.setTextColor(primaryColor);
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
           doc.text("FACTURAR A:", 18, topInfoY + 8);
+          
           doc.setTextColor(0, 0, 0);
           doc.setFontSize(13);
           doc.text(client ? `${client.nombre} ${client.apellido}`.toUpperCase() : "CONSUMIDOR FINAL", 18, topInfoY + 18);
+          
           doc.setFontSize(9);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(grayColor);
           doc.text(`RTN/DNI: ${selectedClientId || "99999999999999"}`, 18, topInfoY + 26);
-          doc.text(`${client?.direccion || "N/A"}`, 18, topInfoY + 32);
+          doc.text(`${client?.direccion || "CHOLUTECA, HONDURAS"}`, 18, topInfoY + 32);
 
-          // 6. Datos Legales
+          // 6. Datos Fiscales (Derecha) vinculados a BD
           const rightColX = 120;
           const metaY = topInfoY + 5;
           const spacing = 6;
@@ -287,7 +284,7 @@ const POS: React.FC = () => {
               config.fechaLimite ? new Date(config.fechaLimite).toLocaleDateString('es-HN') : 'N/A',
               config.rtn || 'N/A',
               config.cai || 'N/A',
-              user?.nombreEmpleado?.toUpperCase() || "ADMIN"
+              user?.nombreEmpleado?.toUpperCase() || "ADMINISTRADOR"
           ];
 
           labels.forEach((label, i) => {
@@ -297,7 +294,7 @@ const POS: React.FC = () => {
               doc.setTextColor(grayColor);
           });
 
-          // 7. Tabla Centrada
+          // 7. Tabla de Productos (Centrada y con COD)
           // @ts-ignore
           doc.autoTable({
               startY: topInfoY + 45,
@@ -306,8 +303,9 @@ const POS: React.FC = () => {
                   const prod = products.find(p => p.id === (item.idTelefono || item.idInventario));
                   const cod = item.idTelefono || prod?.codigo || 'N/A';
                   let desc = '';
+                  // Manteniendo la descripción descriptiva solicitada
                   if (item.tipoProducto === 'TELEFONO') {
-                      desc = `${prod?.marca || ''} ${prod?.nombre || item.descripcionProducto}`.trim().toUpperCase();
+                      desc = prod ? `${prod.marca} ${prod.nombre}`.toUpperCase() : item.descripcionProducto?.toUpperCase();
                   } else {
                       desc = `${prod?.categoria || ''} ${item.descripcionProducto}`.trim().toUpperCase();
                   }
@@ -338,36 +336,52 @@ const POS: React.FC = () => {
           const totalsX = 135;
           doc.setFontSize(10);
           doc.setTextColor(grayColor);
+          doc.setFont("helvetica", "normal");
+          
           doc.text("Subtotal:", totalsX, finalY); 
           doc.text(`L. ${totals.subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
+          finalY += 7;
+          doc.text("Descuentos:", totalsX, finalY); 
+          doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
           finalY += 7;
           doc.text(`ISV (${config.isv || 15}%):`, totalsX, finalY); 
           doc.text(`L. ${totals.isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
           finalY += 3;
           doc.setDrawColor(primaryColor);
+          doc.setLineWidth(0.5);
           doc.line(totalsX, finalY, pageWidth - 14, finalY);
-          finalY += 7;
+          
+          finalY += 6;
           doc.setFont("helvetica", "bold"); 
           doc.setTextColor(primaryColor);
-          doc.setFontSize(14);
-          doc.text("TOTAL:", totalsX, finalY);
+          doc.setFontSize(13);
+          doc.text("TOTAL A PAGAR:", totalsX, finalY);
           doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
 
-          // 9. Letras y Footer
+          // 9. Cantidad en letras (Miles y millones funcional)
           doc.setTextColor(grayColor);
           doc.setFontSize(9);
-          doc.text("SON: " + numeroALetras(totals.total), 14, finalY + 10);
+          doc.text("SON: " + numeroALetras(totals.total), 14, finalY + 12);
 
-          let footerY = pageHeight - 35;
+          // 10. Pie Legal vinculado a Base de Datos
+          let footerY = pageHeight - 40;
           doc.setFontSize(8); 
-          doc.text(`Rango: ${config.rangoInicial || 'N/A'} al ${config.rangoFinal || 'N/A'}`, 14, footerY);
-          doc.text(`Fecha Límite: ${config.fechaLimite || 'N/A'}`, 14, footerY + 5);
+          doc.setTextColor(grayColor);
+          doc.setFont("helvetica", "normal");
+          doc.text(`Rango Autorizado: ${config.rangoInicial || 'N/A'} al ${config.rangoFinal || 'N/A'}`, 14, footerY);
+          doc.text(`Fecha Límite de Emisión: ${config.fechaLimite || 'N/A'}`, 14, footerY + 5);
+          doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 10);
           
+          // Banda Inferior
           doc.setFillColor(lightGray);
           doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
           doc.setTextColor(primaryColor);
           doc.setFont("helvetica", "bold");
-          doc.text("LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 7, { align: "center" });
+          doc.setFontSize(10);
+          doc.text("LA FACTURA ES BENEFICIO DE TODOS, EXIJALA", pageWidth / 2, pageHeight - 6, { align: "center" });
 
           doc.save(`Factura_${saleId}.pdf`);
       } catch (err) {
@@ -379,6 +393,12 @@ const POS: React.FC = () => {
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     if (!selectedClientId) return Swal.fire('Cliente Requerido', 'Seleccione un cliente.', 'warning');
+    
+    if (paymentType === 'KrediYa') {
+        if (primaAmount <= 0) return Swal.fire('Prima Requerida', 'La venta KrediYa requiere un pago inicial.', 'warning');
+        if (primaAmount >= totals.total) return Swal.fire('Monto Inválido', 'La prima no puede ser mayor o igual al total.', 'error');
+    }
+
     try {
       setIsLoading(true);
       const payload: VentaPayload = {
@@ -396,17 +416,23 @@ const POS: React.FC = () => {
       if (isEditing && editingSaleId) {
         await SalesService.updateVenta(editingSaleId, payload);
         saleId = editingSaleId;
+        Swal.fire('Actualizado', 'Venta modificada con éxito', 'success');
       } else {
         const response = await SalesService.createVenta(payload);
         saleId = response.codVenta;
         Swal.fire({
             title: '¡Venta Exitosa!',
+            text: `Factura #${saleId} generada.`,
             icon: 'success',
             showCancelButton: true,
-            confirmButtonText: 'Imprimir',
-            cancelButtonText: 'Cerrar'
-        }).then(res => { if(res.isConfirmed) generateInvoicePDF(saleId); });
+            confirmButtonText: 'Imprimir Factura',
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#1e3a8a'
+        }).then(res => {
+            if(res.isConfirmed) generateInvoicePDF(saleId);
+        });
       }
+
       resetPOS();
     } catch (e: any) {
       Swal.fire('Error', e.message, 'error');
@@ -421,6 +447,7 @@ const POS: React.FC = () => {
     setIsEditing(false);
     setEditingSaleId(null);
     setPaymentType('Contado');
+    navigate('/pos', { state: {} });
     loadInitialData();
   };
 
@@ -438,21 +465,21 @@ const POS: React.FC = () => {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] gap-6 overflow-hidden">
       <div className="lg:hidden flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm shrink-0">
-         <button onClick={() => setMobileTab('CATALOG')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${mobileTab === 'CATALOG' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Catálogo</button>
-         <button onClick={() => setMobileTab('CART')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${mobileTab === 'CART' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Carrito ({cart.length})</button>
+         <button onClick={() => setMobileTab('CATALOG')} className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${mobileTab === 'CATALOG' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}><LayoutGrid size={16} /> Catálogo</button>
+         <button onClick={() => setMobileTab('CART')} className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${mobileTab === 'CART' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}><ShoppingCart size={16} /> Carrito ({cart.reduce((a,b)=>a+b.cantidad,0)})</button>
       </div>
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         <div className={`flex-col bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 ${mobileTab === 'CATALOG' ? 'flex' : 'hidden lg:flex'}`}>
           <div className="p-4 border-b border-slate-100 space-y-4">
             <div className="flex gap-3">
-               <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-2.5 bg-slate-50 rounded-xl outline-none text-sm font-medium" /></div>
-               <button onClick={loadInitialData} className="bg-slate-100 text-slate-500 p-2.5 rounded-xl"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
+               <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar Producto, IMEI o Código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium" /></div>
+               <button onClick={loadInitialData} className="bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
             </div>
             <div className="flex flex-col gap-2">
-               <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                  <button onClick={() => {setSelectedType('ALL'); setSelectedBrand('ALL'); setSelectedCategory('ALL');}} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
-                  <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>TELÉFONOS</button>
-                  <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-400'}`}>ACCESORIOS</button>
+               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <button onClick={() => {setSelectedType('ALL'); setSelectedBrand('ALL'); setSelectedCategory('ALL');}} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
+                  <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TELÉFONOS</button>
+                  <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>ACCESORIOS</button>
                </div>
                {selectedType === 'TELEFONO' && (
                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
@@ -470,11 +497,11 @@ const POS: React.FC = () => {
                )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 custom-scrollbar">
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredProducts.map(p => (
-                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock === 0} className={`flex flex-col items-start p-3 bg-white rounded-2xl border transition-all text-left relative group active:scale-95 shadow-sm ${p.stock === 0 ? 'opacity-50 grayscale' : 'border-slate-200 hover:border-indigo-500 hover:shadow-md'}`}>
-                  <div className="w-full flex justify-between items-start mb-2"><span className="text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase bg-slate-100 text-slate-500">{p.tipo.substring(0,3)}</span><span className="text-[9px] font-black text-emerald-600">Stock: {p.stock}</span></div>
+                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock === 0} className={`flex flex-col items-start p-3 bg-white rounded-2xl border transition-all text-left relative group active:scale-95 shadow-sm ${p.stock === 0 ? 'opacity-50 grayscale' : 'border-slate-200/60 hover:border-indigo-500 hover:shadow-md'}`}>
+                  <div className="w-full flex justify-between items-start mb-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase bg-slate-100 text-slate-500`}>{p.tipo.substring(0,3)}</span><span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.stock > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>Stock: {p.stock}</span></div>
                   <h4 className="font-bold text-slate-800 text-[11px] line-clamp-2 leading-tight min-h-[2.2rem]">{p.nombre}</h4>
                   <div className="mt-2 w-full pt-2 border-t border-slate-50 font-black text-indigo-600">L. {Number(p.precioVenta).toLocaleString()}</div>
                 </button>
@@ -483,46 +510,35 @@ const POS: React.FC = () => {
           </div>
         </div>
         <div className={`w-full lg:w-[400px] flex-col bg-white rounded-3xl shadow-xl border border-slate-200 h-full ${mobileTab === 'CART' ? 'flex' : 'hidden lg:flex'}`}>
-          <div className={`p-5 border-b space-y-4 shrink-0 bg-slate-900 text-white rounded-t-3xl`}>
-            <div className="flex justify-between items-center"><h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-2">VENTA ACTUAL</h3>{isEditing && <button onClick={resetPOS} className="text-[10px] font-black uppercase bg-red-500/20 text-red-400 px-2 py-1 rounded">Cancelar</button>}</div>
+          <div className={`p-5 border-b space-y-4 shrink-0 bg-[#1e293b] text-white rounded-t-3xl`}>
+            <div className="flex justify-between items-center"><h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-2"><Zap className={isEditing ? 'text-amber-400' : 'text-indigo-400'} size={18} /> {isEditing ? `EDITANDO #${editingSaleId}` : 'VENTA ACTUAL'}</h3>{isEditing && <button onClick={resetPOS} className="text-[10px] font-black uppercase bg-red-500/20 text-red-400 px-2 py-1 rounded">Cancelar</button>}</div>
             <div className="grid grid-cols-3 gap-1">
                {['Contado', 'KrediYa', 'Credito'].map(type => (
-                   <button key={type} onClick={() => setPaymentType(type as any)} className={`py-2 text-[10px] font-black uppercase rounded-xl border-2 ${paymentType === type ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-transparent border-slate-700 text-slate-500'}`}>{type}</button>
+                   <button key={type} onClick={() => setPaymentType(type as any)} className={`py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === type ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>{type}</button>
                ))}
             </div>
-            <div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><select value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)} className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border-none rounded-xl text-xs font-bold text-white appearance-none"><option value="">CONSUMIDOR FINAL</option>{clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}</select><button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg"><UserPlus size={14}/></button></div>
+            <div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><select value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)} className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border-none rounded-xl text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"><option value="">CONSUMIDOR FINAL</option>{clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}</select><button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg"><UserPlus size={14}/></button></div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50/30">
-            {cart.map((item) => (
-                <div key={item.codDetalleVenta} className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-2">
-                   <div className="flex justify-between items-start">
-                       <h5 className="text-[11px] font-bold text-slate-800 leading-tight flex-1">{item.descripcionProducto}</h5>
-                       <button onClick={() => removeFromCart(item.codDetalleVenta!)} className="text-slate-300 hover:text-red-500 p-1"><X size={14}/></button>
-                   </div>
-                   <div className="flex justify-between items-center pt-1 border-t border-slate-50">
-                       <div className="flex items-center bg-slate-100 rounded-lg p-1">
-                           <button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded text-slate-600"><Minus size={10}/></button>
-                           <span className="text-[11px] font-black w-7 text-center">{item.cantidad}</span>
-                           <button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded text-slate-600"><Plus size={10}/></button>
-                       </div>
-                       <span className="font-black text-indigo-600 text-[11px]">L. {(item.cantidad * item.precioVenta).toLocaleString()}</span>
-                   </div>
-                </div>
-            ))}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar bg-slate-50/30">
+            {cart.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-30"><ShoppingCart size={64} strokeWidth={1} className="mb-2" /><p className="font-black text-xs uppercase">Carrito Vacío</p></div>) : (cart.map((item) => (
+                <div key={item.codDetalleVenta} className="flex flex-col bg-white p-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in group"><div className="flex justify-between items-start mb-2"><div className="flex-1 min-w-0 pr-2"><h5 className="text-[11px] font-bold text-slate-800 leading-tight truncate">{item.descripcionProducto}</h5><p className="text-[9px] font-black text-indigo-600 mt-0.5">L. {Number(item.precioVenta).toLocaleString()}</p></div><button onClick={() => removeFromCart(item.codDetalleVenta!)} className="text-slate-300 hover:text-red-500 p-1"><X size={14}/></button></div><div className="flex justify-between items-center pt-2 border-t border-slate-50"><div className="flex items-center bg-slate-100 p-1 rounded-lg"><button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"><Minus size={10}/></button><span className="text-[11px] font-black w-7 text-center">{item.cantidad}</span><button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"><Plus size={10}/></button></div><span className="font-black text-slate-800 text-[11px]">L. {(item.cantidad * item.precioVenta).toLocaleString()}</span></div></div>
+              ))
+            )}
           </div>
           <div className="p-5 bg-white border-t border-slate-100 rounded-b-3xl">
-            <div className="space-y-1.5 mb-4 text-xs">
-              <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>L. {totals.subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between text-slate-500"><span>ISV ({companyConfig?.isv || 15}%)</span><span>L. {totals.isv.toFixed(2)}</span></div>
+            <div className="space-y-1.5 mb-4">
+              <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>Subtotal</span><span>L. {totals.subtotal.toFixed(2)}</span></div>
               {paymentType === 'KrediYa' && (
-                  <div className="bg-emerald-50 p-2 rounded-xl mt-2">
-                      <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Prima</span><input type="number" value={primaAmount} onChange={(e) => setPrimaAmount(Number(e.target.value))} className="w-20 text-right py-1 px-2 border rounded bg-white" /></div>
-                      <div className="flex justify-between mt-1 text-[10px] text-slate-500 uppercase"><span>Saldo a Financiar:</span><span>L. {totals.financiado.toFixed(2)}</span></div>
+                  <div className="animate-fade-in space-y-2 pt-1 bg-emerald-50 p-2 rounded-xl border border-emerald-100 mb-2">
+                      <div className="flex justify-between items-center"><div className="flex items-center gap-2"><Wallet size={12} className="text-emerald-600"/><span className="text-[10px] font-black text-emerald-600 uppercase">Pago Prima</span></div><input type="number" value={primaAmount} onChange={(e) => setPrimaAmount(Math.max(0, Number(e.target.value)))} className="w-24 text-right py-1 px-2 border border-emerald-200 rounded-lg bg-white text-[12px] font-black text-emerald-700 outline-none" onFocus={e => e.target.select()} /></div>
+                      <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase px-1"><span>A Financiar:</span><span className="text-slate-800 font-bold">L. {totals.financiado.toFixed(2)}</span></div>
                   </div>
               )}
-              <div className="flex justify-between items-end pt-3 border-t"><span className="font-black text-slate-800">Total Neto</span><span className="font-black text-2xl text-indigo-600">L. {totals.total.toFixed(2)}</span></div>
+              <div className="flex justify-between items-center py-1 border-y border-slate-50"><div className="flex items-center gap-2"><Tag size={12} className="text-red-500"/><span className="text-[10px] font-black text-red-500 uppercase">Descuento</span></div><input type="number" value={discount} onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))} className="w-20 text-right py-1 px-2 border border-slate-100 rounded-lg bg-slate-50 text-[11px] font-black text-slate-800 outline-none" onFocus={e => e.target.select()} /></div>
+              <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>ISV ({companyConfig?.isv || 15}%)</span><span>L. {totals.isv.toFixed(2)}</span></div>
+              <div className="flex justify-between items-end pt-3"><span className="font-black text-xs text-slate-800 uppercase tracking-widest">Total Neto</span><span className="font-black text-2xl text-indigo-600 tracking-tighter">L. {totals.total.toFixed(2)}</span></div>
             </div>
-            <button className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl hover:bg-indigo-700 disabled:bg-slate-200 transition-all active:scale-95" disabled={cart.length === 0 || isLoading} onClick={handleCheckout}>{isLoading ? <RefreshCw className="animate-spin" size={18}/> : <Check size={18}/>} {isEditing ? 'ACTUALIZAR' : 'COBRAR'}</button>
+            <button className={`w-full flex items-center justify-center gap-3 px-4 py-4 rounded-2xl text-white font-black transition-all shadow-xl disabled:bg-slate-200 disabled:shadow-none text-xs tracking-[0.2em] active:scale-95 ${isEditing ? 'bg-amber-600 shadow-amber-600/20' : (paymentType === 'KrediYa' ? 'bg-emerald-600 shadow-emerald-600/20' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700')}`} disabled={cart.length === 0 || isLoading} onClick={handleCheckout}>{isLoading ? <RefreshCw className="animate-spin" size={18}/> : <Check size={18} strokeWidth={3}/>} {isEditing ? 'ACTUALIZAR VENTA' : 'FACTURAR'}</button>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AccountingService } from '../services/api';
 import { Socio } from '../types';
 import { 
-  Calculator, Users, Search, Edit2, X, ArrowUpRight, Activity, Calendar, RefreshCw, TrendingUp, ArrowRightLeft, Download, Ticket
+  Calculator, Users, Search, Edit2, X, ArrowUpRight, Activity, Calendar, RefreshCw, TrendingUp, Download, Ticket
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
@@ -223,13 +223,13 @@ const Accounting: React.FC = () => {
                 <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6">
                     <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg">Corrección Contable</h3><button onClick={() => setEditingTx(null)}><X className="text-slate-400"/></button></div>
                     <div className="space-y-4">
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Descripción</label><input className="w-full p-3 bg-slate-50 border rounded-xl" value={editForm.descripcion} onChange={e => setEditForm({...editForm, descripcion: e.target.value})} /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Descripción</label><input className="w-full p-3 bg-slate-50 border rounded-xl" value={editForm.descripcion} onChange={e => setEditForm({...editForm, descripcion: e.target.value})} /></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase">Monto</label><input type="number" className="w-full p-3 border rounded-xl font-bold" value={editForm.monto} onChange={e => setEditForm({...editForm, monto: e.target.value})} /></div>
-                            <div><label className="text-[10px] font-bold text-slate-400 uppercase">Costo</label><input type="number" className="w-full p-3 border rounded-xl" value={editForm.costo} onChange={e => setEditForm({...editForm, costo: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Monto</label><input type="number" className="w-full p-3 border rounded-xl font-bold" value={editForm.monto} onChange={e => setEditForm({...editForm, monto: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Costo</label><input type="number" className="w-full p-3 border rounded-xl font-bold" value={editForm.costo} onChange={e => setEditForm({...editForm, costo: e.target.value})} /></div>
                         </div>
                         {editingTx.tipo === 'EGRESO' && (
-                             <div><label className="text-[10px] font-bold text-slate-400 uppercase">Socio Asignado</label>
+                             <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Socio Asignado</label>
                              <select className="w-full p-3 bg-slate-50 border rounded-xl" value={editForm.id_socio_asignado} onChange={e => setEditForm({...editForm, id_socio_asignado: e.target.value})}>
                                  <option value="">-- Sin Socio --</option>
                                  {partners.map(p => <option key={p.idSocio} value={p.idSocio}>{p.nombre}</option>)}
