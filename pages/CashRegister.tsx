@@ -26,7 +26,10 @@ const numeroALetras = (num: number): string => {
         let output = '';
         if (n >= 100) { output += centenas[Math.floor(n / 100)] + ' '; n %= 100; }
         if (n >= 10 && n <= 19) { output += diez_veinte[n - 10]; } 
-        else if (n >= 20) { output += decenas[Math.floor(n / 10)]; if (n % 10 > 0) output += ' Y ' + unidades[n % 10]; } 
+        else if (n >= 20) { 
+            output += decenas[Math.floor(n / 10)]; 
+            if (n % 10 > 0) output += ' Y ' + unidades[n % 10]; 
+        } 
         else if (n > 0) { output += unidades[n]; }
         return output.trim();
     };
@@ -185,7 +188,6 @@ const CashRegister: React.FC = () => {
     doc.save(`Cierre_${user.idCaja}_${getHndDateOnly()}.pdf`);
   };
 
-  // --- REIMPRESIÓN IDÉNTICA AL POS ---
   const handleReprintInvoice = async (saleId: string) => {
       try {
           const [sale, details, cfg] = await Promise.all([
@@ -193,17 +195,9 @@ const CashRegister: React.FC = () => {
               SalesService.getDetallesVenta(saleId),
               ConfigService.get()
           ]);
-
           if (!sale) return;
-
-          /**
-           * COPIA Y PEGA TU IMAGEN BASE64 AQUÍ DENTRO DE LAS COMILLAS SI TIENES UNA
-           */
           const LOGO_BASE64 = ""; 
-
           const doc = new jsPDF();
-          
-          // Fix: Ensure property names match the EmpresaConfig interface (camelCase)
           const nombreEmpresa = (cfg.nombreEmpresa || 'SMARTCLOUD ERP').toUpperCase();
           const rtnEmpresa = cfg.rtn || 'N/A';
           const direccionEmpresa = cfg.direccion || 'N/A';
@@ -215,179 +209,48 @@ const CashRegister: React.FC = () => {
           const fechaLim = cfg.fechaLimite ? new Date(cfg.fechaLimite).toLocaleDateString('es-HN') : 'N/A';
           const isvConfig = cfg.isv || 15;
           const mensajeFinal = cfg.mensajeFinal || "LA FACTURA ES BENEFICIO DE TODOS, EXIJALA";
-
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
-          
           const primaryColor = "#1e3a8a";   
           const accentColor = "#3b82f6";    
           const grayColor = "#64748b";      
           const lightGray = "#f1f5f9";      
-
-          // 1. Header Geométrico (Triángulos Azul y Celeste)
           doc.setFillColor(primaryColor);
           doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
           doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
           doc.setFillColor(accentColor);
           doc.triangle(0, 0, 100, 0, 0, 50, 'F');
-
-          // 2. Logo
-          if (LOGO_BASE64) {
-              doc.addImage(LOGO_BASE64, 'PNG', 15, 12, 18, 18);
-          }
-
-          // 3. Info Empresa
-          doc.setTextColor(255, 255, 255);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(16);
-          doc.text(nombreEmpresa, 38, 18);
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(9);
-          doc.text(direccionEmpresa, 38, 25);
-          doc.text(`Tel: ${telefonoEmpresa} | ${correoEmpresa}`, 38, 30);
-
-          // 4. Título Factura
-          doc.setFontSize(26);
-          doc.setFont("helvetica", "bold");
-          doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
-          doc.setFontSize(10);
+          if (LOGO_BASE64) doc.addImage(LOGO_BASE64, 'PNG', 15, 12, 18, 18);
+          doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+          doc.text(nombreEmpresa, 38, 18); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+          doc.text(direccionEmpresa, 38, 25); doc.text(`Tel: ${telefonoEmpresa} | ${correoEmpresa}`, 38, 30);
+          doc.setFontSize(26); doc.setFont("helvetica", "bold");
+          doc.text("FACTURA", pageWidth - 15, 20, { align: "right" }); doc.setFontSize(10);
           doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 29, { align: "right" });
-
-          // 5. Bloque de Cliente
-          const topInfoY = 60;
-          doc.setFillColor(lightGray);
-          doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
-          
-          doc.setTextColor(primaryColor);
-          doc.setFontSize(10);
-          doc.setFont("helvetica", "bold");
-          doc.text("FACTURAR A:", 18, topInfoY + 8);
-          
-          doc.setTextColor(0, 0, 0);
-          doc.setFontSize(13);
-          doc.text((sale.nombreCliente || "CONSUMIDOR FINAL").toUpperCase(), 18, topInfoY + 18);
-          
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(grayColor);
+          const topInfoY = 60; doc.setFillColor(lightGray); doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
+          doc.setTextColor(primaryColor); doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.text("FACTURAR A:", 18, topInfoY + 8);
+          doc.setTextColor(0, 0, 0); doc.setFontSize(13); doc.text((sale.nombreCliente || "CONSUMIDOR FINAL").toUpperCase(), 18, topInfoY + 18);
+          doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(grayColor);
           doc.text(`RTN/DNI: ${sale.identidadCliente || "99999999999999"}`, 18, topInfoY + 26);
           doc.text(`${sale.direccionCliente || "CHOLUTECA, HONDURAS"}`, 18, topInfoY + 32);
-
-          // 6. Datos Fiscales
-          const rightColX = 120;
-          const metaY = topInfoY + 5;
-          const spacing = 6;
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(grayColor);
-          
+          const rightColX = 120; const metaY = topInfoY + 5; const spacing = 6; doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(grayColor);
           const labels = ["FECHA EMISIÓN:", "FECHA VENCIMIENTO:", "R.T.N. EMISOR:", "CAI:", "VENDEDOR:"];
-          const values = [
-              new Date(sale.fecha).toLocaleDateString('es-HN'),
-              fechaLim,
-              rtnEmpresa,
-              caiEmpresa,
-              sale.nombreVendedor?.toUpperCase() || "ADMINISTRADOR"
-          ];
-
-          labels.forEach((label, i) => {
-              doc.text(label, rightColX, metaY + (i * spacing));
-              doc.setTextColor(0, 0, 0);
-              doc.text(String(values[i]), rightColX + 45, metaY + (i * spacing));
-              doc.setTextColor(grayColor);
-          });
-
-          // 7. Tabla de Productos
+          const values = [new Date(sale.fecha).toLocaleDateString('es-HN'), fechaLim, rtnEmpresa, caiEmpresa, sale.nombreVendedor?.toUpperCase() || "ADMINISTRADOR"];
+          labels.forEach((label, i) => { doc.text(label, rightColX, metaY + (i * spacing)); doc.setTextColor(0, 0, 0); doc.text(String(values[i]), rightColX + 45, metaY + (i * spacing)); doc.setTextColor(grayColor); });
           // @ts-ignore
-          doc.autoTable({
-              startY: topInfoY + 45,
-              head: [['COD.', 'CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']],
-              body: details.map(item => {
-                  return [
-                      item.idTelefono || item.idInventario || 'N/A',
-                      item.cantidad,
-                      item.descripcionProducto?.toUpperCase() || 'PRODUCTO',
-                      `L. ${Number(item.precioVenta).toFixed(2)}`,
-                      `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`
-                  ];
-              }),
-              theme: 'striped',
-              styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0], halign: 'center' },
-              headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', halign: 'center', textColor: [255, 255, 255] },
-              columnStyles: { 
-                  0: { cellWidth: 35 },
-                  1: { cellWidth: 15 },
-                  2: { halign: 'left' },
-                  3: { cellWidth: 30 },
-                  4: { cellWidth: 30, fontStyle: 'bold' }
-              },
-              margin: { left: 14, right: 14 }
-          });
-
-          // 8. Totales
+          doc.autoTable({ startY: topInfoY + 45, head: [['COD.', 'CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']], body: details.map(item => [item.idTelefono || item.idInventario || 'N/A', item.cantidad, item.descripcionProducto?.toUpperCase() || 'PRODUCTO', `L. ${Number(item.precioVenta).toFixed(2)}`, `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`]), theme: 'striped', styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0], halign: 'center' }, headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', halign: 'center', textColor: [255, 255, 255] }, columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 15 }, 2: { halign: 'left' }, 3: { cellWidth: 30 }, 4: { cellWidth: 30, fontStyle: 'bold' } }, margin: { left: 14, right: 14 } });
           // @ts-ignore
-          let finalY = doc.lastAutoTable.finalY + 10;
-          const totalsX = 135;
-          const isvRateNum = isvConfig / 100;
-          const totalVal = Number(sale.total);
-          const subtotalVal = totalVal / (1 + isvRateNum);
-          const isvVal = totalVal - subtotalVal;
-          const descuentVal = Number(sale.descuento || 0);
-
-          doc.setFontSize(10);
-          doc.setTextColor(grayColor);
-          doc.setFont("helvetica", "normal");
-          
-          doc.text("Subtotal:", totalsX, finalY); 
-          doc.text(`L. ${subtotalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          
-          finalY += 7;
-          doc.text("Descuentos:", totalsX, finalY); 
-          doc.text(`L. ${descuentVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          
-          finalY += 7;
-          doc.text(`ISV (${isvConfig}%):`, totalsX, finalY); 
-          doc.text(`L. ${isvVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          
-          finalY += 3;
-          doc.setDrawColor(primaryColor);
-          doc.setLineWidth(0.5);
-          doc.line(totalsX, finalY, pageWidth - 14, finalY);
-          
-          finalY += 6;
-          doc.setFont("helvetica", "bold"); 
-          doc.setTextColor(primaryColor);
-          doc.setFontSize(13);
-          doc.text("TOTAL A PAGAR:", totalsX, finalY);
-          doc.text(`L. ${totalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-
-          // 9. Cantidad en letras
-          doc.setTextColor(grayColor);
-          doc.setFontSize(9);
-          doc.text("SON: " + numeroALetras(totalVal), 14, finalY + 12);
-
-          // 10. Pie Legal
-          let footerY = pageHeight - 40;
-          doc.setFontSize(8); 
-          doc.setTextColor(grayColor);
-          doc.setFont("helvetica", "normal");
-          doc.text(`Rango Autorizado: ${rangoInic} al ${rangoFin}`, 14, footerY);
-          doc.text(`Fecha Límite de Emisión: ${fechaLim}`, 14, footerY + 5);
-          doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 10);
-          
-          // Banda Inferior
-          doc.setFillColor(lightGray);
-          doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
-          doc.setTextColor(primaryColor);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(10);
-          doc.text(mensajeFinal, pageWidth / 2, pageHeight - 6, { align: "center" });
-
+          let finalY = doc.lastAutoTable.finalY + 10; const totalsX = 135; const isvRateNum = isvConfig / 100; const totalVal = Number(sale.total); const subtotalVal = totalVal / (1 + isvRateNum); const isvVal = totalVal - subtotalVal; const descuentVal = Number(sale.descuento || 0);
+          doc.setFontSize(10); doc.setTextColor(grayColor); doc.setFont("helvetica", "normal"); doc.text("Subtotal:", totalsX, finalY); doc.text(`L. ${subtotalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 7; doc.text("Descuentos:", totalsX, finalY); doc.text(`L. ${descuentVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 7; doc.text(`ISV (${isvConfig}%):`, totalsX, finalY); doc.text(`L. ${isvVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          finalY += 3; doc.setDrawColor(primaryColor); doc.setLineWidth(0.5); doc.line(totalsX, finalY, pageWidth - 14, finalY);
+          finalY += 6; doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor); doc.setFontSize(13); doc.text("TOTAL A PAGAR:", totalsX, finalY); doc.text(`L. ${totalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          doc.setTextColor(grayColor); doc.setFontSize(9); doc.text("SON: " + numeroALetras(totalVal), 14, finalY + 12);
+          let footerY = pageHeight - 40; doc.setFontSize(8); doc.setTextColor(grayColor); doc.setFont("helvetica", "normal"); doc.text(`Rango Autorizado: ${rangoInic} al ${rangoFin}`, 14, footerY); doc.text(`Fecha Límite de Emisión: ${fechaLim}`, 14, footerY + 5); doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 10);
+          doc.setFillColor(lightGray); doc.rect(0, pageHeight - 15, pageWidth, 15, 'F'); doc.setTextColor(primaryColor); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(mensajeFinal, pageWidth / 2, pageHeight - 6, { align: "center" });
           doc.save(`Factura_${sale.codVenta}.pdf`);
-      } catch (err) {
-          console.error(err);
-          Swal.fire('Error PDF', 'No se pudo generar la factura legal. Verifique configuración de empresa.', 'error');
-      }
+      } catch (err) { console.error(err); Swal.fire('Error PDF', 'No se pudo generar la factura legal. Verifique configuración de empresa.', 'error'); }
   };
 
   const handleIngresoAction = async () => {
@@ -451,9 +314,11 @@ const CashRegister: React.FC = () => {
   const totalIngresos = ingresos.reduce((a,b) => a + Number(b.monto), 0);
   const totalGastos = egresos.reduce((a,b) => a + Number(b.monto), 0);
   const cashCalculated = arqueo ? (Number(arqueo.montoInicial) + totalIngresos) - totalGastos : 0;
+  
+  // FIX: Se agregó verificación de nulos y redondeo para evitar NaN en el UI
   const getSaldoRed = (red: string) => {
       const s = saldos.find(x => x.red === red);
-      return s ? Number(s.saldoFinal) : 0;
+      return s ? Number(s.saldoFinal || 0) : 0;
   };
 
   if (isLoading) return <div className="flex justify-center items-center h-full text-slate-400 gap-3"><RefreshCw className="animate-spin"/> Cargando...</div>;
@@ -487,11 +352,12 @@ const CashRegister: React.FC = () => {
              <button onClick={handleCloseBox} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 border border-red-500 shadow-lg shadow-red-500/20"><Lock size={16}/> CERRAR CAJA</button>
          </div>
          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Efectivo Actual</p><h3 className="text-2xl font-bold tracking-tight">L. {Number(cashCalculated).toLocaleString()}</h3></div>
-              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-emerald-400 font-bold uppercase mb-1">Ingresos</p><h3 className="text-lg font-bold">L. {Number(totalIngresos).toLocaleString()}</h3></div>
-              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-red-300 font-bold uppercase mb-1">Egresos</p><h3 className="text-lg font-bold">L. {Number(totalGastos).toLocaleString()}</h3></div>
-              <div className="bg-blue-600/20 border border-blue-500/30 p-4 rounded-xl"><p className="text-[10px] text-blue-200 font-bold uppercase mb-1">Tigo</p><h3 className="text-lg font-bold">L. {Number(getSaldoRed('TIGO')).toLocaleString()}</h3></div>
-              <div className="bg-red-600/20 border border-red-500/30 p-4 rounded-xl"><p className="text-[10px] text-red-200 font-bold uppercase mb-1">Claro</p><h3 className="text-lg font-bold">L. {Number(getSaldoRed('CLARO')).toLocaleString()}</h3></div>
+              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Efectivo Actual</p><h3 className="text-2xl font-bold tracking-tight">L. {Number(cashCalculated || 0).toLocaleString()}</h3></div>
+              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-emerald-400 font-bold uppercase mb-1">Ingresos</p><h3 className="text-lg font-bold">L. {Number(totalIngresos || 0).toLocaleString()}</h3></div>
+              <div className="bg-white/10 p-4 rounded-xl border border-white/5"><p className="text-[10px] text-red-300 font-bold uppercase mb-1">Egresos</p><h3 className="text-lg font-bold">L. {Number(totalGastos || 0).toLocaleString()}</h3></div>
+              {/* FIX: Se agregó verificación de NaN en las tarjetas superiores */}
+              <div className="bg-blue-600/20 border border-blue-500/30 p-4 rounded-xl"><p className="text-[10px] text-blue-200 font-bold uppercase mb-1">Tigo</p><h3 className="text-lg font-bold">L. {getSaldoRed('TIGO').toLocaleString()}</h3></div>
+              <div className="bg-red-600/20 border border-red-500/30 p-4 rounded-xl"><p className="text-[10px] text-red-200 font-bold uppercase mb-1">Claro</p><h3 className="text-lg font-bold">L. {getSaldoRed('CLARO').toLocaleString()}</h3></div>
          </div>
       </div>
 
@@ -526,7 +392,7 @@ const CashRegister: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
                {['TIGO', 'CLARO'].map(red => (
                   <div key={red} className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col ${red === 'TIGO' ? 'border-blue-100' : 'border-red-100'}`}>
-                    <div className={`${red === 'TIGO' ? 'bg-blue-600' : 'bg-red-600'} text-white p-4 flex justify-between items-center`}><h3 className="font-bold text-lg">{red}</h3><span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">Saldo: L. {Number(getSaldoRed(red)).toFixed(2)}</span></div>
+                    <div className={`${red === 'TIGO' ? 'bg-blue-600' : 'bg-red-600'} text-white p-4 flex justify-between items-center`}><h3 className="font-bold text-lg">{red}</h3><span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">Saldo: L. {getSaldoRed(red).toFixed(2)}</span></div>
                     <div className="p-6 grid grid-cols-1 gap-4">
                         <button onClick={() => { setShowRecargaModal({ red: red as any, tipo: 'RECARGA' }); setRecargaForm({tipo:'RECARGA', monto:'', precio:'', paqueteId:''}); }} className={`w-full py-4 bg-slate-50 font-black rounded-2xl border-2 transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest ${red==='TIGO'?'text-blue-700 border-blue-50 hover:bg-blue-600 hover:text-white':'text-red-700 border-red-50 hover:bg-red-600 hover:text-white'}`}><Smartphone size={20}/> Recarga Saldo</button>
                         <button onClick={() => { setShowRecargaModal({ red: red as any, tipo: 'PAQUETE' }); setRecargaForm({tipo:'PAQUETE', monto:'', precio:'', paqueteId:''}); }} className={`w-full py-4 bg-slate-50 font-black rounded-2xl border-2 transition-all flex items-center justify-center gap-3 uppercase text-xs tracking-widest ${red==='TIGO'?'text-blue-700 border-blue-50 hover:bg-blue-600 hover:text-white':'text-red-700 border-red-50 hover:bg-red-600 hover:text-white'}`}><Package size={20}/> Comprar Paquete</button>
