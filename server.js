@@ -67,19 +67,19 @@ const initDB = async () => {
                 estado VARCHAR(20) DEFAULT 'Activo'
             );
 
-            CREATE TABLE IF NOT EXISTS config (
+            CREATE TABLE IF NOT EXISTS configuracion (
                 id INTEGER PRIMARY KEY DEFAULT 1,
-                nombreEmpresa VARCHAR(255),
+                nombreempresa VARCHAR(255),
                 rtn VARCHAR(50),
                 direccion TEXT,
                 telefono VARCHAR(50),
                 correo VARCHAR(100),
                 cai VARCHAR(255),
-                rangoInicial VARCHAR(100),
-                rangoFinal VARCHAR(100),
-                fechaLimite DATE,
+                rangoinicial VARCHAR(100),
+                rangofinal VARCHAR(100),
+                fechalimite DATE,
                 isv NUMERIC(5,2) DEFAULT 15,
-                mensajeFinal TEXT,
+                mensajefinal TEXT,
                 CONSTRAINT single_row CHECK (id = 1)
             );
 

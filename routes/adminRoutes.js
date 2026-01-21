@@ -5,7 +5,32 @@ const bcrypt = require('bcryptjs');
 const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// --- CONFIGURACIÓN DE EMPRESA (CORREGIDO A TABLA CONFIGURACION) ---
+// --- ENDPOINT PARA EL DISEÑADOR DE ETIQUETAS (EVITA ERROR 404) ---
+router.get('/schema', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                table_name as "table", 
+                column_name as "column", 
+                data_type as "type"
+            FROM information_schema.columns 
+            WHERE table_schema = 'public'
+            AND table_name IN ('telefonos', 'inventario', 'accesorios', 'ventas', 'clientes', 'configuracion')
+        `;
+        const result = await pool.query(query);
+        
+        // Formatear para el frontend
+        const schema = result.rows.reduce((acc, curr) => {
+            if (!acc[curr.table]) acc[curr.table] = { columns: [], relations: [] };
+            acc[curr.table].columns.push({ name: curr.column, type: curr.type });
+            return acc;
+        }, {});
+
+        res.json(schema);
+    } catch(e) { handleDbError(res, e); }
+});
+
+// --- CONFIGURACIÓN DE EMPRESA (TABLA CONFIGURACION) ---
 router.get('/config', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM configuracion WHERE id = 1');
