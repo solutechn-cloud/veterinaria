@@ -5,24 +5,23 @@ const bcrypt = require('bcryptjs');
 const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// --- CONFIGURACIÓN DE EMPRESA (FALTANTE) ---
+// --- CONFIGURACIÓN DE EMPRESA (CORREGIDO A TABLA CONFIGURACION) ---
 router.get('/config', authenticateToken, async (req, res) => {
     try {
-        const r = await pool.query('SELECT * FROM config WHERE id = 1');
+        const r = await pool.query('SELECT * FROM configuracion WHERE id = 1');
         if (r.rows.length === 0) {
-            // Devolver objeto por defecto si no existe
             return res.json({
-                nombreEmpresa: 'SmartCloud ERP',
+                nombreempresa: 'SmartCloud ERP',
                 rtn: '',
                 direccion: '',
                 telefono: '',
                 correo: '',
                 cai: '',
-                rangoInicial: '',
-                rangoFinal: '',
-                fechaLimite: '',
+                rangoinicial: '',
+                rangofinal: '',
+                fechalimite: '',
                 isv: 15,
-                mensajeFinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
+                mensajefinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
             });
         }
         res.json(r.rows[0]);
@@ -33,20 +32,20 @@ router.put('/config', authenticateToken, async (req, res) => {
     try {
         const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal } = req.body;
         await pool.query(`
-            INSERT INTO config (id, nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal)
+            INSERT INTO configuracion (id, nombreempresa, rtn, direccion, telefono, correo, cai, rangoinicial, rangofinal, fechalimite, isv, mensajefinal)
             VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (id) DO UPDATE SET
-                nombreEmpresa = EXCLUDED.nombreEmpresa,
+                nombreempresa = EXCLUDED.nombreempresa,
                 rtn = EXCLUDED.rtn,
                 direccion = EXCLUDED.direccion,
                 telefono = EXCLUDED.telefono,
                 correo = EXCLUDED.correo,
                 cai = EXCLUDED.cai,
-                rangoInicial = EXCLUDED.rangoInicial,
-                rangoFinal = EXCLUDED.rangoFinal,
-                fechaLimite = EXCLUDED.fechaLimite,
+                rangoinicial = EXCLUDED.rangoinicial,
+                rangofinal = EXCLUDED.rangofinal,
+                fechalimite = EXCLUDED.fechalimite,
                 isv = EXCLUDED.isv,
-                mensajeFinal = EXCLUDED.mensajeFinal
+                mensajefinal = EXCLUDED.mensajefinal
         `, [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal]);
         res.json({ message: 'Configuración actualizada' });
     } catch(e) { handleDbError(res, e); }
