@@ -115,6 +115,29 @@ router.get('/admin/boxes/:id/history', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
+// --- SALDOS (PARA ADMIN) ---
+router.get('/admin/saldos', authenticateToken, async (req, res) => {
+    try {
+        const { fecha } = req.query;
+        const result = await pool.query(
+            'SELECT idsaldos as "idsaldos", red, saldoInicio as "saldoInicio", saldoComprado as "saldoComprado", saldoFinal as "saldoFinal", fecha FROM saldos WHERE TO_CHAR(fecha, \'YYYY-MM-DD\') = $1',
+            [fecha]
+        );
+        res.json(result.rows);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.put('/admin/saldos/:id', authenticateToken, async (req, res) => {
+    try {
+        const { saldoInicio, saldoFinal } = req.body;
+        await pool.query(
+            'UPDATE saldos SET saldoInicio = $1, saldoFinal = $2 WHERE idsaldos = $3',
+            [saldoInicio, saldoFinal, req.params.id]
+        );
+        res.json({ message: 'Saldo actualizado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
 router.get('/users', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`

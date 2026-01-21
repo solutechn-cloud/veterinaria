@@ -6,7 +6,6 @@ import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, A
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
-// Fix: Use namespace import to bypass missing named export errors in certain environments
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate } = ReactRouterDOM as any;
 
@@ -18,6 +17,7 @@ interface BoxStatus {
     montoInicial: number;
     montoFinal: number;
     ganancia: number;
+    reds?: { tigo: Saldo | null, claro: Saldo | null };
     fechaApertura: string;
     fechaCierre?: string;
     usuario: string;
@@ -45,7 +45,13 @@ const AdminCashDashboard: React.FC = () => {
     subtipo: '' as string, 
     idSocio: '' as string 
   });
+  
+  // States for Balance Adjustments
   const [newMontoInicial, setNewMontoInicial] = useState<string>('');
+  const [newSaldoTigoInic, setNewSaldoTigoInic] = useState<string>('');
+  const [newSaldoTigoFinal, setNewSaldoTigoFinal] = useState<string>('');
+  const [newSaldoClaroInic, setNewSaldoClaroInic] = useState<string>('');
+  const [newSaldoClaroFinal, setNewSaldoClaroFinal] = useState<string>('');
 
   const [showNewModal, setShowNewModal] = useState<'INGRESO' | 'EGRESO' | null>(null);
   const [newForm, setNewForm] = useState({ descripcion: '', monto: '', costo: '0', subtipo: '', idSocio: '' });
@@ -99,8 +105,19 @@ const AdminCashDashboard: React.FC = () => {
               const fechaStr = details.arqueo.fechaApertura.substring(0, 10);
               const slds = await CashService.getSaldosByDate(fechaStr);
               setSaldosSession(slds || []);
+              
+              const tigo = slds.find(s => s.red === 'TIGO');
+              const claro = slds.find(s => s.red === 'CLARO');
+              
+              setNewSaldoTigoInic(String(tigo?.saldoInicio || 0));
+              setNewSaldoTigoFinal(String(tigo?.saldoFinal || 0));
+              setNewSaldoClaroInic(String(claro?.saldoInicio || 0));
+              setNewSaldoClaroFinal(String(claro?.saldoFinal || 0));
           }
-      } catch (error) { console.error(error); Swal.fire('Error', 'No se pudo cargar la sesión.', 'error'); }
+      } catch (error) { 
+          console.error(error); 
+          Swal.fire('Error', 'No se pudo cargar la sesión.', 'error'); 
+      }
       finally { setLoading(false); }
   };
 
@@ -118,6 +135,33 @@ const AdminCashDashboard: React.FC = () => {
       const idArq = e.target.value;
       if (!idArq || !selectedBox) return;
       loadSessionById(idArq, selectedBox);
+  };
+
+  const handleUpdateBalance = async () => {
+      if(!selectedBox?.idArqueo || !sessionDetails) return;
+      try {
+          Swal.fire({ title: 'Procesando cambios...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+          
+          // 1. Update Initial Cash Amount
+          await CashService.updateInitialAmount(selectedBox.idArqueo, Number(newMontoInicial));
+          
+          // 2. Update Red Balances (Tigo/Claro)
+          const tigo = saldosSession.find(s => s.red === 'TIGO');
+          if (tigo) {
+              await CashService.updateSaldo(tigo.idsaldos, { saldoInicio: Number(newSaldoTigoInic), saldoFinal: Number(newSaldoTigoFinal) });
+          }
+          
+          const claro = saldosSession.find(s => s.red === 'CLARO');
+          if (claro) {
+              await CashService.updateSaldo(claro.idsaldos, { saldoInicio: Number(newSaldoClaroInic), saldoFinal: Number(newSaldoClaroFinal) });
+          }
+
+          await loadSessionById(selectedBox.idArqueo, selectedBox);
+          await loadData();
+          Swal.fire('Actualizado', 'Balance y saldos recalculados correctamente.', 'success');
+      } catch(e:any) { 
+          Swal.fire('Error', e.message, 'error'); 
+      }
   };
 
   const handleCreateManualTransaction = async () => {
@@ -222,11 +266,6 @@ const AdminCashDashboard: React.FC = () => {
           didParseCell: (data) => { if(data.row.index === expenseRows.length) { data.cell.styles.fillColor = [30, 41, 59]; data.cell.styles.textColor = [255, 255, 255]; } }
       });
       doc.save(`Auditoria_${arqueo.idArqueo}.pdf`);
-  };
-
-  const handleUpdateInitial = async () => {
-      if(!selectedBox?.idArqueo) return;
-      try { await CashService.updateInitialAmount(selectedBox.idArqueo, Number(newMontoInicial)); if(sessionDetails) loadSessionById(sessionDetails.arqueo.idArqueo, selectedBox); Swal.fire('Actualizado', `Monto inicial actualizado`, 'success'); loadData(); } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
 
   const startEdit = (item: Ingreso | Egreso, type: 'INGRESO' | 'EGRESO') => {
@@ -455,16 +494,47 @@ const AdminCashDashboard: React.FC = () => {
                                <div className="space-y-6 animate-fade-in">
                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                                        <h3 className="font-black text-slate-800 mb-6 flex items-center gap-3 uppercase text-sm tracking-wider"><Settings className="text-indigo-600"/> Corrección de Balance</h3>
-                                       <div className="flex flex-col md:flex-row gap-5 items-end">
-                                           <div className="flex-1 w-full">
-                                               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Monto Inicial de la Sesión (L.)</label>
-                                               <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-2xl text-indigo-700 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" value={newMontoInicial} onChange={e => setNewMontoInicial(e.target.value)}/>
+                                       <div className="space-y-6">
+                                           <div>
+                                               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Monto Inicial de Efectivo (L.)</label>
+                                               <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-2xl text-indigo-700 outline-none" value={newMontoInicial} onChange={e => setNewMontoInicial(e.target.value)}/>
                                            </div>
-                                           <button onClick={handleUpdateInitial} className="w-full md:w-auto bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all active:scale-[0.98]">ACTUALIZAR Y RECALCULAR</button>
+                                           
+                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+                                                <div className="md:col-span-2 flex items-center gap-2 border-b border-blue-100 pb-2">
+                                                    <Smartphone size={16} className="text-blue-600"/>
+                                                    <h4 className="text-xs font-black text-blue-800 uppercase">Saldos de Red: TIGO</h4>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-blue-400 uppercase mb-1 block">Saldo Apertura (Inic)</label>
+                                                    <input type="number" className="w-full p-3 bg-white border border-blue-200 rounded-xl font-bold" value={newSaldoTigoInic} onChange={e => setNewSaldoTigoInic(e.target.value)}/>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-blue-400 uppercase mb-1 block">Saldo Cierre (Actual)</label>
+                                                    <input type="number" className="w-full p-3 bg-white border border-blue-200 rounded-xl font-bold" value={newSaldoTigoFinal} onChange={e => setNewSaldoTigoFinal(e.target.value)}/>
+                                                </div>
+                                           </div>
+
+                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-red-50/50 rounded-2xl border border-red-100">
+                                                <div className="md:col-span-2 flex items-center gap-2 border-b border-red-100 pb-2">
+                                                    <Smartphone size={16} className="text-red-600"/>
+                                                    <h4 className="text-xs font-black text-red-800 uppercase">Saldos de Red: CLARO</h4>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-red-400 uppercase mb-1 block">Saldo Apertura (Inic)</label>
+                                                    <input type="number" className="w-full p-3 bg-white border border-red-200 rounded-xl font-bold" value={newSaldoClaroInic} onChange={e => setNewSaldoClaroInic(e.target.value)}/>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-red-400 uppercase mb-1 block">Saldo Cierre (Actual)</label>
+                                                    <input type="number" className="w-full p-3 bg-white border border-red-200 rounded-xl font-bold" value={newSaldoClaroFinal} onChange={e => setNewSaldoClaroFinal(e.target.value)}/>
+                                                </div>
+                                           </div>
+
+                                           <button onClick={handleUpdateBalance} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all active:scale-[0.98] uppercase text-xs tracking-widest">ACTUALIZAR Y RECALCULAR TODO</button>
                                        </div>
                                        <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
                                            <Info size={20} className="text-indigo-500 shrink-0 mt-0.5"/>
-                                           <p className="text-xs text-indigo-700 leading-relaxed font-medium">Al cambiar el monto inicial, el sistema recalculará el <strong>Efectivo Final</strong> de esta sesión sumando los ingresos y restando los egresos históricos. Use esto para corregir errores de apertura.</p>
+                                           <p className="text-xs text-indigo-700 leading-relaxed font-medium">Al actualizar, el sistema ajustará el efectivo y los saldos de redes para esta fecha específica. Úselo con precaución para corregir errores de cierre o apertura.</p>
                                        </div>
                                    </div>
                                </div>
