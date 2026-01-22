@@ -193,6 +193,10 @@ const CashRegister: React.FC = () => {
               ConfigService.get()
           ]);
           if (!sale) return;
+
+          /**
+           * CONFIGURACIÓN DE REIMPRESIÓN GEOMÉTRICA (ORIGINAL DEL USUARIO)
+           */
           const LOGO_BASE64 = ""; 
           const doc = new jsPDF();
           const nombreEmpresa = (cfg.nombreEmpresa || 'SMARTCLOUD ERP').toUpperCase();
@@ -212,6 +216,7 @@ const CashRegister: React.FC = () => {
           const accentColor = "#3b82f6";    
           const grayColor = "#64748b";      
           const lightGray = "#f1f5f9";      
+
           doc.setFillColor(primaryColor);
           doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
           doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
@@ -342,19 +347,12 @@ const CashRegister: React.FC = () => {
   };
 
   const handleConfirmarDeposito = async (id: string) => {
-    const result = await Swal.fire({ 
-        title: '¿Confirmar Depósito?', 
-        text: 'Se registrará el ingreso de la financiera en la contabilidad actual.', 
-        icon: 'question', 
-        showCancelButton: true, 
-        confirmButtonText: 'Sí, Depositar',
-        confirmButtonColor: '#10b981'
-    });
+    const result = await Swal.fire({ title: '¿Confirmar Depósito?', text: 'Se registrará el ingreso de la financiera en esta caja.', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, Depositar', confirmButtonColor: '#10b981' });
     if(result.isConfirmed) { 
         try { 
             await SalesService.confirmKrediYaDeposit(id); 
             loadData(); 
-            Swal.fire('Éxito', 'Depósito conciliado correctamente', 'success'); 
+            Swal.fire('Éxito', 'Depósito conciliado en esta caja', 'success'); 
         } catch(e:any) { Swal.fire('Error', e.message, 'error'); } 
     }
   };
@@ -478,14 +476,14 @@ const CashRegister: React.FC = () => {
                   <td className="p-3">
                       <div className="flex flex-col gap-1">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold w-fit ${v.estado === 'Anulada' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{v.estado}</span>
-                        <span className={`text-[9px] font-black uppercase ${v.tipoCompra === 'KrediYa' ? 'text-blue-600' : 'text-slate-400'}`}>{v.tipoCompra} {(v as any).estado_pago_financiera ? `(${ (v as any).estado_pago_financiera })` : ''}</span>
+                        <span className={`text-[9px] font-black uppercase ${v.tipoCompra === 'KrediYa' ? 'text-blue-600' : 'text-slate-400'}`}>{v.tipoCompra} {v.estado_pago_financiera ? `(${ v.estado_pago_financiera })` : ''}</span>
                       </div>
                   </td>
                   <td className="p-3 text-right flex justify-end gap-1">
                       <button onClick={() => handleReprintInvoice(v.codVenta)} className="p-1.5 text-slate-500 hover:text-indigo-600 transition-colors" title="Reimprimir"><Printer size={16}/></button>
                       {v.estado !== 'Anulada' && (
                         <>
-                            {v.tipoCompra === 'KrediYa' && (v as any).estado_pago_financiera === 'Pendiente' && (
+                            {v.tipoCompra === 'KrediYa' && v.estado_pago_financiera === 'Pendiente' && (
                                 <button onClick={() => handleConfirmarDeposito(v.codVenta)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Confirmar Depósito"><CheckCircle size={16}/></button>
                             )}
                             <button onClick={() => navigate('/pos', { state: { editSaleId: v.codVenta } })} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar"><Edit2 size={16}/></button>

@@ -87,6 +87,10 @@ const initDB = async () => {
             BEGIN 
                 -- MIGRACIÓN VENTAS (COLUMNAS FALTANTES)
                 BEGIN
+                    ALTER TABLE ventas ADD COLUMN idCaja VARCHAR(100);
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                BEGIN
                     ALTER TABLE ventas ADD COLUMN monto_prima NUMERIC(10,2) DEFAULT 0;
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
 

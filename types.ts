@@ -159,6 +159,8 @@ export interface Venta {
   detalles?: DetalleVenta[];
   nombreVendedor?: string; 
   direccionCliente?: string;
+  // Added property to handle KrediYa financing payment status
+  estado_pago_financiera?: string;
 }
 
 export interface VentaPayload {

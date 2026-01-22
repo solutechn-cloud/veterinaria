@@ -41,12 +41,11 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; 
-        const { codUsuario } = req.user;
+        const { codUsuario, idCaja } = req.user;
         
-        // LÓGICA SOLICITADA:
-        // 1. Mis ventas (donde soy el vendedor)
-        // 2. O ventas KrediYa que están pendientes (Globales para que cualquier caja las cobre)
-        // 3. O si soy Admin (veo todo)
+        // LÓGICA FILTRADO SOLICITADA:
+        // 1. Mostrar solo ventas de MI CAJA y MI USUARIO (Incluso si soy Admin en esta vista operativa)
+        // 2. O ventas KrediYa que están pendientes de depósito (Visibilidad global para conciliación)
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             v.tipoCompra as "tipoCompra", v.estado_pago_financiera as "estado_pago_financiera",
@@ -54,12 +53,11 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
             WHERE (
-                v.codVendedor = $1 
+                (v.idCaja = $2 AND v.codVendedor = $1)
                 OR (v.tipoCompra = 'KrediYa' AND v.estado_pago_financiera = 'Pendiente')
-                OR EXISTS (SELECT 1 FROM usuarios WHERE codUsuario = $1 AND (idrol = 'ROL-0001' OR idrol = 'Admin'))
             )
         `;
-        const params = [codUsuario];
+        const params = [codUsuario, idCaja];
         if (fecha) { 
             query += ` AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $${params.length + 1}`; 
             params.push(fecha); 
@@ -149,9 +147,9 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, monto_financiera, monto_prima_efectivo, es_krediya, estado_pago_financiera) 
-       VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, montoFinanciado || 0, montoPrima || 0, esKrediya, esKrediya ? 'Pendiente' : null]
+      `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, monto_financiera, monto_prima_efectivo, es_krediya, estado_pago_financiera, idCaja) 
+       VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, montoFinanciado || 0, montoPrima || 0, esKrediya, esKrediya ? 'Pendiente' : null, idCaja]
     );
 
     for (const item of detalles) {
@@ -175,7 +173,7 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
     const client = await pool.connect();
     try {
         const codVenta = req.params.id;
-        const { idCaja } = req.user; // ESTA LÍNEA ASEGURA QUE EL INGRESO CAIGA EN LA CAJA QUE ACEPTA
+        const { idCaja } = req.user; 
         await client.query('BEGIN');
 
         const vRes = await client.query('SELECT total, monto_financiera, monto_prima_efectivo FROM ventas WHERE codVenta = $1 AND es_krediya = TRUE', [codVenta]);
