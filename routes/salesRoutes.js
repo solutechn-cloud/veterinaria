@@ -4,8 +4,40 @@ const router = express.Router();
 const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// ... (endpoints de clientes se mantienen igual)
+// --- CLIENTES ---
+router.get('/clientes', authenticateToken, async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM clientes ORDER BY nombre ASC');
+        res.json(r.rows);
+    } catch(e) { handleDbError(res, e); }
+});
 
+router.post('/clientes', authenticateToken, async (req, res) => {
+    try {
+        const { identidad, nombre, apellido, direccion, telefono, correo } = req.body;
+        await pool.query('INSERT INTO clientes (identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion) VALUES ($1,$2,$3,$4,$5,$6, NOW())',
+            [identidad, nombre, apellido, direccion, telefono, correo]);
+        res.status(201).json({ message: 'OK' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.put('/clientes/:id', authenticateToken, async (req, res) => {
+    try {
+        const { nombre, apellido, direccion, telefono, correo } = req.body;
+        await pool.query('UPDATE clientes SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, correo=$5 WHERE identidad=$6',
+            [nombre, apellido, direccion, telefono, correo, req.params.id]);
+        res.json({ message: 'OK' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.delete('/clientes/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM clientes WHERE identidad=$1', [req.params.id]);
+        res.json({ message: 'OK' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+// --- VENTAS ---
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query; 
@@ -17,17 +49,44 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
-            WHERE v.codVendedor = $1
+            WHERE (v.codVendedor = $1 OR EXISTS (SELECT 1 FROM usuarios WHERE codUsuario = $1 AND (idrol = 'ROL-0001' OR idrol = 'Admin')))
         `;
         const params = [codUsuario];
         if (fecha) { query += ` AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $${params.length + 1}`; params.push(fecha); }
-        query += ` ORDER BY v.codVenta DESC`;
+        query += ` ORDER BY v.fecha DESC`;
         const result = await pool.query(query, params);
         res.json(result.rows);
     } catch(e) { handleDbError(res, e); }
 });
 
-// ... (GET venta individual se mantiene igual)
+router.get('/ventas/:id', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT v.*, c.nombre as "nombreCliente", c.apellido as "apellidoCliente", c.direccion as "direccionCliente", u.usuario as "nombreVendedor"
+            FROM ventas v
+            JOIN clientes c ON v.identidadCliente = c.identidad
+            JOIN usuarios u ON v.codVendedor = u.codUsuario
+            WHERE v.codVenta = $1
+        `;
+        const r = await pool.query(query, [req.params.id]);
+        res.json(r.rows[0]);
+    } catch(e) { handleDbError(res, e); }
+});
+
+router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT dv.*, 
+            COALESCE(t.marca || ' ' || t.modelo, a.descripcion) as "descripcionProducto"
+            FROM detalleventa dv
+            LEFT JOIN telefonos t ON dv.idTelefono = t.codigo
+            LEFT JOIN accesorios a ON dv.idAccesorio = a.codAccesorio
+            WHERE dv.idVenta = $1
+        `;
+        const r = await pool.query(query, [req.params.id]);
+        res.json(r.rows);
+    } catch(e) { handleDbError(res, e); }
+});
 
 router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
@@ -39,14 +98,14 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const hndTime = getLocalTimestamp();
     const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
 
-    let totalCosto = 0;
+    let totalCostoReal = 0;
     let descArray = [];
 
     for (const item of detalles) {
         if (item.idTelefono) {
             const tel = await client.query("SELECT marca, modelo, precioCompra FROM telefonos WHERE codigo = $1", [item.idTelefono]);
             const row = tel.rows[0];
-            totalCosto += Number(row?.preciocompra || 0);
+            totalCostoReal += Number(row?.preciocompra || 0);
             if (row) descArray.push(`${row.marca} ${row.modelo}`.toUpperCase());
         } else if (item.idInventario) {
             const inv = await client.query(`
@@ -57,7 +116,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
                 WHERE i.codInventario = $1
             `, [item.idInventario]);
             const row = inv.rows[0];
-            totalCosto += (Number(row?.preciocompra || 0) * Number(item.cantidad || 1));
+            totalCostoReal += (Number(row?.preciocompra || 0) * Number(item.cantidad || 1));
             if (row) descArray.push(`${row.categoria || ''} ${row.descripcion}`.trim().toUpperCase());
         }
     }
@@ -65,9 +124,9 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     const esKrediya = (tipoCompra === 'KrediYa');
     
-    // LOGICA KREDIYA: El costo inicial del ingreso es igual al monto (Prima) para evitar ganancia negativa hoy.
+    // LÓGICA KREDIYA: El costo inicial es igual al monto (Prima) para que la ganancia sea 0 y no negativa hoy.
     const montoIngresoCaja = esKrediya ? Number(montoPrima) : Number(total);
-    const costoIngresoCaja = esKrediya ? Number(montoPrima) : totalCosto;
+    const costoIngresoCaja = esKrediya ? Number(montoPrima) : totalCostoReal;
     const subtipoMovimiento = esKrediya ? 'KrediYa_Prima' : 'Venta';
     
     const descripcionVenta = descArray.length > 0 ? descArray.join(', ') : `VENTA FACTURA #${codVenta}`;
@@ -101,7 +160,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
   } catch (err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// NUEVO: Endpoint para procesar el depósito de KrediYa
 router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -109,13 +167,10 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
         const { idCaja } = req.user;
         await client.query('BEGIN');
 
-        // 1. Obtener datos de la venta original
         const vRes = await client.query('SELECT total, monto_financiera, monto_prima_efectivo FROM ventas WHERE codVenta = $1 AND es_krediya = TRUE', [codVenta]);
         if (vRes.rows.length === 0) throw new Error('Venta no encontrada');
         const v = vRes.rows[0];
 
-        // 2. Calcular costo real pendiente
-        // Obtenemos el costo real total sumando los detalles
         const cRes = await client.query(`
             SELECT SUM(COALESCE(t.precioCompra, i.precioCompra * dv.cantidad)) as real_cost
             FROM detalleventa dv
@@ -125,12 +180,9 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
         `, [codVenta]);
         const totalCostoReal = Number(cRes.rows[0].real_cost);
         
-        // El costo que declaramos hoy es el total real menos lo que ya se declaró en la prima
-        // Esto hace que: Ganancia Hoy = Monto Financiera - Costo Remanente.
         const montoDeposito = Number(v.monto_financiera);
         const costoRemanente = totalCostoReal - Number(v.monto_prima_efectivo);
 
-        // 3. Crear el Ingreso Contable del Depósito (No afecta caja física necesariamente, pero sí rentabilidad)
         const idI = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
         await client.query(
             `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
@@ -138,7 +190,6 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
             [idI, idCaja, `DEPOSITO KREDIYA - FACTURA #${codVenta}`, montoDeposito, costoRemanente, getLocalTimestamp()]
         );
 
-        // 4. Actualizar estado de la venta
         await client.query("UPDATE ventas SET estado_pago_financiera = 'Depositado' WHERE codVenta = $1", [codVenta]);
 
         await client.query('COMMIT');
@@ -146,6 +197,27 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
     } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
 });
 
-// ... (resto de endpoints PUT y DELETE se mantienen igual)
+router.put('/ventas/:id/anular', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        await client.query('BEGIN');
+        const vRes = await client.query('SELECT codVenta, idCaja FROM ventas WHERE codVenta = $1', [id]);
+        if (vRes.rows.length === 0) throw new Error('Venta no encontrada');
+        
+        await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [id]);
+        await client.query("DELETE FROM ingresos WHERE descripcion LIKE $1", [`%FACTURA #${id}%`]);
+        
+        const details = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [id]);
+        for(let d of details.rows) {
+            if(d.idtelefono) await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [d.idtelefono]);
+            if(d.idaccesorio) await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [d.cantidad, d.idaccesorio]);
+        }
+        
+        await updateArqueoBalance(vRes.rows[0].idcaja, client);
+        await client.query('COMMIT');
+        res.json({ message: 'Venta anulada' });
+    } catch(e) { await client.query('ROLLBACK'); handleDbError(res, e); } finally { client.release(); }
+});
 
 module.exports = router;

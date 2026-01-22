@@ -67,12 +67,13 @@ async function updateArqueoBalance(idCaja, client = pool) {
         const { idarqueo, montoinicial } = arqRes.rows[0];
         const hndDate = getLocalTimestamp().substring(0, 10);
 
-        // Sumar Ingresos
+        // Sumar Ingresos FÍSICOS (Excluyendo depósitos de KrediYa que van a banco)
         const ingRes = await client.query(`
             SELECT COALESCE(SUM(monto), 0) as total, COALESCE(SUM(costo), 0) as costo
             FROM ingresos 
             WHERE idCaja = $1 
             AND TO_CHAR(fechaCreacion, 'YYYY-MM-DD') = $2
+            AND (subtipo_movimiento IS NULL OR subtipo_movimiento <> 'KrediYa_Deposito')
         `, [idCaja, hndDate]);
 
         // Sumar Egresos

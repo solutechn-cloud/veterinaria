@@ -35,7 +35,7 @@ router.get('/productos/unificados', authenticateToken, async (req, res) => {
             FROM inventario i
             JOIN accesorios a ON i.codAccesorio = a.codAccesorio
             LEFT JOIN categoria c ON a.codCategoria = c.codCategoria
-            WHERE i.cantidad > 0 AND (i.estado = 'Disponible' OR i.estado = 'Activo')
+            WHERE i.cantidad > 0 AND (i.estado = 'Disponible' OR i.estado = 'Activo' OR i.estado = 'Registrado')
         `;
         const result = await pool.query(query);
         res.json(result.rows);
