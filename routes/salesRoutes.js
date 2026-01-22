@@ -124,7 +124,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     const esKrediya = (tipoCompra === 'KrediYa');
     
-    // LÓGICA KREDIYA: El costo inicial es igual al monto (Prima) para que la ganancia sea 0 y no negativa hoy.
+    // LOGICA KREDIYA: El costo inicial es igual al monto (Prima) para que la utilidad sea 0 hoy y no negativa.
     const montoIngresoCaja = esKrediya ? Number(montoPrima) : Number(total);
     const costoIngresoCaja = esKrediya ? Number(montoPrima) : totalCostoReal;
     const subtipoMovimiento = esKrediya ? 'KrediYa_Prima' : 'Venta';
