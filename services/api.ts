@@ -101,7 +101,9 @@ export const RepairService = {
 
 export const ConsignService = {
   getAll: () => request<Consignacion[]>('/consignaciones'),
-  create: (data: Partial<Consignacion>) => request('/consignaciones', { method: 'POST', body: JSON.stringify(data) }),
+  create: (data: Partial<Consignacion> | Partial<Consignacion>[]) => request('/consignaciones', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<Consignacion>) => request(`/consignaciones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => request(`/consignaciones/${id}`, { method: 'DELETE' }),
   liquidate: (id: number) => request(`/consignaciones/${id}/liquidar`, { method: 'PUT' }),
   returnToStock: (id: number) => request(`/consignaciones/${id}/retorno`, { method: 'PUT' }),
 };
