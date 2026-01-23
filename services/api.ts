@@ -16,7 +16,9 @@ import {
   Saldo,
   Costo,
   LabelTemplate,
-  Socio
+  Socio,
+  Reparacion,
+  Consignacion
 } from '../types';
 
 const API_URL = '/api';
@@ -88,6 +90,20 @@ export const SalesService = {
   getDetallesVenta: (id: string) => request<DetalleVenta[]>(`/ventas/${id}/detalles`),
   anularVenta: (id: string) => request(`/ventas/${id}/anular`, { method: 'PUT' }),
   confirmKrediYaDeposit: (id: string) => request(`/ventas/${id}/deposito-krediya`, { method: 'PUT' }),
+};
+
+export const RepairService = {
+  getAll: () => request<Reparacion[]>('/reparaciones'),
+  create: (data: Partial<Reparacion>) => request('/reparaciones', { method: 'POST', body: JSON.stringify(data) }),
+  updateStatus: (id: number, estado: string) => request(`/reparaciones/${id}/estado`, { method: 'PUT', body: JSON.stringify({ estado }) }),
+  payTechnician: (id: number) => request(`/reparaciones/${id}/pago-tecnico`, { method: 'PUT' }),
+};
+
+export const ConsignService = {
+  getAll: () => request<Consignacion[]>('/consignaciones'),
+  create: (data: Partial<Consignacion>) => request('/consignaciones', { method: 'POST', body: JSON.stringify(data) }),
+  liquidate: (id: number) => request(`/consignaciones/${id}/liquidar`, { method: 'PUT' }),
+  returnToStock: (id: number) => request(`/consignaciones/${id}/retorno`, { method: 'PUT' }),
 };
 
 export const CashService = {

@@ -5,7 +5,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useLocation, useNavigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { 
-  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings, PieChart
+  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings, PieChart, Wrench, Hand
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -51,6 +51,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       subItems: [
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
         { name: 'Clientes', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
+        { name: 'Reparaciones', path: '/repairs', icon: <Wrench size={18} />, permission: 'VER_CAJA' },
         { name: 'Paquetes Recarga', path: '/packages', icon: <Smartphone size={18} />, permission: 'GESTIONAR_INVENTARIO' },
       ]
     },
@@ -60,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       permission: 'VER_INVENTARIO',
       subItems: [
         { name: 'Inventario General', path: '/inventory', icon: <Package size={18} />, permission: 'VER_INVENTARIO' },
+        { name: 'Consignaciones', path: '/consignments', icon: <Hand size={18} />, permission: 'VER_INVENTARIO' },
         { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, permission: 'VER_PROVEEDORES' },
         { name: 'Diseñador Etiquetas', path: '/label-designer', icon: <Tag size={18} />, permission: 'DISEÑAR_ETIQUETAS' },
       ]

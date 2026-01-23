@@ -2,8 +2,8 @@
 export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
 
 // Clasificación unificada para compatibilidad con DB
-export type SubtipoIngreso = 'Venta' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos';
-export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario';
+export type SubtipoIngreso = 'Venta' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos' | 'Cobro Consignacion';
+export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario' | 'Pago a Tecnico' | 'Pago a Tienda Externa';
 
 export interface Usuario {
   codUsuario: string;
@@ -159,7 +159,6 @@ export interface Venta {
   detalles?: DetalleVenta[];
   nombreVendedor?: string; 
   direccionCliente?: string;
-  // Added property to handle KrediYa financing payment status
   estado_pago_financiera?: string;
 }
 
@@ -187,6 +186,34 @@ export interface DetalleVenta {
   descripcionProducto?: string;
   tipoProducto?: 'TELEFONO' | 'ACCESORIO' | 'SERVICIO';
   estado?: EstadoGeneral;
+}
+
+export interface Reparacion {
+  id_reparacion: number;
+  cod_venta?: string;
+  descripcion_falla: string;
+  imei_equipo?: string;
+  marca_modelo: string;
+  costo_tecnico: number;
+  precio_cliente: number;
+  nombre_tecnico: string;
+  estado_reparacion: 'Pendiente' | 'En Taller' | 'Listo' | 'Entregado';
+  pago_tecnico_estado: 'Pendiente' | 'Pagado';
+  fecha_ingreso: string;
+  fecha_entrega_estimada?: string;
+}
+
+export interface Consignacion {
+  id_consignacion: number;
+  id_producto: string;
+  tipo_producto: 'TELEFONO' | 'ACCESORIO';
+  negocio_destino: string;
+  cantidad_prestada: number;
+  precio_especial_pago: number;
+  estado_consignacion: 'Prestado' | 'Vendido_Pagado' | 'Devuelto';
+  fecha_salida: string;
+  fecha_limite?: string;
+  nombre_producto?: string;
 }
 
 export interface Arqueo {

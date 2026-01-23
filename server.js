@@ -17,6 +17,7 @@ const financeRoutes = require('./routes/financeRoutes');
 const reportsRoutes = require('./routes/reportsRoutes');
 const labelRoutes = require('./routes/labelRoutes');
 const accountingRoutes = require('./routes/accountingRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -131,6 +132,7 @@ app.use('/api', financeRoutes);
 app.use('/api', reportsRoutes);
 app.use('/api', labelRoutes); 
 app.use('/api/accounting', accountingRoutes);
+app.use('/api', serviceRoutes);
 
 // --- AUTH ROUTE ---
 app.post('/api/auth/login', async (req, res) => {

@@ -21,6 +21,8 @@ import Reports from './pages/Reports';
 import LabelDesigner from './pages/LabelDesigner';
 import CompanyConfig from './pages/CompanyConfig';
 import Accounting from './pages/Accounting';
+import Repairs from './pages/Repairs';
+import Consignments from './pages/Consignments';
 
 const App: React.FC = () => {
   return (
@@ -41,6 +43,18 @@ const App: React.FC = () => {
           <Route path="/clients" element={
             <ProtectedRoute requiredPermission="VER_CLIENTES">
               <Layout><Clients /></Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/repairs" element={
+            <ProtectedRoute requiredPermission="VER_CAJA">
+              <Layout><Repairs /></Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/consignments" element={
+            <ProtectedRoute requiredPermission="VER_INVENTARIO">
+              <Layout><Consignments /></Layout>
             </ProtectedRoute>
           } />
           
