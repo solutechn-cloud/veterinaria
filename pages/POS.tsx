@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService, ClientService, SalesService, ConfigService, CashService } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente, VentaPayload, Arqueo } from '../types';
-import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet, Smartphone, Package, ArrowRight, Lock, CloudLightning } from 'lucide-react';
+// Add missing Lock icon to imports from lucide-react
+import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet, Lock } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
-// Fix: Use namespace import to bypass missing named export errors in certain environments
+// Fix para el entorno de ejecución
 import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate, useLocation } = ReactRouterDOM as any;
 
@@ -70,7 +71,7 @@ const POS: React.FC = () => {
   const [companyConfig, setCompanyConfig] = useState<any>(null);
   const [arqueo, setArqueo] = useState<Arqueo | null>(null);
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'ALL' | 'TELEFONO' | 'ACCESORIO'>('ALL');
   const [selectedBrand, setSelectedBrand] = useState<string>('ALL');
@@ -136,7 +137,6 @@ const POS: React.FC = () => {
         setPaymentType(header.tipoCompra);
         setDiscount(Number(header.descuento) || 0);
         setPrimaAmount(Number(header.montoPrima) || 0);
-        
         setCart(details.map(d => ({
           ...d,
           cantidad: Number(d.cantidad),
@@ -216,63 +216,15 @@ const POS: React.FC = () => {
     return { bruto, subtotal, isv, total: conDescuento, financiado };
   }, [cart, discount, companyConfig, paymentType, primaAmount]);
 
-  const handleProcessSale = async () => {
-      if (!selectedClientId) return Swal.fire('Error', 'Seleccione un cliente', 'warning');
-      if (cart.length === 0) return Swal.fire('Error', 'El carrito está vacío', 'warning');
-
+  // --- GENERACIÓN DE FACTURA (RESTAURADA CON TABLA CONFIGURACION) ---
+  const generateInvoicePDF = (saleId: string) => {
       try {
-          const payload: VentaPayload = {
-              identidadCliente: selectedClientId,
-              tipoCompra: paymentType,
-              total: totals.total,
-              isv: totals.isv,
-              descuento: discount,
-              montoPrima: paymentType === 'KrediYa' ? primaAmount : 0,
-              montoFinanciado: totals.financiado,
-              detalles: cart.map(item => ({
-                  idTelefono: item.idTelefono,
-                  idInventario: item.idInventario,
-                  cantidad: item.cantidad,
-                  precioVenta: item.precioVenta,
-                  tipoProducto: item.tipoProducto
-              }))
-          };
+          const LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANS..."; 
 
-          const result = isEditing && editingSaleId 
-              ? await SalesService.updateVenta(editingSaleId, payload)
-              : await SalesService.createVenta(payload);
-
-          Swal.fire({
-              title: 'Venta Realizada',
-              icon: 'success',
-              showCancelButton: true,
-              confirmButtonText: 'Imprimir Factura',
-              cancelButtonText: 'Nueva Venta'
-          }).then((r) => {
-              if (r.isConfirmed) generateInvoicePDF(result.codVenta);
-              setCart([]);
-              setSelectedClientId('');
-              setDiscount(0);
-              setPrimaAmount(0);
-              setIsEditing(false);
-              setEditingSaleId(null);
-              loadInitialData();
-          });
-      } catch (err: any) {
-          Swal.fire('Error', err.message, 'error');
-      }
-  };
-
-  const generateInvoicePDF = async (saleId: string) => {
-      try {
-          const [sale, details, cfg] = await Promise.all([
-              SalesService.getVenta(saleId),
-              SalesService.getDetallesVenta(saleId),
-              ConfigService.get()
-          ]);
-          if (!sale) return;
-          
+          const client = clients.find(c => c.identidad === selectedClientId);
           const doc = new jsPDF();
+          
+          const cfg = companyConfig || {};
           const nombreEmpresa = (cfg.nombreempresa || cfg.nombreEmpresa || 'SMARTCLOUD ERP').toUpperCase();
           const rtnEmpresa = cfg.rtn || 'N/A';
           const direccionEmpresa = cfg.direccion || 'N/A';
@@ -287,6 +239,7 @@ const POS: React.FC = () => {
 
           const pageWidth = doc.internal.pageSize.width;
           const pageHeight = doc.internal.pageSize.height;
+          
           const primaryColor = "#1e3a8a";   
           const accentColor = "#3b82f6";    
           const grayColor = "#64748b";      
@@ -297,6 +250,10 @@ const POS: React.FC = () => {
           doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
           doc.setFillColor(accentColor);
           doc.triangle(0, 0, 100, 0, 0, 50, 'F');
+
+          if (LOGO_BASE64.length > 50) {
+              doc.addImage(LOGO_BASE64, 'PNG', 15, 12, 18, 18);
+          }
 
           doc.setTextColor(255, 255, 255);
           doc.setFont("helvetica", "bold");
@@ -311,23 +268,26 @@ const POS: React.FC = () => {
           doc.setFont("helvetica", "bold");
           doc.text("FACTURA", pageWidth - 15, 20, { align: "right" });
           doc.setFontSize(10);
-          doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 29, { align: "right" });
+          doc.text(`NO. ${saleId}`, pageWidth - 15, 29, { align: "right" });
 
           const topInfoY = 60;
           doc.setFillColor(lightGray);
           doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
+          
           doc.setTextColor(primaryColor);
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
           doc.text("FACTURAR A:", 18, topInfoY + 8);
+          
           doc.setTextColor(0, 0, 0);
           doc.setFontSize(13);
-          doc.text((sale.nombreCliente || "CONSUMIDOR FINAL").toUpperCase(), 18, topInfoY + 18);
+          doc.text(client ? `${client.nombre} ${client.apellido}`.toUpperCase() : "CONSUMIDOR FINAL", 18, topInfoY + 18);
+          
           doc.setFontSize(9);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(grayColor);
-          doc.text(`RTN/DNI: ${sale.identidadCliente || "99999999999999"}`, 18, topInfoY + 26);
-          doc.text(`${sale.direccionCliente || "CHOLUTECA, HONDURAS"}`, 18, topInfoY + 32);
+          doc.text(`RTN/DNI: ${selectedClientId || "99999999999999"}`, 18, topInfoY + 26);
+          doc.text(`${client?.direccion || "CHOLUTECA, HONDURAS"}`, 18, topInfoY + 32);
 
           const rightColX = 120;
           const metaY = topInfoY + 5;
@@ -335,8 +295,16 @@ const POS: React.FC = () => {
           doc.setFontSize(9);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(grayColor);
+          
           const labels = ["FECHA EMISIÓN:", "FECHA VENCIMIENTO:", "R.T.N. EMISOR:", "CAI:", "VENDEDOR:"];
-          const values = [new Date(sale.fecha).toLocaleDateString('es-HN'), fechaLim, rtnEmpresa, caiEmpresa, sale.nombreVendedor?.toUpperCase() || "ADMINISTRADOR"];
+          const values = [
+              new Date().toLocaleDateString('es-HN'),
+              fechaLim,
+              rtnEmpresa,
+              caiEmpresa,
+              user?.nombreEmpleado?.toUpperCase() || "ADMINISTRADOR"
+          ];
+
           labels.forEach((label, i) => {
               doc.text(label, rightColX, metaY + (i * spacing));
               doc.setTextColor(0, 0, 0);
@@ -348,59 +316,166 @@ const POS: React.FC = () => {
           doc.autoTable({
               startY: topInfoY + 45,
               head: [['COD.', 'CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']],
-              body: details.map(item => [item.idTelefono || item.idInventario || 'N/A', item.cantidad, item.descripcionProducto?.toUpperCase() || 'PRODUCTO', `L. ${Number(item.precioVenta).toFixed(2)}`, `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`]),
+              body: cart.map(item => {
+                  const prod = products.find(p => p.id === (item.idTelefono || item.idInventario));
+                  const cod = item.idTelefono || prod?.codigo || 'N/A';
+                  let desc = '';
+                  if (item.tipoProducto === 'TELEFONO') {
+                      desc = prod ? `${prod.marca} ${prod.nombre}`.toUpperCase() : item.descripcionProducto?.toUpperCase();
+                  } else {
+                      desc = `${prod?.categoria || ''} ${item.descripcionProducto}`.trim().toUpperCase();
+                  }
+                  return [
+                      cod,
+                      item.cantidad,
+                      desc,
+                      `L. ${Number(item.precioVenta).toFixed(2)}`,
+                      `L. ${(Number(item.cantidad) * Number(item.precioVenta)).toFixed(2)}`
+                  ];
+              }),
               theme: 'striped',
               styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0], halign: 'center' },
               headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', halign: 'center', textColor: [255, 255, 255] },
-              columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 15 }, 2: { halign: 'left' }, 3: { cellWidth: 30 }, 4: { cellWidth: 30, fontStyle: 'bold' } },
+              columnStyles: { 
+                  0: { cellWidth: 35 },
+                  1: { cellWidth: 15 },
+                  2: { halign: 'left' },
+                  3: { cellWidth: 30 },
+                  4: { cellWidth: 30, fontStyle: 'bold' }
+              },
               margin: { left: 14, right: 14 }
           });
 
           // @ts-ignore
           let finalY = doc.lastAutoTable.finalY + 10;
           const totalsX = 135;
-          const isvRateNum = isvConfig / 100;
-          const totalVal = Number(sale.total);
-          const subtotalVal = totalVal / (1 + isvRateNum);
-          const isvVal = totalVal - subtotalVal;
-          const descuentVal = Number(sale.descuento || 0);
-
           doc.setFontSize(10);
           doc.setTextColor(grayColor);
-          doc.text("Subtotal:", totalsX, finalY); doc.text(`L. ${subtotalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 7;
-          doc.text("Descuentos:", totalsX, finalY); doc.text(`L. ${descuentVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 7;
-          doc.text(`ISV (${isvConfig}%):`, totalsX, finalY); doc.text(`L. ${isvVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          finalY += 3;
-          doc.setDrawColor(primaryColor); doc.setLineWidth(0.5); doc.line(totalsX, finalY, pageWidth - 14, finalY);
-          finalY += 6;
-          doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor); doc.setFontSize(13); doc.text("TOTAL A PAGAR:", totalsX, finalY); doc.text(`L. ${totalVal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
-          doc.setTextColor(grayColor); doc.setFontSize(9); doc.text("SON: " + numeroALetras(totalVal), 14, finalY + 12);
+          doc.setFont("helvetica", "normal");
           
+          doc.text("Subtotal:", totalsX, finalY); 
+          doc.text(`L. ${totals.subtotal.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
+          finalY += 7;
+          doc.text("Descuentos:", totalsX, finalY); 
+          doc.text(`L. ${discount.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
+          finalY += 7;
+          doc.text(`ISV (${isvConfig}%):`, totalsX, finalY); 
+          doc.text(`L. ${totals.isv.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+          
+          finalY += 3;
+          doc.setDrawColor(primaryColor);
+          doc.setLineWidth(0.5);
+          doc.line(totalsX, finalY, pageWidth - 14, finalY);
+          
+          finalY += 6;
+          doc.setFont("helvetica", "bold"); 
+          doc.setTextColor(primaryColor);
+          doc.setFontSize(13);
+          doc.text("TOTAL A PAGAR:", totalsX, finalY);
+          doc.text(`L. ${totals.total.toFixed(2)}`, pageWidth - 14, finalY, {align: "right"});
+
+          doc.setTextColor(grayColor);
+          doc.setFontSize(9);
+          doc.text("SON: " + numeroALetras(totals.total), 14, finalY + 12);
+
           let footerY = pageHeight - 40;
-          doc.setFontSize(8); doc.setTextColor(grayColor); doc.setFont("helvetica", "normal");
+          doc.setFontSize(8); 
+          doc.setTextColor(grayColor);
+          doc.setFont("helvetica", "normal");
           doc.text(`Rango Autorizado: ${rangoInic} al ${rangoFin}`, 14, footerY);
           doc.text(`Fecha Límite de Emisión: ${fechaLim}`, 14, footerY + 5);
           doc.text(`Original: Cliente | Copia: Emisor`, 14, footerY + 10);
-          doc.setFillColor(lightGray); doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
-          doc.setTextColor(primaryColor); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(mensajeFinal, pageWidth / 2, pageHeight - 6, { align: "center" });
-          doc.save(`Factura_${sale.codVenta}.pdf`);
+          
+          doc.setFillColor(lightGray);
+          doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
+          doc.setTextColor(primaryColor);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text(mensajeFinal, pageWidth / 2, pageHeight - 6, { align: "center" });
+
+          doc.save(`Factura_${saleId}.pdf`);
       } catch (err) {
           console.error(err);
-          Swal.fire('Error PDF', 'No se pudo generar la factura legal. Verifique configuración de empresa.', 'error');
+          Swal.fire('Error PDF', 'No se pudo generar la factura legal', 'error');
       }
   };
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) return;
+    if (!selectedClientId) return Swal.fire('Cliente Requerido', 'Seleccione un cliente.', 'warning');
+    
+    if (paymentType === 'KrediYa' && primaAmount <= 0) {
+        return Swal.fire('Prima Requerida', 'Las ventas KrediYa requieren un monto de prima.', 'warning');
+    }
+
+    try {
+      setIsLoading(true);
+      const payload: VentaPayload = {
+        identidadCliente: selectedClientId,
+        tipoCompra: paymentType,
+        total: totals.total,
+        isv: totals.isv,
+        descuento: discount,
+        montoPrima: paymentType === 'KrediYa' ? primaAmount : 0,
+        montoFinanciado: totals.financiado,
+        detalles: cart
+      };
+
+      let saleId = "";
+      if (isEditing && editingSaleId) {
+        await SalesService.updateVenta(editingSaleId, payload);
+        saleId = editingSaleId;
+        Swal.fire('Actualizado', 'Venta modificada con éxito', 'success');
+      } else {
+        const response = await SalesService.createVenta(payload);
+        saleId = response.codVenta;
+        Swal.fire({
+            title: '¡Venta Exitosa!',
+            text: `Factura #${saleId} generada.`,
+            icon: 'success',
+            showCancelButton: true,
+            confirmButtonText: 'Imprimir Factura',
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#1e3a8a'
+        }).then(res => {
+            if(res.isConfirmed) generateInvoicePDF(saleId);
+        });
+      }
+
+      resetPOS();
+    } catch (e: any) {
+      Swal.fire('Error', e.message, 'error');
+    } finally { setIsLoading(false); }
+  };
+
+  const resetPOS = () => {
+    setCart([]);
+    setDiscount(0);
+    setPrimaAmount(0);
+    setSelectedClientId('');
+    setIsEditing(false);
+    setEditingSaleId(null);
+    setPaymentType('Contado');
+    navigate('/pos', { state: {} });
+    loadInitialData();
+  };
+
+  const brands = useMemo(() => ['ALL', ...new Set(products.filter(p => p.tipo === 'TELEFONO').map(p => p.marca!))].sort(), [products]);
+  const categories = useMemo(() => ['ALL', ...new Set(products.filter(p => p.tipo === 'ACCESORIO').map(p => p.categoria!))].sort(), [products]);
 
   const filteredProducts = products.filter(p => {
     const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || p.imei?.includes(searchTerm) || p.codigo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchType = selectedType === 'ALL' || p.tipo === selectedType;
-    return matchSearch && matchType && p.stock > 0;
+    const matchBrand = selectedType !== 'TELEFONO' || selectedBrand === 'ALL' || p.marca === selectedBrand;
+    const matchCat = selectedType !== 'ACCESORIO' || selectedCategory === 'ALL' || p.categoria === selectedCategory;
+    return matchSearch && matchType && matchBrand && matchCat;
   });
 
-  if (isLoading) return <div className="flex justify-center items-center h-full text-slate-400 gap-3"><RefreshCw className="animate-spin"/> Cargando...</div>;
+  const isvConfig = companyConfig?.isv || 15;
 
-  if (!arqueo) {
+  if (!arqueo && !isLoading) {
       return (
           <div className="flex flex-col items-center justify-center h-full bg-slate-50 p-6 animate-fade-in">
               <div className="bg-white max-w-lg w-full rounded-3xl shadow-xl p-8 border border-slate-100 text-center">
@@ -416,132 +491,84 @@ const POS: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] md:flex-row gap-6 animate-fade-in overflow-hidden">
-      {/* SECCIÓN IZQUIERDA: CATÁLOGO */}
-      <div className={`flex-1 flex flex-col bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden ${mobileTab === 'CART' ? 'hidden md:flex' : 'flex'}`}>
-         <div className="p-4 md:p-6 border-b space-y-4">
-            <div className="flex flex-col md:flex-row justify-between gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                    <input className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="Buscar por nombre, IMEI o código..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
-                </div>
-                <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
-                    <button onClick={() => setSelectedType('ALL')} className={`px-4 py-1.5 rounded-lg text-xs font-black tracking-tighter ${selectedType === 'ALL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>TODOS</button>
-                    <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-xs font-black tracking-tighter ${selectedType === 'TELEFONO' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>TELES</button>
-                    <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-xs font-black tracking-tighter ${selectedType === 'ACCESORIO' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>ACCS</button>
-                </div>
-            </div>
-         </div>
-
-         <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/30 custom-scrollbar">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredProducts.map(p => (
-                    <button key={p.id} onClick={() => addToCart(p)} className="bg-white border border-slate-100 rounded-[1.5rem] p-4 text-left shadow-sm hover:shadow-md transition-all hover:border-indigo-400 group active:scale-95 flex flex-col h-full">
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${p.tipo === 'TELEFONO' ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-orange-600'}`}>
-                            {p.tipo === 'TELEFONO' ? <Smartphone size={20}/> : <Package size={20}/>}
-                        </div>
-                        <p className="font-bold text-slate-800 text-sm leading-tight mb-1 flex-1">{p.nombre}</p>
-                        <div className="mt-auto">
-                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter mb-2">{p.tipo} • {p.stock} EN STOCK</p>
-                            <div className="flex justify-between items-center">
-                                <span className="font-black text-indigo-600">L. {p.precioVenta.toLocaleString()}</span>
-                                <div className="bg-indigo-600 text-white p-1.5 rounded-lg shadow-lg shadow-indigo-600/20 group-hover:scale-110 transition-transform"><Plus size={14} strokeWidth={3}/></div>
-                            </div>
-                        </div>
-                    </button>
-                ))}
-            </div>
-         </div>
+    <div className="flex flex-col h-[calc(100vh-100px)] gap-6 overflow-hidden">
+      <div className="lg:hidden flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm shrink-0">
+         <button onClick={() => setMobileTab('CATALOG')} className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${mobileTab === 'CATALOG' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}><LayoutGrid size={16} /> Catálogo</button>
+         <button onClick={() => setMobileTab('CART')} className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${mobileTab === 'CART' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}><ShoppingCart size={16} /> Carrito ({cart.reduce((a,b)=>a+b.cantidad,0)})</button>
       </div>
-
-      {/* SECCIÓN DERECHA: CARRITO Y PAGO */}
-      <div className={`w-full md:w-96 flex flex-col bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden ${mobileTab === 'CATALOG' ? 'hidden md:flex' : 'flex'}`}>
-         <div className="p-4 md:p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
-            <div className="flex items-center gap-2 font-black text-sm uppercase tracking-widest"><ShoppingCart size={20}/> Carrito de Venta</div>
-            <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold">{cart.length} ITEMS</span>
-         </div>
-
-         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-            {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-300 text-center p-10">
-                    <ShoppingCart size={48} className="mb-4 opacity-10"/>
-                    <p className="text-xs font-black uppercase tracking-widest leading-relaxed">Selecciona productos del catálogo para iniciar una venta</p>
-                </div>
-            ) : cart.map(item => (
-                <div key={item.codDetalleVenta} className="bg-slate-50/80 p-3 rounded-2xl border border-slate-100 group">
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="min-w-0 pr-4">
-                            <p className="font-bold text-slate-800 text-xs truncate leading-tight">{item.descripcionProducto}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">{item.tipoProducto} {item.idTelefono ? `• ${item.idTelefono}` : ''}</p>
-                        </div>
-                        <button onClick={() => removeFromCart(item.codDetalleVenta!)} className="text-slate-300 hover:text-red-500 transition-colors"><X size={16}/></button>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
-                            <button onClick={() => updateQty(item.codDetalleVenta!, -1)} className="p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30"><Minus size={12}/></button>
-                            <span className="w-8 text-center text-xs font-black text-slate-700">{item.cantidad}</span>
-                            <button onClick={() => updateQty(item.codDetalleVenta!, 1)} className="p-1 text-slate-400 hover:text-indigo-600"><Plus size={12}/></button>
-                        </div>
-                        <div className="text-right">
-                            <input type="number" className="bg-transparent text-right font-black text-indigo-600 text-sm outline-none w-24 border-b border-dashed border-indigo-200 focus:border-indigo-600 transition-colors" value={item.precioVenta} onChange={e => updatePrice(item.codDetalleVenta!, Number(e.target.value))} />
-                        </div>
-                    </div>
-                </div>
-            ))}
-         </div>
-
-         <div className="p-4 md:p-6 bg-slate-50 border-t space-y-4">
-            <div className="space-y-3">
-                <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Cliente</label>
-                    <div className="flex gap-2">
-                        <select className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
-                            <option value="">-- Seleccionar --</option>
-                            {clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}
-                        </select>
-                        <button onClick={() => navigate('/clients')} className="bg-white border border-slate-200 p-2.5 rounded-xl text-indigo-600 hover:bg-indigo-50 shadow-sm"><UserPlus size={18}/></button>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tipo de Pago</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none shadow-sm" value={paymentType} onChange={e => setPaymentType(e.target.value as any)}>
-                            <option value="Contado">EFECTIVO</option>
-                            <option value="Credito">CRÉDITO</option>
-                            <option value="KrediYa">KREDIYA</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Descuento (L.)</label>
-                        <input type="number" className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none shadow-sm" value={discount} onChange={e => setDiscount(Number(e.target.value))} />
-                    </div>
-                </div>
-
-                {paymentType === 'KrediYa' && (
-                    <div className="animate-fade-in p-3 bg-blue-50 border border-blue-100 rounded-2xl">
-                        <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1 mb-1 block">Monto de Prima (Efectivo)</label>
-                        <input type="number" className="w-full p-2.5 bg-white border border-blue-200 rounded-xl text-sm font-black text-blue-700 outline-none" value={primaAmount} onChange={e => setPrimaAmount(Number(e.target.value))} />
-                    </div>
-                )}
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+        <div className={`flex-col bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex-1 ${mobileTab === 'CATALOG' ? 'flex' : 'hidden lg:flex'}`}>
+          <div className="p-4 border-b border-slate-100 space-y-4">
+            <div className="flex gap-3">
+               <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar Producto, IMEI o Código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium" /></div>
+               <button onClick={loadInitialData} className="bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
             </div>
-
-            <div className="space-y-1.5 pt-2 border-t">
-                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span className="tracking-widest">Subtotal</span><span>L. {totals.subtotal.toFixed(2)}</span></div>
-                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span className="tracking-widest">ISV ({companyConfig?.isv || 15}%)</span><span>L. {totals.isv.toFixed(2)}</span></div>
-                <div className="flex justify-between items-center mt-2"><span className="text-sm font-black text-slate-800 uppercase tracking-tighter">Total a Pagar</span><span className="text-2xl font-black text-indigo-600">L. {totals.total.toFixed(2)}</span></div>
+            <div className="flex flex-col gap-2">
+               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <button onClick={() => {setSelectedType('ALL'); setSelectedBrand('ALL'); setSelectedCategory('ALL');}} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ALL' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TODOS</button>
+                  <button onClick={() => setSelectedType('TELEFONO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'TELEFONO' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>TELÉFONOS</button>
+                  <button onClick={() => setSelectedType('ACCESORIO')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === 'ACCESORIO' ? 'bg-orange-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>ACCESORIOS</button>
+               </div>
+               {selectedType === 'TELEFONO' && (
+                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
+                       {brands.map(b => (
+                           <button key={b} onClick={() => setSelectedBrand(b)} className={`px-3 py-1 rounded-md text-[9px] font-bold uppercase border ${selectedBrand === b ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-slate-200 text-slate-400'}`}>{b === 'ALL' ? 'Marcas' : b}</button>
+                       ))}
+                   </div>
+               )}
+               {selectedType === 'ACCESORIO' && (
+                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-1">
+                       {categories.map(c => (
+                           <button key={c} onClick={() => setSelectedCategory(c)} className={`px-3 py-1 rounded-md text-[9px] font-bold uppercase border ${selectedCategory === c ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-white border-slate-200 text-slate-400'}`}>{c === 'ALL' ? 'Categorías' : c}</button>
+                       ))}
+                   </div>
+               )}
             </div>
-
-            <button onClick={handleProcessSale} disabled={cart.length === 0 || !selectedClientId} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs disabled:opacity-50 disabled:grayscale active:scale-95">
-                <Save size={18}/> {isEditing ? 'ACTUALIZAR FACTURA' : 'FINALIZAR VENTA'}
-            </button>
-         </div>
-      </div>
-
-      {/* BOTÓN FLOTANTE MÓVIL PARA SWITCH TABS */}
-      <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 flex bg-slate-900 text-white p-1 rounded-2xl shadow-2xl z-50 ring-4 ring-white">
-          <button onClick={() => setMobileTab('CATALOG')} className={`px-6 py-3 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${mobileTab === 'CATALOG' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><LayoutGrid size={16}/> PRODUCTOS</button>
-          <button onClick={() => setMobileTab('CART')} className={`px-6 py-3 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${mobileTab === 'CART' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><ShoppingCart size={16}/> VENTA ({cart.length})</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 custom-scrollbar">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              {filteredProducts.map(p => (
+                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock === 0} className={`flex flex-col items-start p-3 bg-white rounded-2xl border transition-all text-left relative group active:scale-95 shadow-sm ${p.stock === 0 ? 'opacity-50 grayscale' : 'border-slate-200/60 hover:border-indigo-500 hover:shadow-md'}`}>
+                  <div className="w-full flex justify-between items-start mb-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase bg-slate-100 text-slate-500`}>{p.tipo.substring(0,3)}</span><span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.stock > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>Stock: {p.stock}</span></div>
+                  <h4 className="font-bold text-slate-800 text-[11px] line-clamp-2 leading-tight min-h-[2.2rem]">{p.nombre}</h4>
+                  <div className="mt-2 w-full pt-2 border-t border-slate-50 font-black text-indigo-600">L. {Number(p.precioVenta).toLocaleString()}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className={`w-full lg:w-[400px] flex-col bg-white rounded-3xl shadow-xl border border-slate-200 h-full ${mobileTab === 'CART' ? 'flex' : 'hidden lg:flex'}`}>
+          <div className={`p-5 border-b space-y-4 shrink-0 bg-[#1e293b] text-white rounded-t-3xl`}>
+            <div className="flex justify-between items-center"><h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-2"><Zap className={isEditing ? 'text-amber-400' : 'text-indigo-400'} size={18} /> {isEditing ? `EDITANDO #${editingSaleId}` : 'VENTA ACTUAL'}</h3>{isEditing && <button onClick={resetPOS} className="text-[10px] font-black uppercase bg-red-500/20 text-red-400 px-2 py-1 rounded">Cancelar</button>}</div>
+            <div className="grid grid-cols-3 gap-1">
+               {['Contado', 'KrediYa', 'Credito'].map(type => (
+                   <button key={type} onClick={() => setPaymentType(type as any)} className={`py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border-2 ${paymentType === type ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-slate-700 text-slate-500'}`}>{type}</button>
+               ))}
+            </div>
+            <div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><select value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)} className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border-none rounded-xl text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"><option value="">CONSUMIDOR FINAL</option>{clients.map(c => <option key={c.identidad} value={c.identidad}>{c.nombre} {c.apellido}</option>)}</select><button onClick={() => navigate('/clients')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg"><UserPlus size={14}/></button></div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar bg-slate-50/30">
+            {cart.length === 0 ? (<div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-30"><ShoppingCart size={64} strokeWidth={1} className="mb-2" /><p className="font-black text-xs uppercase">Carrito Vacío</p></div>) : (cart.map((item) => (
+                <div key={item.codDetalleVenta} className="flex flex-col bg-white p-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in group"><div className="flex justify-between items-start mb-2"><div className="flex-1 min-w-0 pr-2"><h5 className="text-[11px] font-bold text-slate-800 leading-tight truncate">{item.descripcionProducto}</h5><p className="text-[9px] font-black text-indigo-600 mt-0.5">L. {Number(item.precioVenta).toLocaleString()}</p></div><button onClick={() => removeFromCart(item.codDetalleVenta!)} className="text-slate-300 hover:text-red-500 p-1"><X size={14}/></button></div><div className="flex justify-between items-center pt-2 border-t border-slate-50"><div className="flex items-center bg-slate-100 p-1 rounded-lg"><button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"><Minus size={10}/></button><span className="text-[11px] font-black w-7 text-center">{item.cantidad}</span><button disabled={item.tipoProducto === 'TELEFONO'} onClick={() => updateQty(item.codDetalleVenta!, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded-md text-slate-600 hover:text-indigo-600 disabled:opacity-30 shadow-sm"><Plus size={10}/></button></div><span className="font-black text-slate-800 text-[11px]">L. {(item.cantidad * item.precioVenta).toLocaleString()}</span></div></div>
+              ))
+            )}
+          </div>
+          <div className="p-5 bg-white border-t border-slate-100 rounded-b-3xl">
+            <div className="space-y-1.5 mb-4">
+              <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>Subtotal</span><span>L. {totals.subtotal.toFixed(2)}</span></div>
+              {paymentType === 'KrediYa' && (
+                  <div className="animate-fade-in space-y-2 pt-1 bg-emerald-50 p-2 rounded-xl border border-emerald-100 mb-2">
+                      <div className="flex justify-between items-center"><div className="flex items-center gap-2"><Wallet size={12} className="text-emerald-600"/><span className="text-[10px] font-black text-emerald-600 uppercase">Pago Prima</span></div><input type="number" value={primaAmount} onChange={(e) => setPrimaAmount(Math.max(0, Number(e.target.value)))} className="w-24 text-right py-1 px-2 border border-emerald-200 rounded-lg bg-white text-[12px] font-black text-emerald-700 outline-none" onFocus={e => e.target.select()} /></div>
+                      <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase px-1"><span>A Financiar:</span><span className="text-slate-800 font-bold">L. {totals.financiado.toFixed(2)}</span></div>
+                  </div>
+              )}
+              <div className="flex justify-between items-center py-1 border-y border-slate-50"><div className="flex items-center gap-2"><Tag size={12} className="text-red-500"/><span className="text-[10px] font-black text-red-500 uppercase">Descuento</span></div><input type="number" value={discount} onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))} className="w-20 text-right py-1 px-2 border border-slate-100 rounded-lg bg-slate-50 text-[11px] font-black text-slate-800 outline-none" onFocus={e => e.target.select()} /></div>
+              <div className="flex justify-between text-slate-400 text-[10px] font-bold uppercase tracking-wider"><span>ISV ({isvConfig}%)</span><span>L. {totals.isv.toFixed(2)}</span></div>
+              <div className="flex justify-between items-end pt-3"><span className="font-black text-xs text-slate-800 uppercase tracking-widest">Total Neto</span><span className="font-black text-2xl text-indigo-600 tracking-tighter">L. {totals.total.toFixed(2)}</span></div>
+            </div>
+            <button className={`w-full flex items-center justify-center gap-3 px-4 py-4 rounded-2xl text-white font-black transition-all shadow-xl disabled:bg-slate-200 disabled:shadow-none text-xs tracking-[0.2em] active:scale-95 ${isEditing ? 'bg-amber-600 shadow-amber-600/20' : (paymentType === 'KrediYa' ? 'bg-emerald-600 shadow-emerald-600/20' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700')}`} disabled={cart.length === 0 || isLoading} onClick={handleCheckout}>{isLoading ? <RefreshCw className="animate-spin" size={18}/> : <Check size={18} strokeWidth={3}/>} {isEditing ? 'ACTUALIZAR VENTA' : 'FACTURAR'}</button>
+          </div>
+        </div>
       </div>
     </div>
   );
