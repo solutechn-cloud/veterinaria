@@ -43,6 +43,11 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
         const { fecha } = req.query; 
         const { codUsuario, idCaja } = req.user;
         
+        // Se corrigió la lógica de visibilidad:
+        // 1. Siempre se ven ventas KrediYa con depósito pendiente (Global).
+        // 2. Un usuario solo ve SUS ventas en SU caja asignada (Privado).
+        // Se eliminó la condición de Administrador para este historial específico de caja,
+        // ya que el administrador debe ver sus propios movimientos de su caja actual.
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             v.tipoCompra as "tipoCompra", v.estado_pago_financiera as "estado_pago_financiera",
@@ -52,7 +57,6 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
             WHERE (
                 (v.tipoCompra = 'KrediYa' AND v.estado_pago_financiera = 'Pendiente')
                 OR (v.idCaja = $2 AND v.codVendedor = $1 AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $3)
-                OR (EXISTS (SELECT 1 FROM usuarios WHERE codUsuario = $1 AND (idrol = 'ROL-0001' OR idrol = 'Admin')) AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $3)
             )
         `;
         const params = [codUsuario, idCaja, fecha || getLocalTimestamp().substring(0,10)];
@@ -120,9 +124,18 @@ router.post('/ventas', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { identidadCliente, tipoCompra, total, detalles, isv, descuento, montoPrima, montoFinanciado } = req.body;
-    const { codUsuario, idCaja } = req.user;
+    const { codUsuario } = req.user;
     
     await client.query('BEGIN');
+
+    // SEGURIDAD: Obtener la caja actual del usuario directamente de la DB para evitar desincronización con el token
+    const userRes = await client.query('SELECT idCaja FROM usuarios WHERE codUsuario = $1', [codUsuario]);
+    const idCajaActual = userRes.rows[0]?.idCaja;
+
+    if (!idCajaActual) {
+        throw new Error('El usuario no tiene una caja asignada para realizar ventas.');
+    }
+
     const hndTime = getLocalTimestamp();
     const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
 
@@ -161,13 +174,13 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     await client.query(
       `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
        VALUES ($1, $2, $3, $4, $5, $6, 'Completada', $7)`,
-      [idIngreso, idCaja, descripcionVenta, montoIngresoCaja, costoIngresoCaja, hndTime, subtipoMovimiento]
+      [idIngreso, idCajaActual, descripcionVenta, montoIngresoCaja, costoIngresoCaja, hndTime, subtipoMovimiento]
     );
 
     await client.query(
       `INSERT INTO ventas (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, monto_financiera, monto_prima_efectivo, es_krediya, estado_pago_financiera, idCaja) 
        VALUES ($1, $2, $3, $4, $5, 'Completada', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, montoFinanciado || 0, montoPrima || 0, esKrediya, esKrediya ? 'Pendiente' : null, idCaja]
+      [codVenta, hndTime, codUsuario, identidadCliente, total, tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, montoFinanciado || 0, montoPrima || 0, esKrediya, esKrediya ? 'Pending' : null, idCajaActual]
     );
 
     for (const item of detalles) {
@@ -181,7 +194,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       }
     }
 
-    await updateArqueoBalance(idCaja, client);
+    await updateArqueoBalance(idCajaActual, client);
     await client.query('COMMIT');
     res.status(201).json({ codVenta });
   } catch (err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
@@ -191,7 +204,12 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
     const client = await pool.connect();
     try {
         const codVenta = req.params.id;
-        const { idCaja } = req.user; 
+        // SEGURIDAD: Obtener la caja actual del usuario directamente de la DB
+        const userRes = await client.query('SELECT idCaja FROM usuarios WHERE codUsuario = $1', [req.user.codUsuario]);
+        const idCajaActual = userRes.rows[0]?.idCaja;
+
+        if (!idCajaActual) throw new Error('Usuario sin caja asignada');
+
         await client.query('BEGIN');
 
         const vRes = await client.query('SELECT total, monto_financiera, monto_prima_efectivo FROM ventas WHERE codVenta = $1 AND es_krediya = TRUE', [codVenta]);
@@ -214,12 +232,12 @@ router.put('/ventas/:id/deposito-krediya', authenticateToken, async (req, res) =
         await client.query(
             `INSERT INTO ingresos (idIngreso, idCaja, descripcion, monto, costo, fechaCreacion, estado, subtipo_movimiento) 
              VALUES ($1, $2, $3, $4, $5, $6, 'Completada', 'KrediYa_Deposito')`,
-            [idI, idCaja, `DEPOSITO KREDIYA - FACTURA #${codVenta}`, montoDeposito, costoRemanente, getLocalTimestamp()]
+            [idI, idCajaActual, `DEPOSITO KREDIYA - FACTURA #${codVenta}`, montoDeposito, costoRemanente, getLocalTimestamp()]
         );
 
         await client.query("UPDATE ventas SET estado_pago_financiera = 'Depositado' WHERE codVenta = $1", [codVenta]);
 
-        await updateArqueoBalance(idCaja, client);
+        await updateArqueoBalance(idCajaActual, client);
         await client.query('COMMIT');
         res.json({ message: 'Depósito conciliado' });
     } catch(err) { await client.query('ROLLBACK'); handleDbError(res, err); } finally { client.release(); }
