@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
+/* Fix: Default export issue will be resolved by updating POS.tsx */
 import POS from './pages/POS';
 import Clients from './pages/Clients';
 import Providers from './pages/Providers';
