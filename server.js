@@ -99,6 +99,11 @@ const initDB = async () => {
                     ALTER TABLE ventas ADD COLUMN monto_financiamiento NUMERIC(10,2) DEFAULT 0;
                 EXCEPTION WHEN duplicate_column THEN NULL; END;
 
+                -- Columna para registrar el tipo de producto en el detalle (Requerido para Garantías)
+                BEGIN
+                    ALTER TABLE detalleventa ADD COLUMN tipoProducto VARCHAR(20);
+                EXCEPTION WHEN duplicate_column THEN NULL; END;
+
                 -- Columna para categorizar egresos
                 BEGIN
                     ALTER TABLE egresos ADD COLUMN categoria VARCHAR(50) DEFAULT 'Gasto Operativo';
@@ -172,7 +177,6 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'build')));
-app.use('/api', (req, res) => res.status(404).json({ error: `API Route not found: ${req.originalUrl}` }));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'build', 'index.html')));
 
 app.listen(port, () => console.log(`SmartCloud running on port ${port}`));
