@@ -55,11 +55,17 @@ const ReturnsWarranties: React.FC = () => {
 
   const handleSearchInvoice = async () => {
       if (!invoiceSearch) return;
+      setFoundInvoice(null);
+      setSelectedDetail(null);
       try {
           const v = await SalesService.getVenta(invoiceSearch);
           const d = await SalesService.getDetallesVenta(invoiceSearch);
-          setFoundInvoice({ ...v, detalles: d });
-      } catch (e) { Swal.fire('No Encontrada', 'Verifique el número de factura.', 'error'); }
+          if (v) {
+              setFoundInvoice({ ...v, detalles: d });
+          } else {
+              Swal.fire('No Encontrada', 'Verifique el número de factura.', 'warning');
+          }
+      } catch (e) { Swal.fire('Error', 'No se pudo localizar la factura.', 'error'); }
   };
 
   const handleCreateWarranty = async () => {
@@ -67,29 +73,31 @@ const ReturnsWarranties: React.FC = () => {
       try {
           const payload: Partial<Garantia> = {
               cod_venta: foundInvoice.codVenta,
-              id_producto_original: selectedDetail.idTelefono || selectedDetail.idInventario,
-              tipo_producto: selectedDetail.tipoProducto as any,
+              id_producto_original: selectedDetail.idTelefono || selectedDetail.idAccesorio,
+              tipo_producto: (selectedDetail.tipoProducto as any) || 'TELEFONO',
               falla_reportada: falla,
               identidad_cliente: foundInvoice.identidadCliente,
               costo_original: 0, 
-              precio_venta_original: Number(selectedDetail.precioVenta),
+              precio_venta_original: Number(selectedDetail.precioVenta || 0),
               observaciones: obs
           };
           await WarrantyService.create(payload);
           setShowModal(false);
+          setFalla('');
+          setObs('');
           loadData();
-          Swal.fire('Ingresado', 'Equipo en garantía.', 'success');
+          Swal.fire('Ingresado', 'Equipo en garantía registrado.', 'success');
       } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
   };
 
   const exchangeCalculations = useMemo(() => {
     if (!selectedWarranty || !selectedNewProduct) return null;
     
-    const s1 = Number(selectedWarranty.precio_venta_original);
-    const c1 = Number(selectedWarranty.costo_original);
+    const s1 = Number(selectedWarranty.precio_venta_original || 0);
+    const c1 = Number(selectedWarranty.costo_original || 0);
     const u1 = s1 - c1;
 
-    const s2 = Number(selectedNewProduct.precioVenta);
+    const s2 = Number(selectedNewProduct.precioVenta || 0);
     const realC2 = (selectedNewProduct as any).precioCompra || (s2 * 0.75);
     const u2 = s2 - realC2;
 
@@ -146,7 +154,6 @@ const ReturnsWarranties: React.FC = () => {
       }
   };
 
-  // CORRECCIÓN DEL ERROR DE NULOS: Validamos cada campo contra '' antes de aplicar includes
   const filtered = warranties.filter(g => 
     (g.cod_venta || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (g.id_producto_original || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -155,7 +162,7 @@ const ReturnsWarranties: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in h-full flex flex-col pb-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2">
             <div>
                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><ShieldCheck className="text-emerald-600"/> Garantías y Devoluciones</h2>
                 <p className="text-slate-500 text-sm">Soporte técnico, reclamos de fábrica e intercambio de equipos.</p>
@@ -231,7 +238,7 @@ const ReturnsWarranties: React.FC = () => {
         {showModal && (
             <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-50 flex items-center justify-center p-2 md:p-4">
                 <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-fade-in flex flex-col h-[90vh]">
-                    <div className="p-5 md:p-6 border-b flex justify-between items-center bg-white">
+                    <div className="p-5 md:p-6 border-b flex justify-between items-center bg-white shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="bg-emerald-600 p-2 rounded-xl text-white"><ShieldCheck size={24}/></div>
                             <div>
@@ -241,7 +248,7 @@ const ReturnsWarranties: React.FC = () => {
                         </div>
                         <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full"><X/></button>
                     </div>
-                    <div className="p-5 md:p-8 space-y-6 overflow-y-auto custom-scrollbar bg-slate-50/30">
+                    <div className="p-5 md:p-8 space-y-6 overflow-y-auto custom-scrollbar bg-slate-50/30 flex-1">
                         <div className="space-y-4">
                             <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">1. Localizar Factura</label>
                             <div className="flex flex-col md:flex-row gap-2">
@@ -253,21 +260,23 @@ const ReturnsWarranties: React.FC = () => {
                         {foundInvoice && (
                             <div className="space-y-6 animate-fade-in">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Cliente: {foundInvoice.nombreCliente}</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Cliente: {foundInvoice.nombreCliente || 'Consumidor'}</p>
                                     <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-2">2. Seleccionar Producto</label>
-                                    <div className="space-y-2">
-                                        {foundInvoice.detalles?.map(d => (
-                                            <button key={d.codDetalleVenta} onClick={() => setSelectedDetail(d)} className={`w-full flex justify-between items-center p-3 rounded-xl border transition-all ${selectedDetail === d ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-slate-50 border-slate-100 hover:bg-white'}`}>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {foundInvoice.detalles && foundInvoice.detalles.length > 0 ? foundInvoice.detalles.map(d => (
+                                            <button key={d.codDetalleVenta} onClick={() => setSelectedDetail(d)} className={`w-full flex justify-between items-center p-3 rounded-xl border transition-all ${selectedDetail?.codDetalleVenta === d.codDetalleVenta ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-slate-50 border-slate-100 hover:bg-white'}`}>
                                                 <div className="flex items-center gap-3 text-left">
                                                     <Smartphone size={16} className="text-slate-400"/>
                                                     <div>
-                                                        <p className="text-xs font-bold text-slate-800">{d.descripcionProducto}</p>
-                                                        <p className="text-[9px] text-slate-500 font-mono">{d.idTelefono || d.idAccesorio}</p>
+                                                        <p className="text-xs font-bold text-slate-800">{d.descripcionProducto || 'Producto'}</p>
+                                                        <p className="text-[9px] text-slate-500 font-mono">{d.idTelefono || d.idAccesorio || 'N/A'}</p>
                                                     </div>
                                                 </div>
-                                                <span className="text-xs font-black text-indigo-600">L. {Number(d.precioVenta).toFixed(2)}</span>
+                                                <span className="text-xs font-black text-indigo-600">L. {Number(d.precioVenta || 0).toFixed(2)}</span>
                                             </button>
-                                        ))}
+                                        )) : (
+                                            <p className="text-xs text-slate-400 text-center py-4">No se encontraron productos en esta factura.</p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -277,7 +286,7 @@ const ReturnsWarranties: React.FC = () => {
                                     <textarea className="w-full p-3 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" rows={2} placeholder="Observaciones adicionales..." value={obs} onChange={e=>setObs(e.target.value)}/>
                                 </div>
 
-                                <button onClick={handleCreateWarranty} disabled={!selectedDetail || !falla} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-sm active:scale-95 disabled:opacity-50">
+                                <button onClick={handleCreateWarranty} disabled={!selectedDetail || !falla.trim()} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-sm active:scale-95 disabled:opacity-50">
                                     <Save size={20}/> REGISTRAR INGRESO
                                 </button>
                             </div>
@@ -312,24 +321,24 @@ const ReturnsWarranties: React.FC = () => {
                                 {products.filter(p => p.nombre.toLowerCase().includes(newProductSearch.toLowerCase()) && p.stock > 0).map(p => (
                                     <button key={p.id} onClick={() => setSelectedNewProduct(p)} className={`w-full p-3 rounded-2xl border text-left transition-all ${selectedNewProduct?.id === p.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-100 hover:border-indigo-300'}`}>
                                         <p className="text-xs font-bold leading-tight">{p.nombre}</p>
-                                        <p className={`text-[9px] font-black uppercase mt-1 ${selectedNewProduct?.id === p.id ? 'text-indigo-200' : 'text-slate-400'}`}>L. {Number(p.precioVenta).toFixed(2)}</p>
+                                        <p className={`text-[9px] font-black uppercase mt-1 ${selectedNewProduct?.id === p.id ? 'text-indigo-200' : 'text-slate-400'}`}>L. {Number(p.precioVenta || 0).toFixed(2)}</p>
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        <div className="w-full md:w-1/2 p-5 md:p-6 bg-white flex flex-col justify-between">
+                        <div className="w-full md:w-1/2 p-5 md:p-6 bg-white flex flex-col justify-between overflow-y-auto">
                             <div className="space-y-6">
                                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen de Cambio</p>
                                     <div className="space-y-2">
                                         <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">Equipo Original:</span>
-                                            <span className="font-bold">L. {Number(selectedWarranty.precio_venta_original).toFixed(2)}</span>
+                                            <span className="font-bold">L. {Number(selectedWarranty.precio_venta_original || 0).toFixed(2)}</span>
                                         </div>
                                         <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">Equipo Nuevo:</span>
-                                            <span className="font-bold">L. {selectedNewProduct ? Number(selectedNewProduct.precioVenta).toFixed(2) : '0.00'}</span>
+                                            <span className="font-bold">L. {selectedNewProduct ? Number(selectedNewProduct.precioVenta || 0).toFixed(2) : '0.00'}</span>
                                         </div>
                                         <div className="pt-2 border-t flex justify-between items-center">
                                             <span className="text-xs font-black text-indigo-600 uppercase">Diferencia Efectivo:</span>

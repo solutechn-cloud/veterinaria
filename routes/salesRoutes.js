@@ -43,10 +43,6 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
         const { fecha } = req.query; 
         const { codUsuario, idCaja } = req.user;
         
-        // LÓGICA DE FILTRADO CORREGIDA:
-        // 1. Mostrar ventas KrediYa PENDIENTES de cualquier fecha (Global).
-        // 2. Mostrar ventas del DÍA de la caja y usuario actual.
-        // 3. Si es Admin, mostrar ventas del DÍA de todas las cajas.
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             v.tipoCompra as "tipoCompra", v.estado_pago_financiera as "estado_pago_financiera",
@@ -84,8 +80,15 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
     try {
         const query = `
-            SELECT dv.*, 
-            COALESCE(t.marca || ' ' || t.modelo, a.descripcion) as "descripcionProducto"
+            SELECT 
+                dv.codDetalleVenta as "codDetalleVenta",
+                dv.idVenta as "idVenta",
+                dv.idTelefono as "idTelefono",
+                dv.idAccesorio as "idAccesorio",
+                dv.cantidad as "cantidad",
+                dv.precioVenta as "precioVenta",
+                dv.tipoProducto as "tipoProducto",
+                COALESCE(t.marca || ' ' || t.modelo, a.descripcion, 'Producto sin nombre') as "descripcionProducto"
             FROM detalleventa dv
             LEFT JOIN telefonos t ON dv.idTelefono = t.codigo
             LEFT JOIN accesorios a ON dv.idAccesorio = a.codAccesorio
@@ -132,7 +135,6 @@ router.post('/ventas', authenticateToken, async (req, res) => {
     const idIngreso = await generateNextId('ingresos', 'idIngreso', 'INGR', client);
     const esKrediya = (tipoCompra === 'KrediYa');
     
-    // LOGICA KREDIYA: El costo inicial es igual al monto (Prima) para que la utilidad sea 0 hoy y no negativa.
     const montoIngresoCaja = esKrediya ? Number(montoPrima) : Number(total);
     const costoIngresoCaja = esKrediya ? Number(montoPrima) : totalCostoReal;
     const subtipoMovimiento = esKrediya ? 'KrediYa_Prima' : 'Venta';
@@ -155,10 +157,10 @@ router.post('/ventas', authenticateToken, async (req, res) => {
       const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
       if (item.idTelefono) {
         await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [item.idTelefono]);
-        await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idTelefono, idIngreso, cantidad, precioVenta, estado) VALUES ($1,$2,$3,$4,1,$5,'Activo')`, [codDetalle, codVenta, item.idTelefono, idIngreso, item.precioVenta]);
+        await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idTelefono, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,1,$5,'Activo', 'TELEFONO')`, [codDetalle, codVenta, item.idTelefono, idIngreso, item.precioVenta]);
       } else if (item.idInventario) {
         await client.query("UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2", [item.cantidad, item.idInventario]);
-        await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idIngreso, cantidad, precioVenta, estado) VALUES ($1,$2,$3,$4,$5,$6,'Activo')`, [codDetalle, codVenta, item.idInventario, idIngreso, item.cantidad, item.precioVenta]);
+        await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,$5,$6,'Activo', 'ACCESORIO')`, [codDetalle, codVenta, item.idInventario, idIngreso, item.cantidad, item.precioVenta]);
       }
     }
 
