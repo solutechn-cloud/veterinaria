@@ -79,14 +79,23 @@ router.post('/inventory/telefonos', authenticateToken, async (req, res) => {
 
 router.put('/inventory/telefonos/:id', authenticateToken, async (req, res) => {
     try {
-        const { imei1, imei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion } = req.body;
+        const { imei1, imei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado } = req.body;
         const safeImei2 = imei2 || '';
         await pool.query(
-            `UPDATE telefonos SET imei1=$1, imei2=$2, marca=$3, modelo=$4, precioCompra=$5, precioVenta=$6, codProveedor=$7, fecha=$8, idubicacion=$9 
-             WHERE codigo=$10`,
-            [imei1, safeImei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion, req.params.id]
+            `UPDATE telefonos SET imei1=$1, imei2=$2, marca=$3, modelo=$4, precioCompra=$5, precioVenta=$6, codProveedor=$7, fecha=$8, idubicacion=$9, estado=$10
+             WHERE codigo=$11`,
+            [imei1, safeImei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado, req.params.id]
         );
         res.json({ message: 'Teléfono actualizado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+// NUEVO ENDPOINT: Actualizar solo el estado del teléfono
+router.put('/inventory/telefonos/:id/status', authenticateToken, async (req, res) => {
+    try {
+        const { estado } = req.body;
+        await pool.query('UPDATE telefonos SET estado = $1 WHERE codigo = $2', [estado, req.params.id]);
+        res.json({ message: 'Estado actualizado' });
     } catch(e) { handleDbError(res, e); }
 });
 

@@ -48,6 +48,7 @@ export const InventoryService = {
   getTelefonos: () => request<Telefono[]>('/inventory/telefonos'),
   createTelefono: (data: Partial<Telefono>) => request('/inventory/telefonos', { method: 'POST', body: JSON.stringify(data) }),
   updateTelefono: (id: string, data: Partial<Telefono>) => request(`/inventory/telefonos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateTelefonoStatus: (id: string, estado: string) => request(`/inventory/telefonos/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado }) }),
   deleteTelefono: (id: string) => request(`/inventory/telefonos/${id}`, { method: 'DELETE' }),
   
   getStockAccesorios: () => request<Inventario[]>('/inventory/stock'),
