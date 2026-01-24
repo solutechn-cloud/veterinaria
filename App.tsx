@@ -23,6 +23,7 @@ import CompanyConfig from './pages/CompanyConfig';
 import Accounting from './pages/Accounting';
 import Repairs from './pages/Repairs';
 import Consignments from './pages/Consignments';
+import ReturnsWarranties from './pages/ReturnsWarranties';
 
 const App: React.FC = () => {
   return (
@@ -49,6 +50,12 @@ const App: React.FC = () => {
           <Route path="/repairs" element={
             <ProtectedRoute requiredPermission="VER_CAJA">
               <Layout><Repairs /></Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/returns" element={
+            <ProtectedRoute requiredPermission="VER_CAJA">
+              <Layout><ReturnsWarranties /></Layout>
             </ProtectedRoute>
           } />
 

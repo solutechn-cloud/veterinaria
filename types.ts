@@ -1,9 +1,9 @@
 
-export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado';
+export type EstadoGeneral = 'Activo' | 'Inactivo' | 'Disponible' | 'Vendido' | 'Completada' | 'Anulada' | 'Cerrada' | 'Registrado' | 'Garantia' | 'Defectuoso';
 
 // Clasificación unificada para compatibilidad con DB
-export type SubtipoIngreso = 'Venta' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos' | 'Cobro Consignacion';
-export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario' | 'Pago a Tecnico' | 'Pago a Tienda Externa';
+export type SubtipoIngreso = 'Venta' | 'Reparacion' | 'Recarga' | 'KrediYa_Prima' | 'Cobros Venta a Negocios Externos' | 'Cobro Consignacion' | 'Ajuste Utilidad Cambio';
+export type SubtipoEgreso = 'Gasto Operativo' | 'Retiro Personal' | 'Pago Servicio de Reparación' | 'Pago Inventario Externo' | 'Nomina' | 'Compra Saldo' | 'Compra Inventario' | 'Pago a Tecnico' | 'Pago a Tienda Externa' | 'Perdida Margen Garantia';
 
 export interface Usuario {
   codUsuario: string;
@@ -205,6 +205,22 @@ export interface Reparacion {
   pago_tecnico_estado: 'Pendiente' | 'Pagado';
   fecha_ingreso: string;
   fecha_entrega_estimada?: string;
+}
+
+export interface Garantia {
+  id_garantia: number;
+  cod_venta: string;
+  id_producto_original: string;
+  tipo_producto: 'TELEFONO' | 'ACCESORIO';
+  falla_reportada: string;
+  estado_garantia: 'Pendiente' | 'En Taller' | 'Proveedor' | 'Listo' | 'Cambiado';
+  fecha_ingreso: string;
+  fecha_resolucion?: string;
+  costo_original: number;
+  precio_venta_original: number;
+  observaciones?: string;
+  identidad_cliente: string;
+  nombre_cliente?: string;
 }
 
 export interface Consignacion {

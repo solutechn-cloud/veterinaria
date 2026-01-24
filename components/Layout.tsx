@@ -5,7 +5,7 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { Link, useLocation, useNavigate } = ReactRouterDOM as any;
 import { useAuth } from '../context/AuthContext';
 import { 
-  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings, PieChart, Wrench, Hand
+  LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell, CloudLightning, ShieldCheck, Truck, ChevronDown, ChevronRight, Package, Briefcase, Box, UserCog, Calculator, Smartphone, Activity, Tag, Settings, PieChart, Wrench, Hand, ShieldAlert
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -52,6 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
         { name: 'Clientes', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
         { name: 'Reparaciones', path: '/repairs', icon: <Wrench size={18} />, permission: 'VER_CAJA' },
+        { name: 'Garantías', path: '/returns', icon: <ShieldAlert size={18} />, permission: 'VER_CAJA' },
         { name: 'Paquetes Recarga', path: '/packages', icon: <Smartphone size={18} />, permission: 'GESTIONAR_INVENTARIO' },
       ]
     },
