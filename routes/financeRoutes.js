@@ -181,11 +181,39 @@ router.put('/ingresos/:id', authenticateToken, async (req, res) => {
 });
 
 router.delete('/ingresos/:id', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const result = await pool.query('DELETE FROM ingresos WHERE idIngreso=$1 RETURNING idCaja', [req.params.id]);
-        if (result.rows[0]) await updateArqueoBalance(result.rows[0].idcaja);
-        res.json({ message: 'OK' });
-    } catch(e) { handleDbError(res, e); }
+        await client.query('BEGIN');
+
+        // Verificar si este ingreso está asociado a una venta (factura)
+        const ventaRes = await client.query(
+            'SELECT DISTINCT idVenta FROM detalleventa WHERE idIngreso = $1 LIMIT 1',
+            [req.params.id]
+        );
+
+        if (ventaRes.rows.length > 0) {
+            const idVenta = ventaRes.rows[0].idventa;
+
+            // Anular la factura asociada y restaurar inventario
+            await client.query("UPDATE ventas SET estado = 'Anulada' WHERE codVenta = $1", [idVenta]);
+
+            const details = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [idVenta]);
+            for (const d of details.rows) {
+                if (d.idtelefono) {
+                    await client.query("UPDATE telefonos SET estado = 'Disponible' WHERE codigo = $1", [d.idtelefono]);
+                } else if (d.idaccesorio) {
+                    await client.query("UPDATE inventario SET cantidad = cantidad + $1 WHERE codInventario = $2", [d.cantidad, d.idaccesorio]);
+                }
+            }
+        }
+
+        const result = await client.query('DELETE FROM ingresos WHERE idIngreso=$1 RETURNING idCaja', [req.params.id]);
+        const idCaja = result.rows[0]?.idcaja;
+
+        await client.query('COMMIT');
+        if (idCaja) await updateArqueoBalance(idCaja);
+        res.json({ message: 'OK', facturaAnulada: ventaRes.rows.length > 0 ? ventaRes.rows[0].idventa : null });
+    } catch(e) { await client.query('ROLLBACK'); handleDbError(res, e); } finally { client.release(); }
 });
 
 router.post('/egresos', authenticateToken, async (req, res) => {

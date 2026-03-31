@@ -233,22 +233,22 @@ const Inventory: React.FC = () => {
               return matchesSearch && matchesStatus;
           });
           return (
-              <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">Código</th><th className="p-3">Marca/Modelo</th><th className="p-3">IMEI</th><th className="p-3">Precio Venta</th><th className="p-3">Estado</th><th className="p-3 text-right">Acciones</th></tr></thead>
+              <table className="w-full text-center">
+                  <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">Código</th><th className="p-3">Marca/Modelo</th><th className="p-3">IMEI</th><th className="p-3">Precio Venta</th><th className="p-3">Estado</th><th className="p-3">Acciones</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">{filtered.map(p => (
                       <tr key={p.codigo} className="hover:bg-slate-50 text-sm">
-                          <td className="p-3 font-mono text-slate-500">{p.codigo}</td><td className="p-3 font-bold text-slate-700">{p.marca} {p.modelo}</td><td className="p-3 font-mono">{p.imei1}</td><td className="p-3 font-bold text-emerald-600">L. {Number(p.precioVenta).toFixed(2)}</td>
+                          <td className="p-3 font-mono text-slate-500 text-xs">{p.codigo}</td><td className="p-3 font-bold text-slate-700">{p.marca} {p.modelo}</td><td className="p-3 font-mono text-xs">{p.imei1}</td><td className="p-3 font-bold text-emerald-600">L. {Number(p.precioVenta).toFixed(2)}</td>
                           <td className="p-3">
-                              <button onClick={() => handleChangePhoneStatus(p)} className={`px-2 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1 transition-transform active:scale-95 ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : p.estado === 'Vendido' ? 'bg-indigo-100 text-indigo-700' : p.estado === 'Defectuoso' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                              <button onClick={() => handleChangePhoneStatus(p)} className={`px-2 py-1 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1 transition-transform active:scale-95 ${p.estado === 'Disponible' ? 'bg-green-100 text-green-700' : p.estado === 'Vendido' ? 'bg-indigo-100 text-indigo-700' : p.estado === 'Defectuoso' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                                   {p.estado === 'Disponible' ? <CheckCircle size={10}/> : p.estado === 'Vendido' ? <Package size={10}/> : p.estado === 'Defectuoso' ? <AlertTriangle size={10}/> : <Clock size={10}/>}
                                   {p.estado}
                               </button>
                           </td>
-                          <td className="p-3 text-right flex justify-end gap-1">
+                          <td className="p-3"><div className="flex justify-center gap-1">
                               <button onClick={() => handlePrintLabel(p, 'TELEFONO')} className="text-slate-400 hover:text-slate-600 p-1.5 rounded" title="Imprimir"><Printer size={16}/></button>
                               <button onClick={() => openModal(p)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                               <button onClick={() => handleDelete(p.codigo)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
-                          </td>
+                          </div></td>
                       </tr>))}
                   </tbody>
               </table>
@@ -262,18 +262,18 @@ const Inventory: React.FC = () => {
             return matchesSearch && matchesCat;
         });
         return (
-            <table className="w-full text-left">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">SKU</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3 text-center">Cant.</th><th className="p-3 text-right">P. Venta</th><th className="p-3 text-right">Acciones</th></tr></thead>
+            <table className="w-full text-center">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">SKU</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3">Cant.</th><th className="p-3">P. Venta</th><th className="p-3">Acciones</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{filtered.map(s => (
                     <tr key={s.codInventario} className="hover:bg-slate-50 text-sm">
-                        <td className="p-3 font-mono text-slate-500 text-xs">{s.codInventario}</td><td className="p-3 font-bold text-slate-700">{s.descripcionAccesorio}</td><td className="p-3 text-[10px] font-black uppercase text-slate-400">{s.categoriaAccesorio}</td>
-                        <td className="p-3 text-center"><span className={`px-2 py-1 rounded-md font-bold text-xs ${s.cantidad > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{s.cantidad}</span></td>
-                        <td className="p-3 text-right font-bold text-indigo-600">L. {Number(s.precioVenta).toFixed(2)}</td>
-                        <td className="p-3 text-right flex justify-end gap-1">
+                        <td className="p-3 font-mono text-slate-500 text-xs">{s.codInventario}</td><td className="p-3 font-bold text-slate-700">{s.descripcionAccesorio}</td><td className="p-3 text-xs font-bold uppercase text-slate-500">{s.categoriaAccesorio}</td>
+                        <td className="p-3"><span className={`px-2 py-1 rounded-md font-bold text-xs ${s.cantidad > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{s.cantidad}</span></td>
+                        <td className="p-3 font-bold text-indigo-600">L. {Number(s.precioVenta).toFixed(2)}</td>
+                        <td className="p-3"><div className="flex justify-center gap-1">
                             <button onClick={() => handlePrintLabel(s, 'STOCK')} className="text-slate-400 hover:text-slate-600 p-1.5 rounded"><Printer size={16}/></button>
                             <button onClick={() => openModal(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                             <button onClick={() => handleDelete(s.codInventario)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
-                        </td>
+                        </div></td>
                     </tr>))}
                 </tbody>
             </table>
@@ -281,12 +281,12 @@ const Inventory: React.FC = () => {
       }
       if (activeTab === 'MASTER') {
           return (
-            <table className="w-full text-left">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">ID</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3 text-right">Acciones</th></tr></thead>
+            <table className="w-full text-center">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-3">ID</th><th className="p-3">Descripción</th><th className="p-3">Categoría</th><th className="p-3">Acciones</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{master.filter(m => m.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) || m.codAccesorio.toLowerCase().includes(searchTerm.toLowerCase())).map(m => (
                     <tr key={m.codAccesorio} className="hover:bg-slate-50 text-sm">
-                        <td className="p-3 font-mono text-slate-500 text-xs">{m.codAccesorio}</td><td className="p-3 font-bold text-slate-700">{m.descripcion}</td><td className="p-3 text-xs">{m.nombreCategoria || m.codCategoria}</td>
-                        <td className="p-3 text-right"><button onClick={() => openModal(m)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded mr-1"><Edit2 size={16}/></button><button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button></td>
+                        <td className="p-3 font-mono text-slate-500 text-xs">{m.codAccesorio}</td><td className="p-3 font-bold text-slate-700">{m.descripcion}</td><td className="p-3 text-xs font-bold uppercase text-slate-500">{m.nombreCategoria || m.codCategoria}</td>
+                        <td className="p-3"><div className="flex justify-center gap-1"><button onClick={() => openModal(m)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button><button onClick={() => handleDelete(m.codAccesorio)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button></div></td>
                     </tr>))}
                 </tbody>
             </table>
@@ -408,7 +408,7 @@ const Inventory: React.FC = () => {
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">P. Venta</label><input required type="number" className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl font-black text-emerald-700 text-lg" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})} /></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Ubicación</label><select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}><option value="">Seleccionar...</option>{locations.map(l => (<option key={l.idUbicacion} value={l.idUbicacion}>{l.nombre}</option>))}</select></div>
+                                <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Ubicación</label><select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}><option value="">Seleccionar...</option>{locations.map(l => (<option key={l.idUbicacion} value={l.idUbicacion}>{l.nombre}{l.estante ? ` — Mueble: ${l.estante}` : ''}{l.nivel ? ` | Nivel: ${l.nivel}` : ''}</option>))}</select></div>
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Proveedor</label><select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={stockForm.codProveedor || ''} onChange={e => setStockForm({...stockForm, codProveedor: e.target.value})}><option value="">Seleccionar...</option>{providers.map(p => <option key={p.codProveedor} value={p.codProveedor}>{p.nombre}</option>)}</select></div>
                             </div>
                         </div>

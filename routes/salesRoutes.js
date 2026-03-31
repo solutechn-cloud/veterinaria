@@ -253,6 +253,13 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         if (ventaRes.rows.length === 0) throw new Error('Venta no encontrada');
         const idCajaActual = ventaRes.rows[0].idcaja;
 
+        // Obtener idIngreso vinculado a esta venta antes de borrar detalles
+        const ingresoVinculadoRes = await client.query(
+            'SELECT idIngreso FROM detalleventa WHERE idVenta = $1 LIMIT 1',
+            [codVenta]
+        );
+        const idIngresoVinculado = ingresoVinculadoRes.rows[0]?.idingreso || null;
+
         // Restaurar inventario de los detalles anteriores
         const oldDetails = await client.query('SELECT * FROM detalleventa WHERE idVenta = $1', [codVenta]);
         for (const d of oldDetails.rows) {
@@ -303,28 +310,25 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
             [identidadCliente, tipoCompra, total, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, esKrediya, codVenta]
         );
 
-        // Actualizar ingreso asociado
-        await client.query(
-            `UPDATE ingresos SET descripcion=$1, monto=$2, costo=$3, subtipo_movimiento=$4
-             WHERE descripcion LIKE $5 AND idCaja=$6`,
-            [descripcionVenta, montoIngresoCaja, costoIngresoCaja, esKrediya ? 'KrediYa_Prima' : 'Venta', `%FACTURA #${codVenta}%`, idCajaActual]
-        );
+        // Actualizar ingreso asociado usando el idIngreso directo (si existe el vínculo)
+        if (idIngresoVinculado) {
+            await client.query(
+                `UPDATE ingresos SET descripcion=$1, monto=$2, costo=$3, subtipo_movimiento=$4
+                 WHERE idIngreso=$5`,
+                [descripcionVenta, montoIngresoCaja, costoIngresoCaja, esKrediya ? 'KrediYa_Prima' : 'Venta', idIngresoVinculado]
+            );
+        }
 
         // Insertar nuevos detalles y actualizar inventario
         for (const item of detalles) {
             const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
-            const ingresoRes = await client.query(
-                "SELECT idIngreso FROM ingresos WHERE descripcion LIKE $1 AND idCaja=$2 LIMIT 1",
-                [`%FACTURA #${codVenta}%`, idCajaActual]
-            );
-            const idIngreso = ingresoRes.rows[0]?.idingreso;
 
             if (item.idTelefono) {
                 await client.query("UPDATE telefonos SET estado = 'Vendido' WHERE codigo = $1", [item.idTelefono]);
-                await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idTelefono, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,1,$5,'Activo','TELEFONO')`, [codDetalle, codVenta, item.idTelefono, idIngreso, item.precioVenta]);
+                await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idTelefono, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,1,$5,'Activo','TELEFONO')`, [codDetalle, codVenta, item.idTelefono, idIngresoVinculado, item.precioVenta]);
             } else if (item.idInventario) {
                 await client.query("UPDATE inventario SET cantidad = cantidad - $1 WHERE codInventario = $2", [item.cantidad, item.idInventario]);
-                await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,$5,$6,'Activo','ACCESORIO')`, [codDetalle, codVenta, item.idInventario, idIngreso, item.cantidad, item.precioVenta]);
+                await client.query(`INSERT INTO detalleventa (codDetalleVenta, idVenta, idAccesorio, idIngreso, cantidad, precioVenta, estado, tipoProducto) VALUES ($1,$2,$3,$4,$5,$6,'Activo','ACCESORIO')`, [codDetalle, codVenta, item.idInventario, idIngresoVinculado, item.cantidad, item.precioVenta]);
             }
         }
 
