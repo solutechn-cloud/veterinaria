@@ -479,11 +479,17 @@ const CashRegister: React.FC = () => {
                       <button onClick={() => handleReprintInvoice(v.codVenta)} className="p-1.5 text-slate-500 hover:text-indigo-600 transition-colors" title="Reimprimir"><Printer size={16}/></button>
                       {v.estado !== 'Anulada' && (
                         <>
+                            {/* Depositar KrediYa: visible para CUALQUIER usuario con caja */}
                             {v.tipoCompra === 'KrediYa' && v.estado_pago_financiera === 'Pendiente' && (
-                                <button onClick={() => handleConfirmarDeposito(v.codVenta)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Confirmar Depósito"><CheckCircle size={16}/></button>
+                                <button onClick={() => handleConfirmarDeposito(v.codVenta)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded" title="Confirmar Depósito KrediYa"><CheckCircle size={16}/></button>
                             )}
-                            <button onClick={() => navigate('/pos', { state: { editSaleId: v.codVenta } })} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar"><Edit2 size={16}/></button>
-                            <button onClick={() => handleAnularVenta(v.codVenta)} className="p-1.5 text-red-400 hover:text-red-600" title="Anular"><Ban size={16}/></button>
+                            {/* Editar y Anular: solo para ventas propias */}
+                            {v.codVendedor === user?.codUsuario && (
+                                <>
+                                    <button onClick={() => navigate('/pos', { state: { editSaleId: v.codVenta } })} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded" title="Editar"><Edit2 size={16}/></button>
+                                    <button onClick={() => handleAnularVenta(v.codVenta)} className="p-1.5 text-red-400 hover:text-red-600" title="Anular"><Ban size={16}/></button>
+                                </>
+                            )}
                         </>
                       )}
                   </td></tr>))}</tbody></table></div>

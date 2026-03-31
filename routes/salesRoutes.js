@@ -46,6 +46,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
         let query = `
             SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado, v.identidadCliente as "identidadCliente",
             v.tipoCompra as "tipoCompra", v.estado_pago_financiera as "estado_pago_financiera",
+            v.codVendedor as "codVendedor",
             c.nombre || ' ' || c.apellido as "nombreCliente"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
@@ -77,13 +78,14 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
                 v.descuento, 
                 v.monto_prima as "montoPrima", 
                 v.monto_financiamiento as "montoFinanciado",
-                c.nombre as "nombreCliente", 
-                c.apellido as "apellidoCliente", 
-                c.direccion as "direccionCliente", 
-                u.usuario as "nombreVendedor"
+                c.nombre as "nombreCliente",
+                c.apellido as "apellidoCliente",
+                c.direccion as "direccionCliente",
+                COALESCE(e.nombre || ' ' || e.apellido, u.usuario) as "nombreVendedor"
             FROM ventas v
             JOIN clientes c ON v.identidadCliente = c.identidad
             JOIN usuarios u ON v.codVendedor = u.codUsuario
+            LEFT JOIN empleado e ON u.identidad = e.identidad
             WHERE v.codVenta = $1
         `;
         const r = await pool.query(query, [req.params.id]);
