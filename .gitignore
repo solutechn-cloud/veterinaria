@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build output
+build/
+
+# Claude Code (herramienta de desarrollo local, no va al repo)
+.claude/
+.claude-flow/
+.mcp.json
+CLAUDE.md
