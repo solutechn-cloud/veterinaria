@@ -161,6 +161,8 @@ export const ReportsService = {
   getInventoryValuation: () => request<any[]>('/reports/inventory-valuation'),
   getTopClients: (startDate: string, endDate: string) => request<any[]>(`/reports/top-clients?startDate=${startDate}&endDate=${endDate}`),
   getDailySales: (startDate: string, endDate: string) => request<any[]>(`/reports/daily-sales?startDate=${startDate}&endDate=${endDate}`),
+  getKpiSummary: (startDate: string, endDate: string) => request<any>(`/reports/kpi-summary?startDate=${startDate}&endDate=${endDate}`),
+  getSalesBySeller: (startDate: string, endDate: string) => request<any[]>(`/reports/sales-by-seller?startDate=${startDate}&endDate=${endDate}`),
 };
 
 export const AdminService = {
