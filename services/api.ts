@@ -26,7 +26,7 @@ const API_URL = '/api';
 
 // request helper function
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('smartcloud_token');
+  const token = localStorage.getItem('sc_token');
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -147,6 +147,7 @@ export const CashService = {
   getBoxHistory: (idCaja: string) => request<any[]>(`/admin/boxes/${idCaja}/history`),
   getSaldosByDate: (fecha: string) => request<Saldo[]>(`/admin/saldos?fecha=${fecha}`),
   updateSaldo: (id: string, data: any) => request(`/admin/saldos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  reopenCaja: (idArqueo: string) => request(`/admin/arqueo/${idArqueo}/reopen`, { method: 'PUT' }),
   /**
    * Fix: Added updateInitialAmount method to match route and usage in AdminCashDashboard
    */
@@ -211,8 +212,12 @@ export const CostsService = {
 };
 
 export const AccountingService = {
-  getAuditTransactions: (date: string) => request<any[]>(`/accounting/audit/transactions?date=${date}`),
-  getProfitabilityReport: (date: string) => request<any>(`/accounting/report/profitability?date=${date}`),
+  getAuditTransactions: (startDate: string, endDate: string) => request<any[]>(`/accounting/audit/transactions?startDate=${startDate}&endDate=${endDate}`),
+  getProfitabilityReport: (startDate: string, endDate: string) => request<any>(`/accounting/report/profitability?startDate=${startDate}&endDate=${endDate}`),
+  getOpexReport: (startDate: string, endDate: string) => request<any>(`/accounting/report/opex?startDate=${startDate}&endDate=${endDate}`),
   getSocios: () => request<Socio[]>('/accounting/socios'),
+  createSocio: (data: any) => request('/accounting/socios', { method: 'POST', body: JSON.stringify(data) }),
+  updateSocio: (id: number, data: any) => request(`/accounting/socios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSocio: (id: number) => request(`/accounting/socios/${id}`, { method: 'DELETE' }),
   updateAuditTransaction: (tipo: string, id: string, data: any) => request(`/accounting/audit/transactions/${tipo}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };

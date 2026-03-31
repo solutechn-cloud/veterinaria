@@ -115,6 +115,37 @@ router.get('/admin/boxes/:id/history', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
+router.put('/admin/arqueo/:id/reopen', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const arqRes = await client.query(
+            'SELECT idArqueo, idCaja, estado FROM arqueo WHERE idArqueo = $1',
+            [req.params.id]
+        );
+        if (arqRes.rows.length === 0) throw new Error('Arqueo no encontrado');
+        const arqueo = arqRes.rows[0];
+
+        if (arqueo.estado === 'Activo') throw new Error('Esta caja ya está activa');
+
+        const activeCheck = await client.query(
+            "SELECT idArqueo FROM arqueo WHERE idCaja = $1 AND estado = 'Activo'",
+            [arqueo.idcaja]
+        );
+        if (activeCheck.rows.length > 0) throw new Error('Ya existe una sesión activa para esta caja. Ciérrela primero.');
+
+        await client.query(
+            "UPDATE arqueo SET estado = 'Activo', fechaCierre = NULL WHERE idArqueo = $1",
+            [req.params.id]
+        );
+
+        await updateArqueoBalance(arqueo.idcaja, client);
+        await client.query('COMMIT');
+        res.json({ message: 'Caja reaperturada correctamente' });
+    } catch(e) { await client.query('ROLLBACK'); handleDbError(res, e); } finally { client.release(); }
+});
+
 // --- SALDOS (PARA ADMIN) ---
 router.get('/admin/saldos', authenticateToken, async (req, res) => {
     try {

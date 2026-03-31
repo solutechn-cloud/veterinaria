@@ -173,9 +173,53 @@ app.post('/api/auth/login', async (req, res) => {
       permisos: permisos
     };
 
-    const token = jwt.sign(userData, JWT_SECRET, { expiresIn: '12h' });
-    res.json({ token, user: userData });
+    const REFRESH_SECRET = process.env.REFRESH_SECRET || (JWT_SECRET + '_refresh');
+    const token = jwt.sign(userData, JWT_SECRET, { expiresIn: '8h' });
+    const refreshToken = jwt.sign(
+      { codUsuario: userData.codUsuario, tokenType: 'refresh' },
+      REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.json({ token, refreshToken, user: userData });
   } catch (err) { res.status(500).json({ error: 'Error interno' }); }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh token requerido' });
+  try {
+    const REFRESH_SECRET = process.env.REFRESH_SECRET || (JWT_SECRET + '_refresh');
+    const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    if (decoded.tokenType !== 'refresh') return res.status(403).json({ error: 'Token inválido' });
+
+    const query = `
+      SELECT u.codUsuario as "codUsuario", u.usuario, u.identidad, u.idCaja as "idCaja", u.idrol, u.estado,
+        r.nombre as "rol_nombre", e.nombre as "emp_nombre", e.apellido as "emp_apellido"
+      FROM usuarios u
+      LEFT JOIN roles r ON u.idrol = r.idrol
+      LEFT JOIN empleado e ON u.identidad = e.identidad
+      WHERE u.codUsuario = $1 AND u.estado = 'Activo'
+    `;
+    const result = await pool.query(query, [decoded.codUsuario]);
+    const userRaw = result.rows[0];
+    if (!userRaw) return res.status(403).json({ error: 'Usuario no encontrado o inactivo' });
+
+    const permResult = await pool.query('SELECT idPermiso FROM rol_permisos WHERE idRol = $1', [userRaw.idrol]);
+    const permisos = permResult.rows.map(r => r.idpermiso);
+
+    const userData = {
+      codUsuario: userRaw.codUsuario,
+      usuario: userRaw.usuario,
+      rol: userRaw.rol_nombre || 'Sin Rol',
+      idCaja: userRaw.idCaja || 'Sin Caja',
+      nombreEmpleado: userRaw.emp_nombre ? `${userRaw.emp_nombre} ${userRaw.emp_apellido}` : 'Empleado',
+      permisos,
+    };
+    const newToken = jwt.sign(userData, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token: newToken, user: userData });
+  } catch (err) {
+    res.status(403).json({ error: 'Refresh token inválido o expirado' });
+  }
 });
 
 app.use(express.static(path.join(__dirname, 'build')));

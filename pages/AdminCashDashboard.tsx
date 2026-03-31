@@ -291,6 +291,26 @@ const AdminCashDashboard: React.FC = () => {
       } catch(e:any) { Swal.fire('Error', e.message, 'error'); }
   };
 
+  const handleReopenCaja = async (box: BoxStatus) => {
+      if (!box.idArqueo) return Swal.fire('Sin sesión', 'Esta caja no tiene ningún arqueo registrado.', 'info');
+      const result = await Swal.fire({
+          title: '¿Reaperturar caja?',
+          html: `<p class="text-sm text-slate-600">Se reabrirá la sesión <b>${box.idArqueo}</b> de <b>${box.nombreCaja}</b>.</p><p class="text-xs text-amber-600 mt-2">Solo usa esta opción si la caja se cerró por error.</p>`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#f59e0b',
+          cancelButtonText: 'Cancelar',
+          confirmButtonText: 'Sí, reaperturar'
+      });
+      if (!result.isConfirmed) return;
+      try {
+          Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+          await CashService.reopenCaja(box.idArqueo);
+          await loadData();
+          Swal.fire({ icon: 'success', title: 'Caja reaperturada', text: 'La sesión está activa nuevamente.', timer: 2000, showConfirmButton: false });
+      } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
+  };
+
   const deleteTransaction = async (id: string, type: 'INGRESO' | 'EGRESO') => {
       if(!selectedBox || !sessionDetails) return;
       const result = await Swal.fire({ title: '¿Eliminar registro?', text: 'Esto alterará permanentemente el balance de esta sesión.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, eliminar', confirmButtonColor: '#ef4444' });
@@ -324,7 +344,12 @@ const AdminCashDashboard: React.FC = () => {
                       <div className="flex justify-between text-sm"><span className="text-slate-500">Efectivo Actual:</span><span className={`font-bold ${Number(box.montoFinal) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>L. {Number(box.montoFinal || 0).toFixed(2)}</span></div>
                       <div className="flex justify-between text-sm pt-2 border-t border-slate-200"><span className="text-slate-500 font-bold">Ganancia (Est.):</span><span className="font-bold text-indigo-600">L. {Number(box.ganancia || 0).toFixed(2)}</span></div>
                   </div>
-                  <button onClick={() => openManager(box)} className="w-full py-2.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"><Eye size={16}/> Gestionar / Auditar</button>
+                  <div className="flex gap-2">
+                      <button onClick={() => openManager(box)} className="flex-1 py-2.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"><Eye size={16}/> Gestionar</button>
+                      {box.estadoArqueo !== 'Activo' && box.idArqueo && (
+                          <button onClick={() => handleReopenCaja(box)} className="py-2.5 px-3 bg-amber-50 text-amber-600 border border-amber-100 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5" title="Reaperturar caja"><Unlock size={16}/> Reaperturar</button>
+                      )}
+                  </div>
               </div>
           ))}
        </div>
