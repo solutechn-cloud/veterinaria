@@ -153,11 +153,14 @@ const Accounting: React.FC = () => {
     doc.setFontSize(18); doc.text('REPORTE DE RENTABILIDAD', 14, 20);
     doc.setFontSize(10); doc.text(`Periodo: ${label}`, 14, 28);
     const mainData = [
-      ['Ingresos Totales', fmt(m.ingresos)],
-      ['(-) Costo Mercancía', fmt(m.costos)],
-      ['Utilidad Bruta', fmt(m.utilBruta)],
-      ['(-) Gastos Operativos', fmt(m.gastosGral)],
-      ['UTILIDAD NETA NEGOCIO', fmt(m.utilNetaNegocio)],
+      ['Ventas Brutas (Ingresos)', fmt(m.ingresos)],
+      ['(-) Costo de Mercancía (COGS)', `- ${fmt(m.costos)}`],
+      ['= Utilidad Bruta', fmt(m.utilBruta)],
+      ['(-) Gastos Operativos', `- ${fmt(m.gastosGral)}`],
+      ['= UTILIDAD NETA DISTRIBUIBLE', fmt(m.utilNetaNegocio)],
+      ['', ''],
+      ['[INFO] Compra de Mercadería (no resta utilidad)', fmt(m.inversion)],
+      ['[INFO] Otros Egresos (no resta utilidad)', fmt(m.otrosEgresos || 0)],
     ];
     // @ts-ignore
     doc.autoTable({ startY: 35, head: [['Concepto', 'Monto']], body: mainData, theme: 'grid' });
@@ -223,49 +226,108 @@ const Accounting: React.FC = () => {
       {/* DASHBOARD */}
       {!loading && activeTab === 'DASHBOARD' && report && (
         <div className="space-y-4 overflow-y-auto flex-1 pr-1">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl">
-              <p className="text-indigo-300 text-[10px] font-black uppercase mb-1">Ventas Brutas</p>
-              <h3 className="text-3xl font-black">{fmt(report.metrics.ingresos)}</h3>
+          {/* Waterfall de rentabilidad */}
+          <div className="bg-white rounded-2xl border shadow-sm p-5">
+            <h3 className="text-xs font-black text-slate-500 uppercase mb-4">Estado de Resultados</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <span className="text-sm font-bold text-slate-700">Ventas Brutas (Ingresos)</span>
+                <span className="text-lg font-black text-slate-900">{fmt(report.metrics.ingresos)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <div>
+                  <span className="text-sm text-red-600 font-bold">(-) Costo de Mercancía</span>
+                  <p className="text-[10px] text-slate-400">Costo registrado por venta en ingresos</p>
+                </div>
+                <span className="text-base font-bold text-red-600">- {fmt(report.metrics.costos)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 bg-blue-50 rounded-xl px-3">
+                <span className="text-sm font-black text-blue-700">= Utilidad Bruta</span>
+                <span className="text-lg font-black text-blue-700">{fmt(report.metrics.utilBruta)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <div>
+                  <span className="text-sm text-red-600 font-bold">(-) Gastos Operativos</span>
+                  <p className="text-[10px] text-slate-400">Únicos que afectan la distribución entre socios</p>
+                </div>
+                <span className="text-base font-bold text-red-600">- {fmt(report.metrics.gastosGral)}</span>
+              </div>
+              <div className="flex justify-between items-center py-3 bg-emerald-50 rounded-xl px-3 border border-emerald-200">
+                <div>
+                  <span className="text-sm font-black text-emerald-800">= UTILIDAD NETA DISTRIBUIBLE</span>
+                  <p className="text-[10px] text-emerald-600">Base para distribución entre socios</p>
+                </div>
+                <span className="text-2xl font-black text-emerald-700">{fmt(report.metrics.utilNetaNegocio)}</span>
+              </div>
             </div>
-            <div className="bg-red-50 border border-red-100 rounded-3xl p-6">
-              <p className="text-red-400 text-[10px] font-black uppercase mb-1">Gastos Operativos</p>
-              <h3 className="text-2xl font-bold text-red-600">{fmt(report.metrics.gastosGral)}</h3>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6">
-              <p className="text-emerald-600 text-[10px] font-black uppercase mb-1">Utilidad Neta</p>
-              <h3 className="text-3xl font-black text-emerald-700">{fmt(report.metrics.utilNetaNegocio)}</h3>
-            </div>
+            {/* Egresos informativos (no afectan distribución) */}
+            {(report.metrics.inversion > 0 || report.metrics.otrosEgresos > 0) && (
+              <div className="mt-4 pt-4 border-t border-dashed border-slate-200">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Egresos Informativos (no reducen utilidad distribuible)</p>
+                <div className="flex gap-4 flex-wrap">
+                  {report.metrics.inversion > 0 && (
+                    <div className="bg-purple-50 rounded-xl px-4 py-2">
+                      <p className="text-[10px] text-purple-500 font-bold uppercase">Compra de Mercadería</p>
+                      <p className="text-base font-black text-purple-700">{fmt(report.metrics.inversion)}</p>
+                    </div>
+                  )}
+                  {report.metrics.otrosEgresos > 0 && (
+                    <div className="bg-slate-50 rounded-xl px-4 py-2">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">Otros Egresos</p>
+                      <p className="text-base font-black text-slate-700">{fmt(report.metrics.otrosEgresos)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: 'Costo Mercancía', val: report.metrics.costos, icon: <TrendingDown size={16} />, color: 'text-orange-600' },
-              { label: 'Utilidad Bruta', val: report.metrics.utilBruta, icon: <TrendingUp size={16} />, color: 'text-blue-600' },
-              { label: 'Inversión', val: report.metrics.inversion, icon: <DollarSign size={16} />, color: 'text-purple-600' },
-              { label: '% Margen', val: null, icon: <Percent size={16} />, color: 'text-indigo-600' },
+              { label: 'Ventas Brutas', val: report.metrics.ingresos, icon: <TrendingUp size={16} />, color: 'text-slate-800', bg: 'bg-slate-900', textColor: 'text-white' },
+              { label: 'Gastos Operativos', val: report.metrics.gastosGral, icon: <TrendingDown size={16} />, color: 'text-red-600', bg: 'bg-red-50', textColor: 'text-red-700' },
+              { label: 'Utilidad Neta', val: report.metrics.utilNetaNegocio, icon: <DollarSign size={16} />, color: 'text-emerald-600', bg: 'bg-emerald-50', textColor: 'text-emerald-700' },
+              { label: '% Margen Neto', val: null, icon: <Percent size={16} />, color: 'text-indigo-600', bg: 'bg-indigo-50', textColor: 'text-indigo-700' },
             ].map((card, i) => (
-              <div key={i} className="bg-white border rounded-2xl p-4 shadow-sm">
+              <div key={i} className={`${card.bg} border rounded-2xl p-4 shadow-sm`}>
                 <div className={`mb-1 ${card.color}`}>{card.icon}</div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase">{card.label}</p>
-                <p className={`text-lg font-black ${card.color}`}>
+                <p className={`text-lg font-black ${card.textColor}`}>
                   {card.val !== null ? fmt(card.val) : (report.metrics.ingresos > 0 ? `${((report.metrics.utilNetaNegocio / report.metrics.ingresos) * 100).toFixed(1)}%` : '0%')}
                 </p>
               </div>
             ))}
           </div>
+
+          {/* Distribución de Ganancias */}
           <div>
-            <h3 className="text-sm font-black text-slate-700 uppercase mb-3">Distribucion de Ganancias</h3>
+            <h3 className="text-sm font-black text-slate-700 uppercase mb-3">Distribución de Ganancias entre Socios</h3>
+            {report.distribucion?.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-700">No hay socios activos registrados. Ve a la pestaña Socios para agregarlos.</div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {report.distribucion?.map((d: any, i: number) => (
                 <div key={i} className="bg-white border rounded-2xl p-5 shadow-sm hover:border-indigo-300 transition-all relative">
                   <span className="absolute top-4 right-4 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-[10px] font-black">{d.porcentaje}%</span>
                   <h4 className="text-base font-bold mb-3">{d.socio}</h4>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500">Ganancia Bruta</span><span className="font-bold">{fmt(d.gananciaBruta)}</span></div>
-                    <div className="flex justify-between text-red-600"><span>Deduccion Personal</span><span className="font-bold">- {fmt(d.deduccionPersonal)}</span></div>
+                    <div className="flex justify-between text-slate-400 text-[10px]">
+                      <span>Base distribución</span><span>{fmt(report.metrics.utilNetaNegocio)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Participación ({d.porcentaje}%)</span>
+                      <span className="font-bold">{fmt(d.gananciaBruta)}</span>
+                    </div>
+                    {d.deduccionPersonal > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Deducción Personal</span>
+                        <span className="font-bold">- {fmt(d.deduccionPersonal)}</span>
+                      </div>
+                    )}
                     <div className="border-t pt-2 flex justify-between items-center">
                       <span className="font-black text-slate-700 text-xs uppercase">Ganancia Neta</span>
-                      <span className="text-xl font-black text-emerald-600">{fmt(d.gananciaNeta)}</span>
+                      <span className={`text-xl font-black ${d.gananciaNeta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(d.gananciaNeta)}</span>
                     </div>
                   </div>
                 </div>

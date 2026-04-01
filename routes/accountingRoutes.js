@@ -53,17 +53,26 @@ router.get('/report/profitability', authenticateToken, async (req, res) => {
         const start = `${startDate} 00:00:00`;
         const end = `${endDate} 23:59:59`;
 
-        const [ingRow, opexRow, invRow, deducRow, sociosRow] = await Promise.all([
+        const [ingRow, opexRow, invRow, otrosEgresosRow, deducRow, sociosRow] = await Promise.all([
             pool.query(
                 `SELECT COALESCE(SUM(monto),0) as ing, COALESCE(SUM(costo),0) as cst
                  FROM ingresos WHERE fechaCreacion BETWEEN $1 AND $2`, [start, end]),
+            // FIX: Solo 'Gasto Operativo' explícito reduce la ganancia distribuible.
+            // Los costos de mercancía ya están capturados en ingresos.costo (COGS por venta).
+            // Las compras sin categoría o de producto NO se restan de la utilidad neta.
             pool.query(
                 `SELECT COALESCE(SUM(monto),0) as tot FROM egresos
-                 WHERE (categoria = 'Gasto Operativo' OR categoria IS NULL)
+                 WHERE categoria = 'Gasto Operativo'
                  AND id_socio_asignado IS NULL AND fechaCreacion BETWEEN $1 AND $2`, [start, end]),
             pool.query(
                 `SELECT COALESCE(SUM(monto),0) as tot FROM egresos
                  WHERE categoria = 'Compra de Producto' AND fechaCreacion BETWEEN $1 AND $2`, [start, end]),
+            // Otros egresos (sin categoria o categorias distintas a Gasto Operativo y Compra de Producto)
+            // — se muestran informativamente pero NO restan la utilidad distribuible
+            pool.query(
+                `SELECT COALESCE(SUM(monto),0) as tot FROM egresos
+                 WHERE (categoria IS NULL OR (categoria <> 'Gasto Operativo' AND categoria <> 'Compra de Producto'))
+                 AND id_socio_asignado IS NULL AND fechaCreacion BETWEEN $1 AND $2`, [start, end]),
             pool.query(
                 `SELECT id_socio_asignado, COALESCE(SUM(monto),0) as total FROM egresos
                  WHERE id_socio_asignado IS NOT NULL AND fechaCreacion BETWEEN $1 AND $2
@@ -74,12 +83,16 @@ router.get('/report/profitability', authenticateToken, async (req, res) => {
 
         const ingresos = Number(ingRow.rows[0].ing);
         const costos = Number(ingRow.rows[0].cst);
+        // utilBruta = Ventas totales - COGS (costo de cada venta ya registrado en ingresos.costo)
         const utilBruta = ingresos - costos;
+        // Solo los gastos operativos explícitos reducen la utilidad distribuible entre socios
         const gastosGral = Number(opexRow.rows[0].tot);
         const utilNetaNegocio = utilBruta - gastosGral;
+        // Compras de mercadería e inversiones: informativas, no reducen la utilidad distribuible
         const inversion = Number(invRow.rows[0].tot);
+        const otrosEgresos = Number(otrosEgresosRow.rows[0].tot);
 
-        const metrics = { ingresos, costos, utilBruta, gastosGral, inversion, utilNetaNegocio };
+        const metrics = { ingresos, costos, utilBruta, gastosGral, inversion, otrosEgresos, utilNetaNegocio };
 
         const distribucion = sociosRow.rows.map(s => {
             const ded = Number(deducRow.rows.find(r => r.id_socio_asignado === s.id_socio)?.total || 0);
