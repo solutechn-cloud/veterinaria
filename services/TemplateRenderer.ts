@@ -116,7 +116,10 @@ function elementToHTML(
   const rot  = el.rotation ? `rotate(${el.rotation}deg)` : '';
   const opa  = el.opacity ?? 1;
 
-  const base = `position:absolute;left:${left}px;top:${top}px;width:${w}px;height:${h}px;transform:${rot};opacity:${opa};overflow:hidden;box-sizing:border-box;`;
+  const shadow = el.shadowEnabled
+    ? `filter:drop-shadow(${el.shadowOffsetX ?? 2}px ${el.shadowOffsetY ?? 2}px ${el.shadowBlur ?? 4}px ${el.shadowColor ?? 'rgba(0,0,0,0.3)'});`
+    : '';
+  const base = `position:absolute;left:${left}px;top:${top}px;width:${w}px;height:${h}px;transform:${rot};opacity:${opa};overflow:hidden;box-sizing:border-box;${shadow}`;
 
   // ── TEXT ─────────────────────────────────────────────────────────────────
   if (el.type === 'TEXT') {

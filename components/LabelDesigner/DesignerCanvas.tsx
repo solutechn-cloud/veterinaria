@@ -2,7 +2,7 @@
 import React, { memo, useRef, useEffect, useState } from 'react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import { RotateCw, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { RotateCw, ZoomIn, ZoomOut, Maximize, Lock } from 'lucide-react';
 import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow } from '../../types';
 
 const defaultCols: InvoiceColumn[] = [
@@ -23,6 +23,11 @@ interface DesignerCanvasProps {
     onPointerDown: (e: any, id: string | null, mode: any, handle?: string) => void;
     tool: 'SELECT' | 'HAND';
     pan: { x: number, y: number };
+    editingId?: string | null;
+    onStartEdit?: (id: string) => void;
+    onCommitEdit?: (id: string, value: string) => void;
+    snapGuides?: { axis: 'x' | 'y'; pos: number }[];
+    onContextMenu?: (e: React.MouseEvent, id: string) => void;
 }
 
 const renderBarcode = (el: LabelElement) => {
@@ -48,7 +53,7 @@ const CLIP_PATHS: Record<string, string> = {
 };
 
 // Memoized Element with Scale Injection
-const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerDown, onSelect, tool }: any) => {
+const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerDown, onSelect, tool, isEditing, onStartEdit, onCommitEdit, onContextMenu }: any) => {
     // QR: async rendering with local state
     const [qrSrc, setQrSrc] = useState('');
     useEffect(() => {
@@ -61,18 +66,26 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
         }
     }, [el.type, el.content]);
     // Logic for "Hollow" objects:
-    const isHollow = el.type === 'SHAPE' && (el.fill === 'transparent' || !el.fill);
+    const isHollow = el.type === 'SHAPE' && (el.fill === 'transparent' || !el.fill) && !CLIP_PATHS[el.shapeType || ''];
+    const isLocked = el.locked === true;
 
     // CRITICAL FIX: If tool is HAND, disable pointer events on individual elements
-    const pointerEventsClass = tool === 'HAND' ? 'pointer-events-none' : (isHollow ? 'pointer-events-none' : '');
+    const pointerEventsClass = tool === 'HAND' ? 'pointer-events-none' : (isHollow && !isEditing ? 'pointer-events-none' : '');
 
-    const showHandles = isSelected && tool === 'SELECT';
+    const showHandles = isSelected && tool === 'SELECT' && !isEditing && !isLocked;
+
+    // Shadow CSS
+    const shadowStyle = el.shadowEnabled
+        ? `drop-shadow(${el.shadowOffsetX ?? 2}px ${el.shadowOffsetY ?? 2}px ${el.shadowBlur ?? 4}px ${el.shadowColor ?? 'rgba(0,0,0,0.3)'})`
+        : undefined;
 
     return (
         <div
-            onMouseDown={(e) => tool === 'SELECT' && onPointerDown(e, el.id, 'MOVE')}
-            onTouchStart={(e) => tool === 'SELECT' && onPointerDown(e, el.id, 'MOVE')}
-            className={`absolute group select-none cursor-move
+            onMouseDown={(e) => { if (isEditing || isLocked) return; tool === 'SELECT' && onPointerDown(e, el.id, 'MOVE'); }}
+            onTouchStart={(e) => { if (isEditing || isLocked) return; tool === 'SELECT' && onPointerDown(e, el.id, 'MOVE'); }}
+            onDoubleClick={(e) => { if (tool === 'SELECT' && el.type === 'TEXT' && !isLocked) { e.stopPropagation(); onStartEdit?.(el.id); } }}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e, el.id); }}
+            className={`absolute group select-none ${isEditing ? 'cursor-text' : isLocked ? 'cursor-default' : 'cursor-move'}
                 ${isSelected ? 'z-50 outline outline-2 outline-indigo-500' : isMultiSelected ? 'z-40 outline outline-2 outline-blue-400 outline-dashed' : 'z-10 hover:outline hover:outline-1 hover:outline-indigo-300'}
                 ${pointerEventsClass}`}
             style={{
@@ -82,8 +95,9 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                 height: `${el.height * scale}px`,
                 transform: `rotate(${el.rotation}deg)`,
                 opacity: el.opacity ?? 1,
+                filter: shadowStyle,
             }}
-            onClick={(e) => { e.stopPropagation(); if(tool === 'SELECT') onSelect(el.id, e); }}
+            onClick={(e) => { if (isEditing) return; e.stopPropagation(); if(tool === 'SELECT') onSelect(el.id, e); }}
         >
             {/* Inner Content */}
             <div className={`w-full h-full overflow-hidden flex items-center justify-center relative ${tool === 'HAND' ? '' : (isHollow ? 'pointer-events-none' : '')}`} style={{
@@ -109,7 +123,34 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                     />
                 )}
 
-                {el.type === 'TEXT' && (
+                {el.type === 'TEXT' && isEditing ? (
+                    <textarea
+                        autoFocus
+                        defaultValue={el.content}
+                        style={{
+                            width: '100%', height: '100%',
+                            fontSize: `${(el.fontSize||10)}pt`,
+                            fontFamily: el.fontFamily,
+                            fontWeight: el.fontWeight,
+                            fontStyle: el.italic ? 'italic' : 'normal',
+                            color: el.color,
+                            textAlign: el.textAlign,
+                            lineHeight: String(el.lineHeight || 1.2),
+                            letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : 'normal',
+                            background: el.backgroundColor || 'transparent',
+                            border: 'none', outline: '2px solid #6366f1',
+                            resize: 'none', padding: '0 2px',
+                            boxSizing: 'border-box',
+                        }}
+                        onBlur={e => onCommitEdit?.(el.id, e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Escape') { onCommitEdit?.(el.id, el.content); }
+                            if (e.key === 'Enter' && !el.isMultiline) { e.preventDefault(); e.currentTarget.blur(); }
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                    />
+                ) : el.type === 'TEXT' ? (
                     <div className={tool === 'SELECT' ? 'pointer-events-auto' : ''} style={{
                         fontSize: `${(el.fontSize||10)}pt`,
                         fontFamily: el.fontFamily,
@@ -127,7 +168,7 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                         justifyContent: el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start',
                         padding: '0 2px',
                     }}>{el.content}</div>
-                )}
+                ) : null}
                 {el.type === 'BARCODE' && <img src={renderBarcode(el)} className="w-full h-full object-fill pointer-events-none"/>}
                 {el.type === 'QR' && qrSrc && <img src={qrSrc} className="w-full h-full object-contain pointer-events-none"/>}
                 {el.type === 'IMAGE' && <img src={el.content} className="w-full h-full object-contain pointer-events-none"/>}
@@ -219,6 +260,13 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                 )}
             </div>
 
+            {/* Lock indicator */}
+            {isLocked && isSelected && (
+                <div className="absolute -top-5 -right-1 bg-amber-500 text-white rounded-full w-4 h-4 flex items-center justify-center shadow-sm z-50 pointer-events-none">
+                    <Lock size={8}/>
+                </div>
+            )}
+
             {/* 8 Resize Handles + Rotate */}
             {showHandles && (
                 <>
@@ -250,9 +298,10 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
     );
 });
 
-const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setSelectedId, onPointerDown, tool, pan }) => {
+const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setSelectedId, onPointerDown, tool, pan, editingId, onStartEdit, onCommitEdit, snapGuides = [], onContextMenu }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const lastDist = useRef<number | null>(null);
+    const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
     const currentScale = template.type === 'DOCUMENT' ? 37.795 : 3.7795;
     const currentUnit = template.type === 'DOCUMENT' ? 'cm' : 'mm';
@@ -308,6 +357,16 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
         };
     }, [setZoom, tool]);
 
+    // Track container size for ruler rendering
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const obs = new ResizeObserver(() => setContainerSize({ w: el.offsetWidth, h: el.offsetHeight }));
+        obs.observe(el);
+        setContainerSize({ w: el.offsetWidth, h: el.offsetHeight });
+        return () => obs.disconnect();
+    }, []);
+
     const handleElementSelect = (id: string, e: React.MouseEvent) => {
         setSelectedId(id);
     };
@@ -319,6 +378,70 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
             onMouseDown={(e) => onPointerDown(e, null, 'PANNING')}
             onTouchStart={(e) => onPointerDown(e, null, 'PANNING')}
         >
+            {/* Rulers */}
+            {containerSize.w > 0 && (() => {
+                const RULER_SIZE = 18;
+                const tickUnit = currentScale * zoom; // px per template unit at current zoom
+                // Origin: center of container + pan, minus half the scaled canvas size
+                const canvasW = template.width * currentScale * zoom;
+                const canvasH = template.height * currentScale * zoom;
+                const originX = containerSize.w / 2 + pan.x - canvasW / 2;
+                const originY = containerSize.h / 2 + pan.y - canvasH / 2;
+                // Choose tick interval: aim for ~40-60px between labeled ticks
+                const rawInterval = 60 / tickUnit;
+                const niceIntervals = [0.5, 1, 2, 5, 10, 20, 50, 100];
+                const tickInterval = niceIntervals.find(n => n >= rawInterval) ?? 100;
+
+                const hTicks: { pos: number; label: string }[] = [];
+                const startU = Math.floor(-originX / tickUnit / tickInterval) * tickInterval;
+                const endU = Math.ceil((containerSize.w - originX) / tickUnit / tickInterval) * tickInterval;
+                for (let u = startU; u <= endU; u += tickInterval) {
+                    hTicks.push({ pos: originX + u * tickUnit, label: String(u) });
+                }
+
+                const vTicks: { pos: number; label: string }[] = [];
+                const startV = Math.floor(-originY / tickUnit / tickInterval) * tickInterval;
+                const endV = Math.ceil((containerSize.h - originY) / tickUnit / tickInterval) * tickInterval;
+                for (let v = startV; v <= endV; v += tickInterval) {
+                    vTicks.push({ pos: originY + v * tickUnit, label: String(v) });
+                }
+
+                return (
+                    <>
+                        {/* Horizontal ruler (top) */}
+                        <svg className="absolute top-0 left-0 pointer-events-none z-30"
+                            style={{ width: containerSize.w, height: RULER_SIZE }}>
+                            <rect width={containerSize.w} height={RULER_SIZE} fill="#f8fafc" />
+                            <line x1={0} y1={RULER_SIZE} x2={containerSize.w} y2={RULER_SIZE} stroke="#cbd5e1" strokeWidth={1}/>
+                            {hTicks.map((t, i) => (
+                                <g key={i}>
+                                    <line x1={t.pos} y1={RULER_SIZE - 8} x2={t.pos} y2={RULER_SIZE} stroke="#94a3b8" strokeWidth={1}/>
+                                    <text x={t.pos + 2} y={RULER_SIZE - 10} fontSize={8} fill="#94a3b8" fontFamily="monospace">{t.label}</text>
+                                </g>
+                            ))}
+                            {/* Corner square */}
+                            <rect width={RULER_SIZE} height={RULER_SIZE} fill="#e2e8f0"/>
+                            <text x={2} y={12} fontSize={7} fill="#94a3b8" fontFamily="monospace">{currentUnit}</text>
+                        </svg>
+                        {/* Vertical ruler (left) */}
+                        <svg className="absolute top-0 left-0 pointer-events-none z-30"
+                            style={{ width: RULER_SIZE, height: containerSize.h }}>
+                            <rect width={RULER_SIZE} height={containerSize.h} fill="#f8fafc" />
+                            <line x1={RULER_SIZE} y1={0} x2={RULER_SIZE} y2={containerSize.h} stroke="#cbd5e1" strokeWidth={1}/>
+                            {vTicks.map((t, i) => (
+                                <g key={i} transform={`translate(0, ${t.pos})`}>
+                                    <line x1={RULER_SIZE - 8} y1={0} x2={RULER_SIZE} y2={0} stroke="#94a3b8" strokeWidth={1}/>
+                                    <text x={RULER_SIZE - 9} y={0} fontSize={8} fill="#94a3b8" fontFamily="monospace"
+                                        transform={`rotate(-90, ${RULER_SIZE - 9}, 0)`} textAnchor="start">{t.label}</text>
+                                </g>
+                            ))}
+                            {/* Corner square (cover) */}
+                            <rect width={RULER_SIZE} height={RULER_SIZE} fill="#e2e8f0"/>
+                        </svg>
+                    </>
+                );
+            })()}
+
             {/* Viewport Controls */}
             <div className="absolute bottom-6 left-6 flex flex-col gap-2 bg-white p-1 rounded-xl shadow-lg border border-slate-200 z-20">
                 <button onClick={() => setZoom(z => Math.min(z + 0.5, 5))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"><ZoomIn size={20}/></button>
@@ -378,8 +501,23 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                         onPointerDown={onPointerDown}
                         onSelect={handleElementSelect}
                         tool={tool}
+                        isEditing={editingId === el.id}
+                        onStartEdit={onStartEdit}
+                        onCommitEdit={onCommitEdit}
+                        onContextMenu={onContextMenu}
                     />
                 ))}
+
+                {/* Snap Guide Lines */}
+                {snapGuides.length > 0 && (
+                    <svg className="absolute inset-0 pointer-events-none z-[200]"
+                        style={{ width: template.width * currentScale, height: template.height * currentScale, overflow: 'visible' }}>
+                        {snapGuides.map((g, i) => g.axis === 'x'
+                            ? <line key={i} x1={g.pos * currentScale} y1={-9999} x2={g.pos * currentScale} y2={9999} stroke="#6366f1" strokeWidth={1} strokeDasharray="4 3" opacity={0.8}/>
+                            : <line key={i} x1={-9999} y1={g.pos * currentScale} x2={9999} y2={g.pos * currentScale} stroke="#6366f1" strokeWidth={1} strokeDasharray="4 3" opacity={0.8}/>
+                        )}
+                    </svg>
+                )}
             </div>
         </div>
     );

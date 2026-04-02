@@ -67,6 +67,9 @@ export const useLabelDesigner = () => {
         handle?: string;
     }>({ mode: 'NONE', startPos: {x:0, y:0}, elementStart: {x:0, y:0, w:0, h:0, r:0}, panStart: {x:0, y:0} });
 
+    // Snap Guide Lines (in template units, shown during MOVE)
+    const [snapGuides, setSnapGuides] = useState<{ axis: 'x' | 'y'; pos: number }[]>([]);
+
     // --- SNAP HELPER ---
     const snapValue = (val: number): number => {
         if (!template.snapEnabled || !template.gridSize) return val;
@@ -394,6 +397,13 @@ export const useLabelDesigner = () => {
             const el = template.elements.find(x => x.id === id);
             if (!el) return;
 
+            // Locked elements: allow selection but block MOVE/RESIZE/ROTATE
+            if (el.locked && (mode === 'MOVE' || mode === 'RESIZE' || mode === 'ROTATE')) {
+                setSelectedId(id);
+                setSelectedIds([id]);
+                return;
+            }
+
             // Multi-select: shift+click
             if (isShift && mode === 'MOVE') {
                 setSelectedIds(prev => {
@@ -448,8 +458,61 @@ export const useLabelDesigner = () => {
         let newEl = { ...template.elements.find(x => x.id === selectedId)! };
 
         if (interaction.mode === 'MOVE') {
-            newEl.x = snapValue(Number((start.x + deltaX).toFixed(2)));
-            newEl.y = snapValue(Number((start.y + deltaY).toFixed(2)));
+            let rawX = start.x + deltaX;
+            let rawY = start.y + deltaY;
+
+            // --- SNAP GUIDES: compare moving element edges to other elements ---
+            const others = template.elements.filter(e => e.id !== selectedId);
+            const threshold = template.type === 'DOCUMENT' ? 0.25 : 2.5;
+            const guides: { axis: 'x' | 'y'; pos: number }[] = [];
+
+            // X-axis snapping (left, center, right)
+            const mLeft   = rawX;
+            const mCenterX = rawX + newEl.width / 2;
+            const mRight  = rawX + newEl.width;
+            let snapX: number | null = null;
+            let snapXOffset = 0;
+            for (const o of others) {
+                for (const [oEdge, mEdge, offset] of [
+                    [o.x, mLeft, 0],
+                    [o.x + o.width, mLeft, 0],
+                    [o.x, mRight, -newEl.width],
+                    [o.x + o.width, mRight, -newEl.width],
+                    [o.x + o.width / 2, mCenterX, -newEl.width / 2],
+                ] as [number, number, number][]) {
+                    if (Math.abs(oEdge - mEdge) < threshold && (snapX === null || Math.abs(oEdge - mEdge) < Math.abs(snapX - (mLeft - snapXOffset)))) {
+                        snapX = oEdge; snapXOffset = offset;
+                        if (!guides.find(g => g.axis === 'x' && Math.abs(g.pos - oEdge) < 0.01)) guides.push({ axis: 'x', pos: oEdge });
+                    }
+                }
+            }
+            if (snapX !== null) rawX = snapX + snapXOffset;
+
+            // Y-axis snapping (top, center, bottom)
+            const mTop    = rawY;
+            const mCenterY = rawY + newEl.height / 2;
+            const mBottom = rawY + newEl.height;
+            let snapY: number | null = null;
+            let snapYOffset = 0;
+            for (const o of others) {
+                for (const [oEdge, mEdge, offset] of [
+                    [o.y, mTop, 0],
+                    [o.y + o.height, mTop, 0],
+                    [o.y, mBottom, -newEl.height],
+                    [o.y + o.height, mBottom, -newEl.height],
+                    [o.y + o.height / 2, mCenterY, -newEl.height / 2],
+                ] as [number, number, number][]) {
+                    if (Math.abs(oEdge - mEdge) < threshold && (snapY === null || Math.abs(oEdge - mEdge) < Math.abs(snapY - (mTop - snapYOffset)))) {
+                        snapY = oEdge; snapYOffset = offset;
+                        if (!guides.find(g => g.axis === 'y' && Math.abs(g.pos - oEdge) < 0.01)) guides.push({ axis: 'y', pos: oEdge });
+                    }
+                }
+            }
+            if (snapY !== null) rawY = snapY + snapYOffset;
+
+            setSnapGuides(guides);
+            newEl.x = snapValue(Number(rawX.toFixed(2)));
+            newEl.y = snapValue(Number(rawY.toFixed(2)));
         } else if (interaction.mode === 'RESIZE' && interaction.handle) {
             const h = interaction.handle;
             if (h.includes('e')) newEl.width = Math.max(1, Number((start.w + deltaX).toFixed(2)));
@@ -466,6 +529,7 @@ export const useLabelDesigner = () => {
         if (interaction.mode !== 'NONE' && interaction.mode !== 'PANNING') {
             addToHistory(template);
         }
+        setSnapGuides([]);
         setInteraction({ ...interaction, mode: 'NONE' });
     };
 
@@ -485,6 +549,6 @@ export const useLabelDesigner = () => {
         alignElements, distributeH,
         interaction, scaleFactor, unitLabel,
         handlePointerDown, handlePointerMove, handlePointerUp,
-        snapValue,
+        snapValue, snapGuides,
     };
 };

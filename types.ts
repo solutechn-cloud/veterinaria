@@ -389,6 +389,14 @@ export interface LabelElement {
   gradientColor1?: string;
   gradientColor2?: string;
   gradientAngle?: number;
+  // Locking
+  locked?: boolean;
+  // Shadow (applies to TEXT and SHAPE)
+  shadowEnabled?: boolean;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
   // All elements
   opacity?: number;
   // INVOICE_TABLE specific

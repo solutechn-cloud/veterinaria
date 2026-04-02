@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, memo } from 'react';
 import {
-  Trash2, AlignLeft, AlignCenter, AlignRight, FileCog, Database, Check, ArrowDownToLine, Grid, Magnet
+  Trash2, AlignLeft, AlignCenter, AlignRight, FileCog, Database, Check, ArrowDownToLine, Grid, Magnet, Lock, Unlock
 } from 'lucide-react';
 import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow } from '../../types';
 
@@ -192,8 +192,18 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
             <div className="flex justify-between items-center border-b pb-2">
                 <div className="flex items-center gap-2">
                     <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-bold uppercase">{sel.type}</span>
+                    {sel.locked && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1"><Lock size={10}/>Bloqueado</span>}
                 </div>
-                <button onClick={deleteSelected} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors"><Trash2 size={18}/></button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => updateElement(sel.id, {locked: !sel.locked})}
+                        title={sel.locked ? 'Desbloquear' : 'Bloquear'}
+                        className={`p-1.5 rounded transition-colors ${sel.locked ? 'text-amber-500 bg-amber-50 hover:bg-amber-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        {sel.locked ? <Lock size={16}/> : <Unlock size={16}/>}
+                    </button>
+                    <button onClick={deleteSelected} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors"><Trash2 size={18}/></button>
+                </div>
             </div>
 
             {/* Common Geometry */}
@@ -202,6 +212,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 <PropertyInput label={`Y (${unit})`} value={sel.y} onChange={(v:any) => updateElement(sel.id, {y:v})} type="number" step={0.1}/>
                 <PropertyInput label="Ancho" value={sel.width} onChange={(v:any) => updateElement(sel.id, {width:v})} type="number" step={0.1}/>
                 <PropertyInput label="Alto" value={sel.height} onChange={(v:any) => updateElement(sel.id, {height:v})} type="number" step={0.1}/>
+                <PropertyInput label="Rotación (°)" value={Math.round(sel.rotation ?? 0)} onChange={(v:any) => updateElement(sel.id, {rotation: v})} type="number" step={1}/>
             </div>
 
             {/* Opacity for all elements */}
@@ -298,6 +309,35 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Shadow — applies to TEXT and SHAPE */}
+            {(sel.type === 'TEXT' || sel.type === 'SHAPE') && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={sel.shadowEnabled || false}
+                            onChange={e => updateElement(sel.id, {shadowEnabled: e.target.checked})}
+                            className="rounded text-indigo-600"/>
+                        <label className="text-xs font-medium text-slate-600">Sombra</label>
+                    </div>
+                    {sel.shadowEnabled && (
+                        <>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color</label>
+                                    <input type="color" value={sel.shadowColor || '#000000'}
+                                        onChange={e => updateElement(sel.id, {shadowColor: e.target.value})}
+                                        className="h-8 w-full rounded cursor-pointer border-0"/>
+                                </div>
+                                <PropertyInput label="Desenfoque (px)" value={sel.shadowBlur ?? 4} onChange={(v:any) => updateElement(sel.id, {shadowBlur:v})} type="number" step={1}/>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <PropertyInput label="Offset X (px)" value={sel.shadowOffsetX ?? 2} onChange={(v:any) => updateElement(sel.id, {shadowOffsetX:v})} type="number" step={1}/>
+                                <PropertyInput label="Offset Y (px)" value={sel.shadowOffsetY ?? 2} onChange={(v:any) => updateElement(sel.id, {shadowOffsetY:v})} type="number" step={1}/>
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 

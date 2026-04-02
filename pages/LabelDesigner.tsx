@@ -99,7 +99,8 @@ const LabelDesigner: React.FC = () => {
       saveTemplate, moveLayer, reorderElements,
       alignElements, distributeH,
       interaction, unitLabel,
-      handlePointerDown, handlePointerMove, handlePointerUp
+      handlePointerDown, handlePointerMove, handlePointerUp,
+      snapGuides
   } = useLabelDesigner();
 
   const [activePanel, setActivePanel] = useState<'PROPERTIES' | 'LAYERS'>('PROPERTIES');
@@ -108,7 +109,25 @@ const LabelDesigner: React.FC = () => {
   const [showShapeModal, setShowShapeModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [selectedStarter, setSelectedStarter] = useState<StarterTemplateEntry | null>(null);
-  
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
+
+  const handleStartEdit = (id: string) => {
+    setEditingId(id);
+    setSelectedId(id);
+  };
+  const handleCommitEdit = (id: string, value: string) => {
+    updateElement(id, { content: value });
+    setEditingId(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, elementId: string) => {
+    setSelectedId(elementId);
+    setContextMenu({ x: e.clientX, y: e.clientY, elementId });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
   // Drag and Drop
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
@@ -519,10 +538,15 @@ const LabelDesigner: React.FC = () => {
                 selectedIds={selectedIds}
                 zoom={zoom}
                 setZoom={setZoom}
-                setSelectedId={(id) => { setSelectedId(id); setActivePanel('PROPERTIES'); if(id && window.innerWidth < 768) setIsMobilePropOpen(true); }}
+                setSelectedId={(id) => { setSelectedId(id); setActivePanel('PROPERTIES'); setEditingId(null); if(id && window.innerWidth < 768) setIsMobilePropOpen(true); }}
                 onPointerDown={handlePointerDown}
                 tool={tool}
                 pan={pan}
+                editingId={editingId}
+                onStartEdit={handleStartEdit}
+                onCommitEdit={handleCommitEdit}
+                snapGuides={snapGuides}
+                onContextMenu={handleContextMenu}
             />
 
             <aside className="hidden md:flex w-80 bg-white border-l z-20 shadow-xl flex-col">
@@ -620,6 +644,51 @@ const LabelDesigner: React.FC = () => {
                 )}
             </div>
         </div>
+
+        {/* Context Menu */}
+        {contextMenu && (
+            <>
+                <div className="fixed inset-0 z-[70]" onClick={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }}/>
+                <div
+                    className="fixed z-[71] bg-white rounded-xl shadow-2xl border border-slate-200 py-1 min-w-[160px] text-sm animate-fade-in"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                >
+                    {(() => {
+                        const el = template.elements.find(e => e.id === contextMenu.elementId);
+                        if (!el) return null;
+                        const menuItem = (label: string, icon: string, onClick: () => void, danger = false) => (
+                            <button
+                                key={label}
+                                onClick={() => { onClick(); closeContextMenu(); }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 transition-colors text-left ${danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700'}`}
+                            >
+                                <span className="text-base leading-none">{icon}</span>
+                                <span className="font-medium">{label}</span>
+                            </button>
+                        );
+                        return (
+                            <>
+                                {menuItem('Duplicar', '⧉', () => {
+                                    addElement(el.type, {
+                                        ...el,
+                                        x: el.x + (template.type === 'DOCUMENT' ? 0.5 : 2),
+                                        y: el.y + (template.type === 'DOCUMENT' ? 0.5 : 2),
+                                    });
+                                })}
+                                {menuItem(el.locked ? 'Desbloquear' : 'Bloquear', el.locked ? '🔓' : '🔒', () => {
+                                    updateElement(el.id, { locked: !el.locked });
+                                })}
+                                <div className="border-t border-slate-100 my-1"/>
+                                {menuItem('Subir capa', '↑', () => moveLayer('UP'))}
+                                {menuItem('Bajar capa', '↓', () => moveLayer('DOWN'))}
+                                <div className="border-t border-slate-100 my-1"/>
+                                {menuItem('Eliminar', '✕', () => deleteSelected(), true)}
+                            </>
+                        );
+                    })()}
+                </div>
+            </>
+        )}
 
         {/* --- MODALS (Mismo código anterior) --- */}
         {showVarModal && (
