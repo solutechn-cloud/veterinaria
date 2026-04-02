@@ -136,13 +136,29 @@ function elementToHTML(
   // ── SHAPE ────────────────────────────────────────────────────────────────
   if (el.type === 'SHAPE') {
     if (el.shapeType === 'LINE') {
-      const lineH = (el.strokeWidth || 1);
+      const lineH = el.strokeWidth || 1;
       return `<div style="${base}display:flex;align-items:center;">` +
         `<div style="width:100%;height:${lineH}px;background-color:${el.stroke || '#000'};"></div></div>`;
     }
+    const clipPaths: Record<string, string> = {
+      TRIANGLE_TL: 'polygon(0 0, 100% 0, 0 100%)',
+      TRIANGLE_TR: 'polygon(0 0, 100% 0, 100% 100%)',
+      TRIANGLE_BL: 'polygon(0 0, 0 100%, 100% 100%)',
+      TRIANGLE_BR: 'polygon(100% 0, 100% 100%, 0 100%)',
+      RHOMBUS: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+    };
+    const clip = clipPaths[el.shapeType || ''];
     const radius = el.shapeType === 'CIRCLE' ? '50%' : (el.borderRadius ? `${el.borderRadius}px` : '0');
-    const inner = `width:100%;height:100%;background-color:${el.fill === 'transparent' ? 'transparent' : (el.fill || 'transparent')};` +
-      `border:${el.strokeWidth || 1}px solid ${el.stroke || '#000'};border-radius:${radius};box-sizing:border-box;`;
+    const bg = el.gradientEnabled && el.gradientColor1 && el.gradientColor2
+      ? (el.gradientType === 'radial'
+          ? `radial-gradient(circle, ${el.gradientColor1}, ${el.gradientColor2})`
+          : `linear-gradient(${el.gradientAngle ?? 135}deg, ${el.gradientColor1}, ${el.gradientColor2})`)
+      : (el.fill === 'transparent' ? 'transparent' : (el.fill || 'transparent'));
+    const inner = `width:100%;height:100%;background:${bg};` +
+      (clip
+        ? `clip-path:${clip};`
+        : `border:${el.strokeWidth || 1}px solid ${el.stroke || '#000'};border-radius:${radius};`) +
+      `box-sizing:border-box;`;
     return `<div style="${base}"><div style="${inner}"></div></div>`;
   }
 
@@ -335,6 +351,8 @@ function buildHTML(
       @page { size:${sizeCSS}; margin:0; }
     }
   </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&family=Poppins:wght@400;600;700&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;700&family=Oswald:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="page">

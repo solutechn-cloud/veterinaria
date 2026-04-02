@@ -39,6 +39,14 @@ const renderBarcode = (el: LabelElement) => {
 
 // QR rendering is async — handled inside CanvasElement via useState/useEffect
 
+const CLIP_PATHS: Record<string, string> = {
+  TRIANGLE_TL: 'polygon(0 0, 100% 0, 0 100%)',
+  TRIANGLE_TR: 'polygon(0 0, 100% 0, 100% 100%)',
+  TRIANGLE_BL: 'polygon(0 0, 0 100%, 100% 100%)',
+  TRIANGLE_BR: 'polygon(100% 0, 100% 100%, 0 100%)',
+  RHOMBUS:     'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+};
+
 // Memoized Element with Scale Injection
 const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerDown, onSelect, tool }: any) => {
     // QR: async rendering with local state
@@ -80,15 +88,22 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
             {/* Inner Content */}
             <div className={`w-full h-full overflow-hidden flex items-center justify-center relative ${tool === 'HAND' ? '' : (isHollow ? 'pointer-events-none' : '')}`} style={{
                 borderRadius: el.shapeType === 'CIRCLE' ? '50%' : (el.borderRadius ? `${el.borderRadius}px` : '0'),
-                backgroundColor: el.type === 'SHAPE' ? el.fill : 'transparent',
+                background: el.type === 'SHAPE'
+                    ? (el.gradientEnabled && el.gradientColor1 && el.gradientColor2
+                        ? (el.gradientType === 'radial'
+                            ? `radial-gradient(circle, ${el.gradientColor1}, ${el.gradientColor2})`
+                            : `linear-gradient(${el.gradientAngle ?? 135}deg, ${el.gradientColor1}, ${el.gradientColor2})`)
+                        : (el.fill || 'transparent'))
+                    : 'transparent',
+                clipPath: el.type === 'SHAPE' ? (CLIP_PATHS[el.shapeType || ''] ?? undefined) : undefined,
             }}>
-                {/* Specific Handling for Hollow Shapes BORDER */}
-                {el.type === 'SHAPE' && (
+                {/* Border overlay: only for RECTANGLE/CIRCLE (clip-path shapes don't support CSS border) */}
+                {el.type === 'SHAPE' && !CLIP_PATHS[el.shapeType || ''] && el.shapeType !== 'LINE' && (
                     <div
                         className={tool === 'SELECT' && isHollow ? 'pointer-events-auto' : ''}
                         style={{
                             position: 'absolute', inset: 0,
-                            border: el.shapeType !== 'LINE' ? `${(el.strokeWidth||1)}px solid ${el.stroke}` : 'none',
+                            border: `${(el.strokeWidth||1)}px solid ${el.stroke}`,
                             borderRadius: el.shapeType === 'CIRCLE' ? '50%' : (el.borderRadius ? `${el.borderRadius}px` : '0'),
                         }}
                     />

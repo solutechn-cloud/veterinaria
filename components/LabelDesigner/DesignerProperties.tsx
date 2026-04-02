@@ -10,6 +10,10 @@ const FONTS = [
     { name: 'Roboto', value: "'Roboto', sans-serif" },
     { name: 'Open Sans', value: "'Open Sans', sans-serif" },
     { name: 'Montserrat', value: "'Montserrat', sans-serif" },
+    { name: 'Poppins', value: "'Poppins', sans-serif" },
+    { name: 'Playfair Display', value: "'Playfair Display', serif" },
+    { name: 'Raleway', value: "'Raleway', sans-serif" },
+    { name: 'Oswald', value: "'Oswald', sans-serif" },
     { name: 'Courier (Code)', value: "'Courier Prime', monospace" },
 ];
 
@@ -316,6 +320,50 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                     </div>
                     <PropertyInput label="Grosor Borde" value={sel.strokeWidth || 0.5} onChange={(v:any) => updateElement(sel.id, {strokeWidth:v})} type="number" step={0.5}/>
                     <PropertyInput label="Radio Esquinas (px)" value={sel.borderRadius || 0} onChange={(v:any) => updateElement(sel.id, {borderRadius:v})} type="number"/>
+
+                    {/* Gradient */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center gap-2">
+                            <input type="checkbox" checked={sel.gradientEnabled || false}
+                                onChange={e => updateElement(sel.id, {gradientEnabled: e.target.checked})}
+                                className="rounded text-indigo-600"/>
+                            <label className="text-xs font-medium text-slate-600">Usar degradado</label>
+                        </div>
+                        {sel.gradientEnabled && (
+                            <>
+                                <div className="flex gap-1">
+                                    {(['linear','radial'] as const).map(t => (
+                                        <button key={t} onClick={() => updateElement(sel.id, {gradientType: t})}
+                                            className={`flex-1 py-1 text-[11px] rounded-lg border font-bold transition-all ${(sel.gradientType||'linear')===t ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                            {t==='linear' ? 'Lineal' : 'Radial'}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color 1</label>
+                                        <input type="color" value={sel.gradientColor1||'#4f46e5'}
+                                            onChange={e => updateElement(sel.id, {gradientColor1: e.target.value})}
+                                            className="h-8 w-full rounded cursor-pointer border-0"/>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color 2</label>
+                                        <input type="color" value={sel.gradientColor2||'#818cf8'}
+                                            onChange={e => updateElement(sel.id, {gradientColor2: e.target.value})}
+                                            className="h-8 w-full rounded cursor-pointer border-0"/>
+                                    </div>
+                                </div>
+                                {(sel.gradientType||'linear')==='linear' && (
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Ángulo ({sel.gradientAngle??135}°)</label>
+                                        <input type="range" min={0} max={360} value={sel.gradientAngle??135}
+                                            onChange={e => updateElement(sel.id, {gradientAngle: parseInt(e.target.value)})}
+                                            className="w-full accent-indigo-600"/>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

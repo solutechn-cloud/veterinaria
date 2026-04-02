@@ -47,19 +47,33 @@ const TemplateThumbnail: React.FC<TemplateThumbnailProps> = ({ template }) => {
     <div className="w-full h-full overflow-hidden flex items-center justify-center">
       <div
         style={{
-          transform: `scale(${thumbScale})`,
-          transformOrigin: 'center center',
-          pointerEvents: 'none',
+          width: `${pageW * thumbScale}px`,
+          height: `${pageH * thumbScale}px`,
+          overflow: 'hidden',
           flexShrink: 0,
+          position: 'relative',
           boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
         }}
       >
-        <iframe
-          srcDoc={html}
-          style={{ width: `${pageW}px`, height: `${pageH}px`, border: 'none', display: 'block' }}
-          title={`Vista previa: ${template.name}`}
-          scrolling="no"
-        />
+        <div
+          style={{
+            transform: `scale(${thumbScale})`,
+            transformOrigin: 'top left',
+            pointerEvents: 'none',
+            width: `${pageW}px`,
+            height: `${pageH}px`,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+          }}
+        >
+          <iframe
+            srcDoc={html}
+            style={{ width: `${pageW}px`, height: `${pageH}px`, border: 'none', display: 'block' }}
+            title={`Vista previa: ${template.name}`}
+            scrolling="no"
+          />
+        </div>
       </div>
     </div>
   );

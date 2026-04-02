@@ -369,7 +369,7 @@ export interface LabelElement {
   fontFamily?: string;
   barcodeFormat?: string;
   displayValue?: boolean;
-  shapeType?: 'RECTANGLE' | 'CIRCLE' | 'LINE';
+  shapeType?: 'RECTANGLE' | 'CIRCLE' | 'LINE' | 'TRIANGLE_TL' | 'TRIANGLE_TR' | 'TRIANGLE_BL' | 'TRIANGLE_BR' | 'RHOMBUS';
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
@@ -383,6 +383,12 @@ export interface LabelElement {
   backgroundColor?: string;
   // Shape extra
   borderRadius?: number;
+  // Shape gradient
+  gradientEnabled?: boolean;
+  gradientType?: 'linear' | 'radial';
+  gradientColor1?: string;
+  gradientColor2?: string;
+  gradientAngle?: number;
   // All elements
   opacity?: number;
   // INVOICE_TABLE specific

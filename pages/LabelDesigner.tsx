@@ -113,7 +113,18 @@ const LabelDesigner: React.FC = () => {
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
-  useEffect(() => { loadSavedList(); }, []);
+  useEffect(() => {
+    loadSavedList();
+    // Load Google Fonts for the designer canvas preview
+    const id = 'gfonts-designer';
+    if (!document.getElementById(id)) {
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&family=Poppins:wght@400;600;700&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;700&family=Oswald:wght@400;700&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
 
   const loadSavedList = async () => {
       try {
@@ -650,10 +661,15 @@ const LabelDesigner: React.FC = () => {
                         <h3 className="font-bold text-lg">Formas</h3>
                         <button onClick={() => setShowShapeModal(false)}><X/></button>
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <button onClick={() => { addElement('SHAPE', {shapeType:'RECTANGLE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-2 p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Square size={32} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Rect.</span></button>
-                        <button onClick={() => { addElement('SHAPE', {shapeType:'CIRCLE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-2 p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Circle size={32} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Círculo</span></button>
-                        <button onClick={() => { addElement('SHAPE', {shapeType:'LINE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-2 p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Minus size={32} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Línea</span></button>
+                    <div className="grid grid-cols-4 gap-3">
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'RECTANGLE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Square size={28} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Rect.</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'CIRCLE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Circle size={28} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Círculo</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'LINE'}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><Minus size={28} strokeWidth={1.5}/><span className="text-xs font-bold text-slate-600">Línea</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'TRIANGLE_TL', fill:'#4f46e5', stroke:'transparent', strokeWidth:0}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><span style={{fontSize:28,lineHeight:1,color:'#4f46e5'}}>◤</span><span className="text-xs font-bold text-slate-600">▲ SupIzq</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'TRIANGLE_TR', fill:'#4f46e5', stroke:'transparent', strokeWidth:0}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><span style={{fontSize:28,lineHeight:1,color:'#4f46e5'}}>◥</span><span className="text-xs font-bold text-slate-600">▲ SupDer</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'TRIANGLE_BL', fill:'#4f46e5', stroke:'transparent', strokeWidth:0}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><span style={{fontSize:28,lineHeight:1,color:'#4f46e5'}}>◣</span><span className="text-xs font-bold text-slate-600">▲ InfIzq</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'TRIANGLE_BR', fill:'#4f46e5', stroke:'transparent', strokeWidth:0}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><span style={{fontSize:28,lineHeight:1,color:'#4f46e5'}}>◢</span><span className="text-xs font-bold text-slate-600">▲ InfDer</span></button>
+                        <button onClick={() => { addElement('SHAPE', {shapeType:'RHOMBUS', fill:'#4f46e5', stroke:'transparent', strokeWidth:0}); setShowShapeModal(false); }} className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-all"><span style={{fontSize:28,lineHeight:1,color:'#4f46e5'}}>◆</span><span className="text-xs font-bold text-slate-600">Rombo</span></button>
                     </div>
                 </div>
             </div>
