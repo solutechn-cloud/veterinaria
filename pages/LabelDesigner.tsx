@@ -6,8 +6,8 @@ const { useNavigate } = ReactRouterDOM as any;
 import {
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
   Layers, Search, Database, Table, ChevronRight, Key, GripVertical, FileText, Tag, ChevronUp, Image as ImageIcon, Hand, Trash2, MousePointer2,
-  Printer, Eye, Copy, Download, AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignCenterHorizontal, AlignEndVertical,
-  AlignStartHorizontal, AlignVerticalJustifyCenter, AlignEndHorizontal, Clipboard
+  Printer, Eye, EyeOff, Copy, Download, Upload, AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignCenterHorizontal, AlignEndVertical,
+  AlignStartHorizontal, AlignVerticalJustifyCenter, AlignEndHorizontal, Clipboard, Keyboard
 } from 'lucide-react';
 import { printTemplate, downloadHTML } from '../services/TemplateRenderer';
 import PreviewModal from '../components/LabelDesigner/PreviewModal';
@@ -78,7 +78,10 @@ const LabelDesigner: React.FC = () => {
   const navigate = useNavigate();
   const [view, setView] = useState<'GALLERY' | 'DESIGNER'>('GALLERY');
   const [savedTemplates, setSavedTemplates] = useState<LabelTemplate[]>([]);
-  
+  const [gallerySearch, setGallerySearch] = useState('');
+  const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'LABEL' | 'DOCUMENT'>('ALL');
+  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
   // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDesignName, setNewDesignName] = useState('');
@@ -111,6 +114,8 @@ const LabelDesigner: React.FC = () => {
   const [selectedStarter, setSelectedStarter] = useState<StarterTemplateEntry | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleStartEdit = (id: string) => {
     setEditingId(id);
@@ -144,6 +149,43 @@ const LabelDesigner: React.FC = () => {
       document.head.appendChild(link);
     }
   }, []);
+
+  // Auto-save draft to localStorage
+  useEffect(() => {
+    if (view !== 'DESIGNER' || !template.name || template.name === 'Nuevo Diseño') return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('ld_autosave', JSON.stringify({ template, savedAt: Date.now() }));
+        setLastAutoSave(new Date());
+      } catch { /* ignore if localStorage full */ }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [template, view]);
+
+  useEffect(() => {
+    if (view !== 'DESIGNER') return;
+    const raw = localStorage.getItem('ld_autosave');
+    if (!raw) return;
+    try {
+      const { template: saved, savedAt } = JSON.parse(raw);
+      // Only offer to restore if it's a different template or unsaved (no id)
+      if (saved && !template.id && saved.id && saved.name !== 'Nuevo Diseño') {
+        const age = Math.round((Date.now() - savedAt) / 60000);
+        Swal.fire({
+          title: 'Borrador encontrado',
+          text: `"${saved.name}" guardado hace ${age} min. ¿Restaurar?`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Restaurar',
+          cancelButtonText: 'Descartar',
+          confirmButtonColor: '#4f46e5',
+        }).then(r => {
+          if (r.isConfirmed) { loadTemplate(saved); }
+          else { localStorage.removeItem('ld_autosave'); }
+        });
+      }
+    } catch { /* ignore */ }
+  }, [view]);
 
   const loadSavedList = async () => {
       try {
@@ -212,6 +254,40 @@ const LabelDesigner: React.FC = () => {
       }
   };
 
+  const handleExportTemplate = (e: React.MouseEvent, t: LabelTemplate) => {
+      e.stopPropagation();
+      const json = JSON.stringify(t, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${t.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+  };
+
+  const handleImportTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+          try {
+              const parsed = JSON.parse(reader.result as string) as LabelTemplate;
+              if (!parsed.elements || !parsed.width || !parsed.height) {
+                  Swal.fire('Error', 'El archivo no es una plantilla válida', 'error');
+                  return;
+              }
+              loadTemplate({ ...parsed, id: '', name: `Importado: ${parsed.name}` });
+              setView('DESIGNER');
+              Swal.fire({ icon: 'success', title: 'Plantilla importada', toast: true, position: 'bottom-end', timer: 2000, showConfirmButton: false });
+          } catch {
+              Swal.fire('Error', 'No se pudo leer el archivo JSON', 'error');
+          }
+          e.target.value = '';
+      };
+      reader.readAsText(file);
+  };
+
   const handleSave = async () => {
       const success = await saveTemplate();
       if(success) loadSavedList();
@@ -251,13 +327,43 @@ const LabelDesigner: React.FC = () => {
                           <h1 className="text-3xl font-bold text-slate-800">Mis Diseños</h1>
                           <p className="text-slate-500">Etiquetas y Documentos</p>
                       </div>
-                      <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105">
-                          <Plus size={20}/> Nuevo Diseño
-                      </button>
+                      <div className="flex items-center gap-2">
+                          <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={handleImportTemplate}/>
+                          <button onClick={() => importInputRef.current?.click()} className="border border-slate-300 hover:border-indigo-400 bg-white text-slate-600 hover:text-indigo-600 px-4 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all">
+                              <Upload size={16}/> Importar
+                          </button>
+                          <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105">
+                              <Plus size={20}/> Nuevo Diseño
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Search + Filter bar */}
+                  <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                      <div className="relative flex-1">
+                          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                          <input
+                              value={gallerySearch}
+                              onChange={e => setGallerySearch(e.target.value)}
+                              placeholder="Buscar diseño..."
+                              className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400 transition-colors"
+                          />
+                      </div>
+                      <div className="flex gap-1">
+                          {(['ALL', 'LABEL', 'DOCUMENT'] as const).map(f => (
+                              <button key={f} onClick={() => setGalleryFilter(f)}
+                                  className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-all ${galleryFilter === f ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
+                                  {f === 'ALL' ? `Todos (${savedTemplates.length})` : f === 'LABEL' ? 'Etiquetas' : 'Documentos'}
+                              </button>
+                          ))}
+                      </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                      {savedTemplates.map(t => (
+                      {savedTemplates
+                          .filter(t => galleryFilter === 'ALL' || t.type === galleryFilter)
+                          .filter(t => !gallerySearch || t.name.toLowerCase().includes(gallerySearch.toLowerCase()))
+                          .map(t => (
                           <div key={t.id} onClick={() => handleOpen(t)} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all cursor-pointer group overflow-hidden relative flex flex-col">
 
                               {/* ── Thumbnail preview area ── */}
@@ -272,6 +378,13 @@ const LabelDesigner: React.FC = () => {
                                           title="Duplicar"
                                       >
                                           <Copy size={13}/>
+                                      </button>
+                                      <button
+                                          onClick={(e) => handleExportTemplate(e, t)}
+                                          className="p-2 bg-teal-500 hover:bg-teal-600 text-white rounded-full shadow-md transition-all hover:scale-110"
+                                          title="Exportar JSON"
+                                      >
+                                          <Download size={13}/>
                                       </button>
                                       <button
                                           onClick={(e) => handleDeleteTemplate(e, t.id)}
@@ -413,13 +526,18 @@ const LabelDesigner: React.FC = () => {
                 </div>
             </div>
             
-            <div className="flex-1 flex justify-center">
-                <input 
-                    className="text-center font-bold text-slate-800 bg-transparent hover:bg-slate-50 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[250px] transition-all" 
-                    value={template.name} 
+            <div className="flex-1 flex justify-center relative">
+                <input
+                    className="text-center font-bold text-slate-800 bg-transparent hover:bg-slate-50 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[250px] transition-all"
+                    value={template.name}
                     onChange={e => setTemplate({...template, name: e.target.value})}
                     placeholder="Nombre del Diseño"
                 />
+                {lastAutoSave && (
+                    <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-slate-400 whitespace-nowrap">
+                        Auto-guardado {lastAutoSave.toLocaleTimeString()}
+                    </div>
+                )}
             </div>
 
             <div className="w-1/3 flex justify-end gap-2">
@@ -444,6 +562,18 @@ const LabelDesigner: React.FC = () => {
                 >
                     <Download size={18}/> <span className="hidden md:inline">HTML</span>
                 </button>
+                <button
+                    onClick={() => setShowShortcutsModal(true)}
+                    className="hidden md:flex border border-slate-200 hover:bg-slate-50 text-slate-500 p-2 rounded-lg transition-all"
+                    title="Atajos de teclado"
+                >
+                    <Keyboard size={18}/>
+                </button>
+                <button
+                    onClick={() => setShowShortcutsModal(true)}
+                    className="hidden md:flex border border-slate-200 hover:bg-slate-50 text-slate-500 p-2 rounded-lg transition-all"
+                    title="Atajos de teclado"
+                ><Keyboard size={18}/></button>
                 <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-all active:scale-95">
                     <Save size={18}/> <span className="hidden md:inline">Guardar</span>
                 </button>
@@ -563,23 +693,61 @@ const LabelDesigner: React.FC = () => {
                     <div className="p-4 h-full flex flex-col">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 border-b pb-2"><Layers size={20}/> Capas</h3>
                         <div className="flex-1 overflow-y-auto space-y-1">
-                            {template.elements.map((el, index) => (
-                                <div 
-                                    key={el.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, index)}
-                                    onDragEnter={(e) => handleDragEnter(e, index)}
-                                    onDragEnd={handleDragEnd}
-                                    onDragOver={(e) => e.preventDefault()}
-                                    onClick={() => setSelectedId(el.id)}
-                                    className={`p-2 rounded-lg text-sm flex items-center gap-3 cursor-pointer select-none transition-colors group
-                                        ${selectedId === el.id ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-slate-50 text-slate-600 border border-transparent'}`}
-                                >
-                                    <div className="cursor-grab text-slate-300 hover:text-slate-500"><GripVertical size={14}/></div>
-                                    <span className="text-[10px] bg-slate-200 px-1.5 rounded text-slate-500 font-mono w-6 text-center">{index+1}</span>
-                                    <span className="truncate flex-1">{el.type}</span>
-                                </div>
-                            ))}
+                            {[...template.elements].reverse().map((el, revIdx) => {
+                                const index = template.elements.length - 1 - revIdx;
+                                const typeColors: Record<string, string> = {
+                                    TEXT: 'bg-blue-100 text-blue-700',
+                                    SHAPE: 'bg-purple-100 text-purple-700',
+                                    IMAGE: 'bg-green-100 text-green-700',
+                                    BARCODE: 'bg-orange-100 text-orange-700',
+                                    QR: 'bg-amber-100 text-amber-700',
+                                    INVOICE_TABLE: 'bg-indigo-100 text-indigo-700',
+                                    SUMMARY_BOX: 'bg-teal-100 text-teal-700',
+                                    COMPANY_HEADER: 'bg-rose-100 text-rose-700',
+                                };
+                                const typeLabel: Record<string, string> = {
+                                    TEXT: 'T', SHAPE: '■', IMAGE: '⬜', BARCODE: '|||',
+                                    QR: 'QR', INVOICE_TABLE: '▦', SUMMARY_BOX: '∑', COMPANY_HEADER: '🏢',
+                                };
+                                const preview = el.type === 'TEXT'
+                                    ? (el.content?.replace(/{{.*?}}/g, '…').slice(0, 24) || '—')
+                                    : el.type === 'SHAPE' ? (el.shapeType || 'SHAPE')
+                                    : el.type;
+                                const isHidden = el.visible === false;
+
+                                return (
+                                    <div
+                                        key={el.id}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, index)}
+                                        onDragEnter={(e) => handleDragEnter(e, index)}
+                                        onDragEnd={handleDragEnd}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onClick={() => { if (!isHidden) { setSelectedId(el.id); setActivePanel('PROPERTIES'); }}}
+                                        className={`px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 select-none transition-colors group border
+                                            ${selectedId === el.id ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-slate-50 border-transparent'}
+                                            ${isHidden ? 'opacity-40' : ''}`}
+                                    >
+                                        <div className="cursor-grab text-slate-300 hover:text-slate-500 shrink-0"><GripVertical size={13}/></div>
+                                        <span className={`text-[9px] font-bold px-1 py-0.5 rounded shrink-0 ${typeColors[el.type] || 'bg-slate-100 text-slate-600'}`}>
+                                            {typeLabel[el.type] || el.type.slice(0,2)}
+                                        </span>
+                                        <span className={`truncate flex-1 text-xs ${selectedId === el.id ? 'text-indigo-700 font-bold' : 'text-slate-600'}`}>
+                                            {preview}
+                                        </span>
+                                        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                                            {el.locked && <span title="Bloqueado" className="text-amber-500">🔒</span>}
+                                            <button
+                                                title={isHidden ? 'Mostrar' : 'Ocultar'}
+                                                onClick={(e) => { e.stopPropagation(); updateElement(el.id, { visible: !isHidden }); }}
+                                                className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${isHidden ? 'text-slate-300' : 'text-slate-500'}`}
+                                            >
+                                                {isHidden ? <EyeOff size={12}/> : <Eye size={12}/>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -644,6 +812,39 @@ const LabelDesigner: React.FC = () => {
                 )}
             </div>
         </div>
+
+        {/* Keyboard Shortcuts Modal */}
+        {showShortcutsModal && (
+            <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setShowShortcutsModal(false)}>
+                <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-lg flex items-center gap-2"><Keyboard size={18} className="text-indigo-600"/> Atajos de Teclado</h3>
+                        <button onClick={() => setShowShortcutsModal(false)}><X/></button>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                        {[
+                            ['Ctrl+Z', 'Deshacer'],
+                            ['Ctrl+Y', 'Rehacer'],
+                            ['Ctrl+C', 'Copiar elemento'],
+                            ['Ctrl+V', 'Pegar elemento'],
+                            ['Ctrl+A', 'Seleccionar todo'],
+                            ['Ctrl+D', 'Duplicar elemento'],
+                            ['Delete', 'Eliminar elemento'],
+                            ['Escape', 'Deseleccionar'],
+                            ['↑↓←→', 'Mover (0.1 cm)'],
+                            ['Shift+↑↓←→', 'Mover (1 cm)'],
+                            ['Doble clic', 'Editar texto'],
+                            ['Clic derecho', 'Menú contextual'],
+                        ].map(([key, desc]) => (
+                            <div key={key} className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                                <span className="text-slate-600">{desc}</span>
+                                <kbd className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-mono px-2 py-0.5 rounded">{key}</kbd>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Context Menu */}
         {contextMenu && (

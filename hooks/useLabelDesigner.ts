@@ -315,6 +315,21 @@ export const useLabelDesigner = () => {
 
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            const ids = template.elements.map(el => el.id);
+            setSelectedIds(ids);
+            if (ids.length > 0) setSelectedId(ids[ids.length - 1]);
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+            e.preventDefault();
+            if (selectedId) {
+                const el = template.elements.find(x => x.id === selectedId);
+                if (el) addElement(el.type, { ...el, x: el.x + (template.type==='DOCUMENT'?0.5:2), y: el.y + (template.type==='DOCUMENT'?0.5:2) });
+            }
+            return;
+        }
 
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
             if (selectedId) {

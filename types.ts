@@ -389,8 +389,11 @@ export interface LabelElement {
   gradientColor1?: string;
   gradientColor2?: string;
   gradientAngle?: number;
+  // Image
+  imageObjectFit?: 'contain' | 'cover' | 'fill' | 'none';
   // Locking
   locked?: boolean;
+  visible?: boolean;
   // Shadow (applies to TEXT and SHAPE)
   shadowEnabled?: boolean;
   shadowColor?: string;

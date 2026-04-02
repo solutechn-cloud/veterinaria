@@ -224,6 +224,27 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 />
             </div>
 
+            {/* IMAGE Specific */}
+            {sel.type === 'IMAGE' && (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase">Ajuste de Imagen</h4>
+                    <div className="grid grid-cols-2 gap-1">
+                        {([
+                            { value: 'contain', label: 'Contener' },
+                            { value: 'cover',   label: 'Cubrir' },
+                            { value: 'fill',    label: 'Estirar' },
+                            { value: 'none',    label: 'Original' },
+                        ] as const).map(opt => (
+                            <button key={opt.value}
+                                onClick={() => updateElement(sel.id, { imageObjectFit: opt.value })}
+                                className={`py-2 text-xs rounded-lg border font-bold transition-all ${(sel.imageObjectFit || 'contain') === opt.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Content Logic (Text/Barcode) */}
             {(sel.type === 'TEXT' || sel.type === 'BARCODE' || sel.type === 'QR') && (
                 <div>
@@ -598,11 +619,26 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h5 className="font-bold text-xs text-slate-700">Columnas</h5>
-                            <button onClick={() => {
-                                const cols = sel.tableColumns || defaultCols;
-                                const newCol: InvoiceColumn = { id: `c${Date.now()}`, header: 'Columna', field: '', widthPct: 10, align: 'left', format: 'TEXT' };
-                                updateElement(sel.id, { tableColumns: [...cols, newCol] });
-                            }} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100">+ Col</button>
+                            <div className="flex items-center gap-1">
+                                {(() => {
+                                    const total = (sel.tableColumns || defaultCols).reduce((s: number, c: InvoiceColumn) => s + c.widthPct, 0);
+                                    return (
+                                        <button title="Normalizar anchos al 100%" onClick={() => {
+                                            const cols = sel.tableColumns || defaultCols;
+                                            const even = Math.floor(100 / cols.length);
+                                            const rem = 100 - even * (cols.length - 1);
+                                            updateElement(sel.id, { tableColumns: cols.map((c: InvoiceColumn, i: number) => ({ ...c, widthPct: i === cols.length - 1 ? rem : even })) });
+                                        }} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${Math.abs(total - 100) > 1 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>
+                                            {total}%
+                                        </button>
+                                    );
+                                })()}
+                                <button onClick={() => {
+                                    const cols = sel.tableColumns || defaultCols;
+                                    const newCol: InvoiceColumn = { id: `c${Date.now()}`, header: 'Columna', field: '', widthPct: 10, align: 'left', format: 'TEXT' };
+                                    updateElement(sel.id, { tableColumns: [...cols, newCol] });
+                                }} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100">+ Col</button>
+                            </div>
                         </div>
 
                         {(sel.tableColumns || defaultCols).map((col, ci) => (

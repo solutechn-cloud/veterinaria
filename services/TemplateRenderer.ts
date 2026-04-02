@@ -70,6 +70,7 @@ async function preRenderMedia(template: LabelTemplate, ctx: PrintDataContext): P
   const cache: MediaCache = new Map();
 
   for (const el of template.elements) {
+    if (el.visible === false) continue;
     if (el.type === 'BARCODE') {
       const resolved = resolveContent(el.content || '123456', ctx);
       const safeContent = /{{.*?}}/.test(resolved) ? '123456' : resolved;
@@ -167,7 +168,7 @@ function elementToHTML(
 
   // ── IMAGE ────────────────────────────────────────────────────────────────
   if (el.type === 'IMAGE') {
-    return `<div style="${base}"><img src="${el.content}" style="width:100%;height:100%;object-fit:contain;" /></div>`;
+    return `<div style="${base}"><img src="${el.content}" style="width:100%;height:100%;object-fit:${el.imageObjectFit || 'contain'};" /></div>`;
   }
 
   // ── COMPANY_HEADER ────────────────────────────────────────────────────────
@@ -326,6 +327,7 @@ function buildHTML(
   }));
 
   const elementsHTML = template.elements
+    .filter(el => el.visible !== false)
     .map(el => elementToHTML(el, scale, ctx, media, items))
     .join('\n');
 

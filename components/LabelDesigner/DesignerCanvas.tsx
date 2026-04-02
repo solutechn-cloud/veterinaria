@@ -171,7 +171,7 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                 ) : null}
                 {el.type === 'BARCODE' && <img src={renderBarcode(el)} className="w-full h-full object-fill pointer-events-none"/>}
                 {el.type === 'QR' && qrSrc && <img src={qrSrc} className="w-full h-full object-contain pointer-events-none"/>}
-                {el.type === 'IMAGE' && <img src={el.content} className="w-full h-full object-contain pointer-events-none"/>}
+                {el.type === 'IMAGE' && <img src={el.content} className="w-full h-full pointer-events-none" style={{ objectFit: (el.imageObjectFit || 'contain') as any }}/>}
                 {el.type === 'SHAPE' && el.shapeType === 'LINE' && <div className={tool === 'SELECT' && isHollow ? 'pointer-events-auto' : ''} style={{width:'100%', height:`${(el.strokeWidth||1)}px`, backgroundColor: el.stroke}}/>}
 
                 {el.type === 'COMPANY_HEADER' && el.companyStyle === 'GEOMETRIC' && (
@@ -491,7 +491,7 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                     {template.width}{currentUnit} x {template.height}{currentUnit}
                 </div>
 
-                {template.elements.map(el => (
+                {template.elements.map(el => el.visible === false ? null : (
                     <CanvasElement
                         key={el.id}
                         el={el}
