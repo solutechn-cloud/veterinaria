@@ -405,6 +405,8 @@ export interface LabelElement {
   companyShowPhone?: boolean;
   companyShowEmail?: boolean;
   companyAlign?: 'left' | 'center' | 'right';
+  companyStyle?: 'PLAIN' | 'GEOMETRIC';
+  companyDocTitle?: string;
 }
 
 export interface LabelTemplate {

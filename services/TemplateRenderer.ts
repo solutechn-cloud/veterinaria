@@ -2,6 +2,7 @@
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow, EmpresaConfig, Venta, DetalleVenta, Cliente, Reparacion, ProductoUnified } from '../types';
+import { getLogoSync } from './logoLoader';
 
 // ─── Scale constants ──────────────────────────────────────────────────────────
 const MM_TO_PX = 3.7795;
@@ -153,8 +154,39 @@ function elementToHTML(
   // ── COMPANY_HEADER ────────────────────────────────────────────────────────
   if (el.type === 'COMPANY_HEADER') {
     const emp = ctx.empresa || {};
+    const fs  = el.fontSize || 9;
+
+    if (el.companyStyle === 'GEOMETRIC') {
+      const logoSrc   = getLogoSync();
+      const logoHtml  = logoSrc
+        ? `<img src="${logoSrc}" style="height:72%;max-height:56px;max-width:56px;object-fit:contain;margin-right:12px;flex-shrink:0;" />`
+        : '';
+
+      const companyInfo =
+        `<div style="font-weight:bold;font-size:${fs + 4}pt;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.5px;">${emp.nombreEmpresa || 'EMPRESA'}</div>` +
+        (el.companyShowRTN !== false && emp.rtn ? `<div style="font-size:${fs}pt;color:rgba(255,255,255,0.88);">RTN: ${emp.rtn}</div>` : '') +
+        (emp.direccion ? `<div style="font-size:${fs}pt;color:rgba(255,255,255,0.88);">${emp.direccion}</div>` : '') +
+        (el.companyShowPhone !== false && emp.telefono ? `<div style="font-size:${fs}pt;color:rgba(255,255,255,0.88);">Tel: ${emp.telefono}${el.companyShowEmail && emp.correo ? ' | ' + emp.correo : ''}</div>` : '');
+
+      const docTitle = el.companyDocTitle || '';
+      const titleHtml = docTitle
+        ? `<div style="text-align:right;color:#fff;flex-shrink:0;padding-left:10px;line-height:1;">
+             <div style="font-size:${fs + 12}pt;font-weight:900;letter-spacing:3px;">${docTitle}</div>
+           </div>`
+        : '';
+
+      return `<div style="${base}overflow:hidden;background:#1e3a8a;">` +
+        `<div style="position:absolute;inset:0;background:#3b82f6;clip-path:polygon(0 0, 48% 0, 0 100%);"></div>` +
+        `<div style="position:absolute;inset:0;display:flex;align-items:center;padding:8px 16px;box-sizing:border-box;">` +
+          logoHtml +
+          `<div style="flex:1;min-width:0;">${companyInfo}</div>` +
+          titleHtml +
+        `</div>` +
+      `</div>`;
+    }
+
+    // PLAIN (default)
     const align = el.companyAlign || 'center';
-    const fs    = el.fontSize || 9;
     const col   = el.color || '#000000';
     const inner =
       `<div style="font-weight:bold;font-size:${fs + 2}pt;color:${col};">${emp.nombreEmpresa || ''}</div>` +

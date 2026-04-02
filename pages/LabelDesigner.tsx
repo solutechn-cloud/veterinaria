@@ -6,10 +6,11 @@ const { useNavigate } = ReactRouterDOM as any;
 import {
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
   Layers, Search, Database, Table, ChevronRight, Key, GripVertical, FileText, Tag, ChevronUp, Image as ImageIcon, Hand, Trash2, MousePointer2,
-  Printer, Eye
+  Printer, Eye, Copy
 } from 'lucide-react';
 import { printTemplate } from '../services/TemplateRenderer';
 import PreviewModal from '../components/LabelDesigner/PreviewModal';
+import TemplateThumbnail from '../components/LabelDesigner/TemplateThumbnail';
 import { STARTER_TEMPLATES, StarterTemplateEntry } from '../services/StarterTemplates';
 import Swal from 'sweetalert2';
 import { LabelService } from '../services/api';
@@ -167,6 +168,18 @@ const LabelDesigner: React.FC = () => {
       }
   };
 
+  const handleDuplicateTemplate = async (e: React.MouseEvent, t: LabelTemplate) => {
+      e.stopPropagation();
+      try {
+          const { id, ...rest } = t;
+          await LabelService.create({ ...rest, name: `Copia de ${rest.name}`, isDefault: false });
+          Swal.fire({ icon: 'success', title: 'Duplicado', toast: true, position: 'bottom-end', timer: 2000, showConfirmButton: false });
+          loadSavedList();
+      } catch (err: any) {
+          Swal.fire('Error', err.message, 'error');
+      }
+  };
+
   const handleSave = async () => {
       const success = await saveTemplate();
       if(success) loadSavedList();
@@ -214,47 +227,62 @@ const LabelDesigner: React.FC = () => {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                       {savedTemplates.map(t => (
                           <div key={t.id} onClick={() => handleOpen(t)} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all cursor-pointer group overflow-hidden relative flex flex-col">
-                              <div className="flex-1 bg-slate-100 flex items-center justify-center relative p-6 min-h-[160px]">
-                                  {t.type === 'LABEL' ? (
-                                      <div className="w-20 h-10 bg-white border-2 border-slate-300 rounded shadow-sm group-hover:scale-110 transition-transform flex items-center justify-center">
-                                          <ScanLine size={20} className="text-slate-300"/>
-                                      </div>
-                                  ) : (
-                                      <div className="w-16 h-20 bg-white border-2 border-slate-300 shadow-sm group-hover:scale-110 transition-transform flex flex-col gap-1 p-2">
-                                          <div className="h-1 bg-slate-200 w-full mb-1"/>
-                                          <div className="h-1 bg-slate-200 w-2/3"/>
-                                          <div className="h-1 bg-slate-200 w-full mt-auto"/>
-                                      </div>
-                                  )}
-                                  
-                                  {/* Delete Button (Hover) */}
-                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button 
-                                        onClick={(e) => handleDeleteTemplate(e, t.id)}
-                                        className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md transition-all hover:scale-110"
-                                        title="Eliminar"
+
+                              {/* ── Thumbnail preview area ── */}
+                              <div className="flex-1 bg-slate-100 relative overflow-hidden min-h-[160px]">
+                                  <TemplateThumbnail template={t} />
+
+                                  {/* Action buttons (visible on hover) */}
+                                  <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                          onClick={(e) => handleDuplicateTemplate(e, t)}
+                                          className="p-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full shadow-md transition-all hover:scale-110"
+                                          title="Duplicar"
                                       >
-                                          <Trash2 size={14}/>
+                                          <Copy size={13}/>
+                                      </button>
+                                      <button
+                                          onClick={(e) => handleDeleteTemplate(e, t.id)}
+                                          className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md transition-all hover:scale-110"
+                                          title="Eliminar"
+                                      >
+                                          <Trash2 size={13}/>
                                       </button>
                                   </div>
-                                  
+
+                                  {/* Default badge */}
                                   {t.isDefault && (
-                                      <div className="absolute top-2 left-2">
-                                          <Star className="text-amber-400 fill-amber-400" size={16}/>
+                                      <div className="absolute top-2 left-2 flex items-center gap-1 bg-amber-400/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                                          <Star size={10} className="fill-white"/>
+                                          <span>PREDETER.</span>
                                       </div>
                                   )}
+
+                                  {/* Type badge bottom-right */}
+                                  <div className={`absolute bottom-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm ${t.type==='LABEL'?'bg-indigo-600 text-white':'bg-purple-600 text-white'}`}>
+                                      {t.type === 'LABEL' ? 'Etiqueta' : 'Documento'}
+                                  </div>
                               </div>
-                              <div className="p-4 border-t border-slate-100">
-                                  <h3 className="font-bold text-slate-700 group-hover:text-indigo-600 truncate">{t.name}</h3>
-                                  <div className="flex justify-between items-center mt-2 text-xs">
-                                      <span className="text-slate-400">{t.width}x{t.height}{t.type==='DOCUMENT'?'cm':'mm'}</span>
-                                      <span className={`font-bold px-1.5 py-0.5 rounded uppercase ${t.type==='LABEL'?'bg-indigo-50 text-indigo-600':'bg-purple-50 text-purple-600'}`}>
-                                          {t.category?.substring(0,8)}
-                                      </span>
+
+                              {/* ── Card footer ── */}
+                              <div className="p-3 border-t border-slate-100">
+                                  <h3 className="font-bold text-slate-700 group-hover:text-indigo-600 truncate text-sm">{t.name}</h3>
+                                  <div className="flex justify-between items-center mt-1 text-xs">
+                                      <span className="text-slate-400">{t.width}×{t.height} {t.type==='DOCUMENT'?'cm':'mm'}</span>
+                                      <span className="text-slate-400 uppercase">{t.category || '—'}</span>
                                   </div>
                               </div>
                           </div>
                       ))}
+
+                      {/* Empty state */}
+                      {savedTemplates.length === 0 && (
+                          <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                              <FileText size={48} strokeWidth={1} className="mb-4 text-slate-300"/>
+                              <p className="text-lg font-bold text-slate-500">No tienes diseños aún</p>
+                              <p className="text-sm mt-1">Haz clic en "Nuevo Diseño" para empezar</p>
+                          </div>
+                      )}
                   </div>
               </div>
 

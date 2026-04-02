@@ -118,7 +118,29 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                 {el.type === 'IMAGE' && <img src={el.content} className="w-full h-full object-contain pointer-events-none"/>}
                 {el.type === 'SHAPE' && el.shapeType === 'LINE' && <div className={tool === 'SELECT' && isHollow ? 'pointer-events-auto' : ''} style={{width:'100%', height:`${(el.strokeWidth||1)}px`, backgroundColor: el.stroke}}/>}
 
-                {el.type === 'COMPANY_HEADER' && (
+                {el.type === 'COMPANY_HEADER' && el.companyStyle === 'GEOMETRIC' && (
+                    <div className={`w-full h-full overflow-hidden relative ${tool === 'SELECT' ? 'pointer-events-auto' : ''}`}>
+                        {/* Dark blue base */}
+                        <div style={{ position: 'absolute', inset: 0, background: '#1e3a8a' }} />
+                        {/* Accent triangle */}
+                        <div style={{ position: 'absolute', inset: 0, background: '#3b82f6', clipPath: 'polygon(0 0, 48% 0, 0 100%)' }} />
+                        {/* Content */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '6px 10px', gap: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 3}pt`, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>NOMBRE DE LA EMPRESA</div>
+                                {el.companyShowRTN !== false && <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>RTN: 0000-0000-000000</div>}
+                                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>Dirección · Tel: 0000-0000</div>
+                            </div>
+                            {el.companyDocTitle && (
+                                <div style={{ color: '#fff', fontWeight: 900, fontSize: `${(el.fontSize || 9) + 10}pt`, letterSpacing: 2, flexShrink: 0 }}>
+                                    {el.companyDocTitle}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {el.type === 'COMPANY_HEADER' && el.companyStyle !== 'GEOMETRIC' && (
                     <div className={`w-full h-full p-1 overflow-hidden ${tool === 'SELECT' ? 'pointer-events-auto' : ''}`}
                         style={{ textAlign: el.companyAlign || 'center', fontSize: `${el.fontSize || 9}pt`, lineHeight: 1.4 }}>
                         <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 2}pt`, color: el.color || '#000' }}>NOMBRE DE LA EMPRESA</div>

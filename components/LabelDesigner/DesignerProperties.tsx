@@ -323,22 +323,61 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
             {sel.type === 'COMPANY_HEADER' && (
                 <div className="space-y-3 pt-2 border-t border-slate-100">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase">Encabezado Empresa</h4>
+
+                    {/* Style selector */}
                     <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Alineación</label>
-                        <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
-                            {(['left','center','right'] as const).map(a => (
-                                <button key={a} onClick={() => updateElement(sel.id, {companyAlign: a})}
-                                    className={`flex-1 py-1.5 rounded text-xs font-bold transition-colors ${sel.companyAlign===a ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>
-                                    {a==='left'?'Izq':a==='center'?'Centro':'Der'}
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estilo</label>
+                        <div className="flex gap-2">
+                            {(['PLAIN', 'GEOMETRIC'] as const).map(s => (
+                                <button key={s} onClick={() => updateElement(sel.id, { companyStyle: s })}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all ${
+                                        (sel.companyStyle || 'PLAIN') === s
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                            : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                                    }`}>
+                                    {s === 'PLAIN' ? 'Simple' : '🎨 Geométrico'}
                                 </button>
                             ))}
                         </div>
                     </div>
+
+                    {/* Document title (geometric only) */}
+                    {sel.companyStyle === 'GEOMETRIC' && (
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Título del Documento</label>
+                            <input
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-500"
+                                value={sel.companyDocTitle || ''}
+                                onChange={e => updateElement(sel.id, { companyDocTitle: e.target.value })}
+                                placeholder="ej. FACTURA"
+                            />
+                        </div>
+                    )}
+
+                    {/* Plain style controls */}
+                    {sel.companyStyle !== 'GEOMETRIC' && (
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Alineación</label>
+                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                                {(['left','center','right'] as const).map(a => (
+                                    <button key={a} onClick={() => updateElement(sel.id, {companyAlign: a})}
+                                        className={`flex-1 py-1.5 rounded text-xs font-bold transition-colors ${sel.companyAlign===a ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                                        {a==='left'?'Izq':a==='center'?'Centro':'Der'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <PropertyInput label="Tamaño Fuente (pt)" value={sel.fontSize || 9} onChange={(v:any) => updateElement(sel.id, {fontSize:v})} type="number" step={0.5}/>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color Texto</label>
-                        <input type="color" value={sel.color || '#000000'} onChange={e => updateElement(sel.id, {color: e.target.value})} className="h-9 w-full rounded-lg border border-slate-200 cursor-pointer"/>
-                    </div>
+
+                    {sel.companyStyle !== 'GEOMETRIC' && (
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color Texto</label>
+                            <input type="color" value={sel.color || '#000000'} onChange={e => updateElement(sel.id, {color: e.target.value})} className="h-9 w-full rounded-lg border border-slate-200 cursor-pointer"/>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         {[
                             { key: 'companyShowRTN', label: 'Mostrar RTN' },
