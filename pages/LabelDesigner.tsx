@@ -6,9 +6,10 @@ const { useNavigate } = ReactRouterDOM as any;
 import {
   ArrowLeft, Save, Undo2, Redo2, Plus, Star, FileCog, Type, ScanLine, Shapes, Settings, ChevronDown, MoreVertical, X, Square, Circle, Minus,
   Layers, Search, Database, Table, ChevronRight, Key, GripVertical, FileText, Tag, ChevronUp, Image as ImageIcon, Hand, Trash2, MousePointer2,
-  Printer, Eye, Copy
+  Printer, Eye, Copy, Download, AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignCenterHorizontal, AlignEndVertical,
+  AlignStartHorizontal, AlignVerticalJustifyCenter, AlignEndHorizontal, Clipboard
 } from 'lucide-react';
-import { printTemplate } from '../services/TemplateRenderer';
+import { printTemplate, downloadHTML } from '../services/TemplateRenderer';
 import PreviewModal from '../components/LabelDesigner/PreviewModal';
 import TemplateThumbnail from '../components/LabelDesigner/TemplateThumbnail';
 import { STARTER_TEMPLATES, StarterTemplateEntry } from '../services/StarterTemplates';
@@ -96,6 +97,7 @@ const LabelDesigner: React.FC = () => {
       undo, redo,
       addElement, updateElement, deleteSelected, updateTemplate,
       saveTemplate, moveLayer, reorderElements,
+      alignElements, distributeH,
       interaction, unitLabel,
       handlePointerDown, handlePointerMove, handlePointerUp
   } = useLabelDesigner();
@@ -401,9 +403,16 @@ const LabelDesigner: React.FC = () => {
                 <button
                     onClick={() => printTemplate(template, {})}
                     className="border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 text-sm transition-all active:scale-95"
-                    title="Imprimir / Exportar"
+                    title="Imprimir"
                 >
-                    <Printer size={18}/> <span className="hidden md:inline">Imprimir</span>
+                    <Printer size={18}/>
+                </button>
+                <button
+                    onClick={() => downloadHTML(template, {})}
+                    className="border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 text-sm transition-all active:scale-95"
+                    title="Descargar HTML (abre en navegador → Ctrl+P → Guardar como PDF)"
+                >
+                    <Download size={18}/> <span className="hidden md:inline">HTML</span>
                 </button>
                 <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-all active:scale-95">
                     <Save size={18}/> <span className="hidden md:inline">Guardar</span>
@@ -411,8 +420,75 @@ const LabelDesigner: React.FC = () => {
             </div>
         </header>
 
+        {/* CONTEXTUAL BARS */}
+        {/* Multi-select alignment bar */}
+        {selectedIds.length >= 2 && (
+            <div className="hidden md:flex bg-indigo-50 border-b border-indigo-200 px-4 py-1.5 gap-1 items-center shrink-0 z-20">
+                <span className="text-[10px] font-bold text-indigo-400 uppercase mr-2">{selectedIds.length} seleccionados · Alinear:</span>
+                {[
+                    { icon: <AlignLeft size={14}/>, label: 'Izquierda', dir: 'left' as const },
+                    { icon: <AlignCenterHorizontal size={14}/>, label: 'Centro H', dir: 'center-h' as const },
+                    { icon: <AlignRight size={14}/>, label: 'Derecha', dir: 'right' as const },
+                    { icon: <AlignStartVertical size={14}/>, label: 'Arriba', dir: 'top' as const },
+                    { icon: <AlignVerticalJustifyCenter size={14}/>, label: 'Centro V', dir: 'center-v' as const },
+                    { icon: <AlignEndVertical size={14}/>, label: 'Abajo', dir: 'bottom' as const },
+                ].map(({ icon, label, dir }) => (
+                    <button key={dir} onClick={() => alignElements(dir)} title={label}
+                        className="p-1.5 rounded hover:bg-indigo-200 text-indigo-600 transition-colors">
+                        {icon}
+                    </button>
+                ))}
+                {selectedIds.length >= 3 && (
+                    <button onClick={distributeH} title="Distribuir horizontalmente"
+                        className="ml-1 px-2 py-1 text-[10px] font-bold rounded hover:bg-indigo-200 text-indigo-600 transition-colors border border-indigo-200">
+                        ↔ Distribuir
+                    </button>
+                )}
+            </div>
+        )}
+
+        {/* Single-element copy/paste bar */}
+        {selectedId && selectedIds.length <= 1 && (
+            <div className="hidden md:flex bg-slate-50 border-b border-slate-100 px-4 py-1 gap-2 items-center shrink-0 z-20">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Elemento:</span>
+                <button
+                    onClick={() => {
+                        const el = template.elements.find(e => e.id === selectedId);
+                        if (el) {
+                            // Trigger copy via keyboard simulation workaround — hook handles Ctrl+C
+                            // We directly call addElement with clipboard offset
+                            addElement(el.type, {
+                                ...el,
+                                x: el.x + (template.type === 'DOCUMENT' ? 0.5 : 2),
+                                y: el.y + (template.type === 'DOCUMENT' ? 0.5 : 2),
+                            });
+                        }
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                    title="Duplicar elemento (Ctrl+C, Ctrl+V)"
+                >
+                    <Copy size={12}/> Duplicar
+                </button>
+                <button
+                    onClick={() => moveLayer('UP')}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                    title="Subir capa"
+                >
+                    ↑ Capa
+                </button>
+                <button
+                    onClick={() => moveLayer('DOWN')}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                    title="Bajar capa"
+                >
+                    ↓ Capa
+                </button>
+                <span className="text-[10px] text-slate-300 ml-2">Ctrl+C/V copiar · Del eliminar · Flechas mover</span>
+            </div>
+        )}
+
         <div className="flex flex-1 overflow-hidden relative">
-            
+
             {/* Desktop Toolbar */}
             <DesignerToolbar 
                 template={template}

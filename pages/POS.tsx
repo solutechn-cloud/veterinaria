@@ -8,6 +8,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import { getLogoSync } from '../services/logoLoader';
+import { printSaleInvoice } from '../services/DocumentService';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const numeroALetras = (num: number): string => {
@@ -446,11 +447,15 @@ const POS: React.FC = (): React.ReactElement => {
             text: `Factura #${saleId} generada.`,
             icon: 'success',
             showCancelButton: true,
-            confirmButtonText: 'Imprimir Factura',
+            showDenyButton: true,
+            confirmButtonText: 'PDF Estático',
+            denyButtonText: '🎨 Diseñador',
             cancelButtonText: 'Cerrar',
-            confirmButtonColor: '#1e3a8a'
+            confirmButtonColor: '#1e3a8a',
+            denyButtonColor: '#6366f1',
         }).then(res => {
-            if(res.isConfirmed) generateInvoicePDF(saleId);
+            if (res.isConfirmed) generateInvoicePDF(saleId);
+            if (res.isDenied) printSaleInvoice(saleId).then(r => { if (!r.success) Swal.fire('Sin plantilla', r.message, 'warning'); });
         });
       }
 

@@ -373,3 +373,21 @@ export async function printTemplate(template: LabelTemplate, ctx: PrintDataConte
     win.print();
   };
 }
+
+/**
+ * Download the rendered template as an HTML file.
+ * The user can open it in a browser and use Ctrl+P → "Save as PDF".
+ */
+export async function downloadHTML(template: LabelTemplate, ctx: PrintDataContext = {}): Promise<void> {
+  const media = await preRenderMedia(template, ctx);
+  const html  = buildHTML(template, ctx, media);
+  const blob  = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href      = url;
+  a.download  = `${(template.name || 'documento').replace(/[^a-zA-Z0-9-_]/g, '_')}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RepairService, InventoryService, ClientService, ConfigService } from '../services/api';
 import { getLogoSync } from '../services/logoLoader';
+import { printRepairOrder } from '../services/DocumentService';
 import { Reparacion, Telefono, Cliente } from '../types';
 import { 
   Wrench, PlusCircle, Search, Clock, CheckCircle, Package, DollarSign, User, Smartphone, X, Save, RefreshCw, AlertCircle, FileText, Trash2, Edit2, Printer, Check, Info, ShoppingCart
@@ -464,7 +465,8 @@ const Repairs: React.FC = () => {
                                         {r.estado_reparacion !== 'Entregado' && (
                                             <button onClick={() => handleBillRepair(r)} className="p-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 active:scale-90 transition-all" title="Cobrar / Facturar"><ShoppingCart size={16}/></button>
                                         )}
-                                        <button onClick={() => generatePDF(r)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Imprimir Comprobante"><Printer size={16}/></button>
+                                        <button onClick={() => generatePDF(r)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Imprimir PDF Estático"><Printer size={16}/></button>
+                                        <button onClick={() => printRepairOrder(r).then(res => { if (!res.success) Swal.fire('Sin plantilla', res.message, 'warning'); })} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg" title="Imprimir con Diseñador"><FileText size={16}/></button>
                                         <button onClick={() => openEdit(r)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="Editar"><Edit2 size={16}/></button>
                                         <button onClick={() => handleDelete(r.id_reparacion)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={16}/></button>
                                     </div>
