@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { InventoryService, ClientService, SalesService, ConfigService } from '../services/api';
+import { InventoryService, ClientService, SalesService, ConfigService, OfflineQueuedError } from '../services/api';
 import { ProductoUnified, DetalleVenta, Cliente, VentaPayload } from '../types';
 import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -468,6 +468,16 @@ const POS: React.FC = (): React.ReactElement => {
 
       resetPOS();
     } catch (e: any) {
+      if (e instanceof OfflineQueuedError) {
+        Swal.fire({
+          icon: 'info',
+          title: 'Venta guardada offline',
+          text: 'Se sincronizará automáticamente al reconectarse a internet.',
+          confirmButtonColor: '#4f46e5'
+        });
+        resetPOS();
+        return;
+      }
       Swal.fire('Error', e.message, 'error');
     } finally { setIsLoading(false); }
   };
@@ -533,17 +543,41 @@ const POS: React.FC = (): React.ReactElement => {
                )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 custom-scrollbar">
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-3 bg-slate-50/50 custom-scrollbar">
+            <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-2">
               {filteredProducts.map(p => (
-                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock === 0} className={`flex flex-col items-start p-3 bg-white rounded-2xl border transition-all text-left relative group active:scale-95 shadow-sm ${p.stock === 0 ? 'opacity-50 grayscale' : 'border-slate-200/60 hover:border-indigo-500 hover:shadow-md'}`}>
-                  <div className="w-full flex justify-between items-start mb-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase bg-slate-100 text-slate-500`}>{p.tipo.substring(0,3)}</span><span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.stock > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>Stock: {p.stock}</span></div>
-                  <h4 className="font-bold text-slate-800 text-[11px] line-clamp-2 leading-tight min-h-[2.2rem]">
-                    {p.tipo === 'TELEFONO' ? `${p.marca ? p.marca + ' ' : ''}${p.nombre}`.trim() : `${p.categoria ? p.categoria + ' - ' : ''}${p.nombre}`}
+                <button
+                  key={p.id}
+                  onClick={() => addToCart(p)}
+                  disabled={p.stock === 0}
+                  className={`flex flex-col items-start p-2 bg-white rounded-xl border transition-all text-left active:scale-95 shadow-sm min-w-0 ${p.stock === 0 ? 'opacity-50 grayscale' : 'border-slate-200/60 hover:border-indigo-500 hover:shadow-md'}`}
+                >
+                  {/* Badges tipo + stock */}
+                  <div className="w-full flex justify-between items-center gap-1 mb-1.5 min-w-0">
+                    <span className="shrink-0 text-[7px] font-black px-1 py-0.5 rounded uppercase bg-slate-100 text-slate-500 leading-none">
+                      {p.tipo === 'TELEFONO' ? 'TEL' : p.tipo === 'ACCESORIO' ? 'ACC' : 'SRV'}
+                    </span>
+                    <span className={`text-[8px] font-black px-1 py-0.5 rounded leading-none truncate ${p.stock > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                      {p.stock > 99 ? '99+' : p.stock}u
+                    </span>
+                  </div>
+                  {/* Nombre del producto */}
+                  <h4 className="w-full font-bold text-slate-800 text-[10px] line-clamp-2 leading-snug mb-1 min-w-0">
+                    {p.tipo === 'TELEFONO'
+                      ? `${p.marca ? p.marca + ' ' : ''}${p.nombre}`.trim()
+                      : `${p.categoria ? p.categoria + ' - ' : ''}${p.nombre}`}
                   </h4>
-                  {p.tipo === 'TELEFONO' && p.imei && <p className="text-[9px] text-slate-400 truncate">IMEI: {p.imei}</p>}
-                  {p.tipo === 'ACCESORIO' && <p className="text-[9px] text-slate-400 truncate">Cód: {p.id}</p>}
-                  <div className="mt-2 w-full pt-2 border-t border-slate-50 font-black text-indigo-600">L. {Number(p.precioVenta).toLocaleString()}</div>
+                  {/* Código secundario */}
+                  {p.tipo === 'TELEFONO' && p.imei && (
+                    <p className="w-full text-[8px] text-slate-400 truncate leading-none mb-1">IMEI: {p.imei}</p>
+                  )}
+                  {p.tipo === 'ACCESORIO' && (
+                    <p className="w-full text-[8px] text-slate-400 truncate leading-none mb-1">#{p.id}</p>
+                  )}
+                  {/* Precio */}
+                  <div className="mt-auto w-full pt-1.5 border-t border-slate-100 font-black text-indigo-600 text-[10px] truncate">
+                    L. {Number(p.precioVenta).toLocaleString()}
+                  </div>
                 </button>
               ))}
             </div>

@@ -1,10 +1,10 @@
 
-import { 
-  Telefono, 
-  Inventario, 
-  Accesorio, 
-  Categoria, 
-  Ubicacion, 
+import {
+  Telefono,
+  Inventario,
+  Accesorio,
+  Categoria,
+  Ubicacion,
   Proveedor,
   Cliente,
   Venta,
@@ -21,26 +21,57 @@ import {
   Consignacion,
   Garantia
 } from '../types';
+import { offlineDB } from './offlineDB';
 
 const API_URL = '/api';
 
-// request helper function
+// Error especial para operaciones encoladas offline
+export class OfflineQueuedError extends Error {
+  constructor() { super('OFFLINE_QUEUED'); this.name = 'OfflineQueuedError'; }
+}
+
+// request helper function — offline-aware
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('sc_token');
+  const method = (options.method || 'GET').toUpperCase();
+  const isRead = method === 'GET';
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 
-  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
-  
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+  // Escritura offline → encolar y lanzar error especial
+  if (!navigator.onLine && !isRead) {
+    await offlineDB.addToQueue(method, `${API_URL}${endpoint}`,
+      options.body ? JSON.parse(options.body as string) : null);
+    throw new OfflineQueuedError();
   }
 
-  return response.json();
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+    // Cachear respuestas GET en IndexedDB para uso offline
+    if (isRead) {
+      offlineDB.cacheData(`cache:${endpoint}`, data).catch(() => {});
+    }
+    return data;
+  } catch (err) {
+    if (err instanceof OfflineQueuedError) throw err;
+    // Fallback a cache IndexedDB para GETs
+    if (isRead) {
+      const cached = await offlineDB.getCachedData<T>(`cache:${endpoint}`);
+      if (cached !== null) {
+        window.dispatchEvent(new CustomEvent('smartcloud:cache-fallback', { detail: { endpoint } }));
+        return cached;
+      }
+    }
+    throw err;
+  }
 }
 
 export const InventoryService = {

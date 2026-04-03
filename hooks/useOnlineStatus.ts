@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { offlineDB, SyncItem } from '../services/offlineDB';
+import { refreshStaleCaches } from '../services/offlineSync';
 
 export interface SyncState {
   isOnline: boolean;
@@ -29,7 +30,7 @@ export function useOnlineStatus() {
 
     setState(prev => ({ ...prev, isSyncing: true, syncError: null }));
 
-    const token = localStorage.getItem('smartcloud_token');
+    const token = localStorage.getItem('sc_token');
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -83,6 +84,7 @@ export function useOnlineStatus() {
     const handleOnline = () => {
       setState(prev => ({ ...prev, isOnline: true }));
       processQueue();
+      refreshStaleCaches();
     };
     const handleOffline = () => {
       setState(prev => ({ ...prev, isOnline: false }));

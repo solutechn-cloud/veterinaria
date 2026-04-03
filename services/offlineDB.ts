@@ -115,5 +115,25 @@ export const offlineDB = {
     const count = await promisify<number>(tx(db, 'sync_queue', 'readonly').count());
     db.close();
     return count;
+  },
+
+  async getCacheAge(key: string): Promise<number | null> {
+    const db = await openDB();
+    const record = await promisify<any>(tx(db, 'data_cache', 'readonly').get(key));
+    db.close();
+    return record ? Date.now() - record.cachedAt : null;
+  },
+
+  async removeFromCache(key: string): Promise<void> {
+    const db = await openDB();
+    await promisify(tx(db, 'data_cache', 'readwrite').delete(key));
+    db.close();
+  },
+
+  async getAllCacheKeys(): Promise<string[]> {
+    const db = await openDB();
+    const keys = await promisify<IDBValidKey[]>(tx(db, 'data_cache', 'readonly').getAllKeys());
+    db.close();
+    return (keys || []) as string[];
   }
 };

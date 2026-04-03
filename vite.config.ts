@@ -59,27 +59,14 @@ export default defineConfig({
         // Cache de rutas API de lectura (NetworkFirst: intenta red, cae a cache)
         runtimeCaching: [
           {
-            urlPattern: /^\/api\/(inventory|clients|config|admin\/schema)/,
+            urlPattern: /^\/api\//,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-read-cache',
+              cacheName: 'api-cache',
               networkTimeoutSeconds: 5,
               expiration: {
-                maxEntries: 300,
+                maxEntries: 500,
                 maxAgeSeconds: 24 * 60 * 60 // 24 horas
-              },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
-          {
-            urlPattern: /^\/api\/reports/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-reports-cache',
-              networkTimeoutSeconds: 5,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 // 1 hora
               },
               cacheableResponse: { statuses: [0, 200] }
             }

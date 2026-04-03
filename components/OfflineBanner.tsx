@@ -1,21 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { WifiOff, Wifi, RefreshCw, CloudOff, CheckCircle } from 'lucide-react';
+import { WifiOff, RefreshCw, CloudOff, CheckCircle, Database } from 'lucide-react';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useAuth } from '../context/AuthContext';
+import { warmAllCaches, startPeriodicWarm, stopPeriodicWarm } from '../services/offlineSync';
 
 const OfflineBanner: React.FC = () => {
-  const { isOnline, isSyncing, pendingCount, lastSyncAt, syncError, processQueue } = useOnlineStatus();
+  const { isOnline, isSyncing, pendingCount, syncError, processQueue } = useOnlineStatus();
+  const { isAuthenticated } = useAuth();
   const [showSyncedToast, setShowSyncedToast] = useState(false);
+  const [showCacheToast, setShowCacheToast] = useState(false);
+
+  // Precarga proactiva al autenticarse y estar online
+  useEffect(() => {
+    if (isAuthenticated && isOnline) {
+      warmAllCaches();
+      startPeriodicWarm();
+    }
+    return () => stopPeriodicWarm();
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handleSynced = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail.successCount > 0) {
         setShowSyncedToast(true);
         setTimeout(() => setShowSyncedToast(false), 4000);
       }
     };
-    window.addEventListener('smartcloud:synced', handler);
-    return () => window.removeEventListener('smartcloud:synced', handler);
+    const handleCacheFallback = () => {
+      setShowCacheToast(true);
+      setTimeout(() => setShowCacheToast(false), 3000);
+    };
+    window.addEventListener('smartcloud:synced', handleSynced);
+    window.addEventListener('smartcloud:cache-fallback', handleCacheFallback);
+    return () => {
+      window.removeEventListener('smartcloud:synced', handleSynced);
+      window.removeEventListener('smartcloud:cache-fallback', handleCacheFallback);
+    };
   }, []);
 
   // Toast de sincronizacion exitosa
@@ -24,6 +45,16 @@ const OfflineBanner: React.FC = () => {
       <div className="fixed top-4 right-4 z-[9999] flex items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-xl shadow-2xl animate-fade-in">
         <CheckCircle size={18} />
         <span className="text-sm font-semibold">Datos sincronizados correctamente</span>
+      </div>
+    );
+  }
+
+  // Toast de datos desde cache local
+  if (showCacheToast && !isOnline) {
+    return (
+      <div className="fixed top-16 right-4 z-[9998] flex items-center gap-2 bg-slate-700 text-white px-4 py-2.5 rounded-xl shadow-xl animate-fade-in">
+        <Database size={15} />
+        <span className="text-xs font-medium">Datos cargados desde cache local</span>
       </div>
     );
   }
