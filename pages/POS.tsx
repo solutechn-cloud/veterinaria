@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryService, ClientService, SalesService, ConfigService } from '../services/api';
+import { offlineDB } from '../services/offlineDB';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { ProductoUnified, DetalleVenta, Cliente, VentaPayload } from '../types';
 import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet } from 'lucide-react';
@@ -456,21 +457,57 @@ const POS: React.FC = (): React.ReactElement => {
           return;
         }
         saleId = response.codVenta;
-        Swal.fire({
-            title: '¡Venta Exitosa!',
-            text: `Factura #${saleId} generada.`,
+        const isOfflineSale = !!(response as any)._offline;
+
+        // Venta offline: crear ingreso sintético en cache para que aparezca en Caja
+        if (isOfflineSale && user?.idCaja) {
+          offlineDB.patchCacheByPrefix(`cache:/ingresos`, 'POST', null, {
+            idIngreso: `LOCAL_ING_${Date.now()}`,
+            idCaja: user.idCaja,
+            descripcion: `Venta (pendiente sincronización)`,
+            monto: payload.total,
+            costo: payload.total - payload.isv,
+            subtipo_movimiento: 'Venta',
+            estado: 'activo',
+            fechaCreacion: new Date().toISOString(),
+            _offline: true
+          }, 'idIngreso').catch(() => {});
+        }
+
+        if (isOfflineSale) {
+          // Offline: solo PDF estático (el diseñador requiere servidor)
+          Swal.fire({
+            title: 'Venta guardada offline',
+            text: `Se sincronizará automáticamente al reconectarse.`,
             icon: 'success',
             showCancelButton: true,
-            showDenyButton: true,
             confirmButtonText: 'PDF Estático',
-            denyButtonText: '🎨 Diseñador',
             cancelButtonText: 'Cerrar',
             confirmButtonColor: '#1e3a8a',
-            denyButtonColor: '#6366f1',
-        }).then(res => {
+          }).then(res => {
             if (res.isConfirmed) generateInvoicePDF(saleId);
-            if (res.isDenied) printSaleInvoice(saleId).then(r => { if (!r.success) Swal.fire('Sin plantilla', r.message, 'warning'); });
-        });
+            resetPOS();
+          });
+        } else {
+          // Online: opciones completas
+          Swal.fire({
+              title: '¡Venta Exitosa!',
+              text: `Factura #${saleId} generada.`,
+              icon: 'success',
+              showCancelButton: true,
+              showDenyButton: true,
+              confirmButtonText: 'PDF Estático',
+              denyButtonText: '🎨 Diseñador',
+              cancelButtonText: 'Cerrar',
+              confirmButtonColor: '#1e3a8a',
+              denyButtonColor: '#6366f1',
+          }).then(res => {
+              if (res.isConfirmed) generateInvoicePDF(saleId);
+              if (res.isDenied) printSaleInvoice(saleId).then(r => { if (!r.success) Swal.fire('Sin plantilla', r.message, 'warning'); });
+              resetPOS();
+          });
+        }
+        return; // resetPOS se llama dentro del .then()
       }
 
       resetPOS();
