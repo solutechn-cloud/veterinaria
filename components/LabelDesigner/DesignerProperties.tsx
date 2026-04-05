@@ -58,18 +58,32 @@ const PropertyInput = memo(({ label, value, onChange, type = "text", step, min, 
 
 interface DesignerPropertiesProps {
     selectedId: string | null;
+    selectedIds?: string[];
     template: LabelTemplate;
     setTemplate: (t: LabelTemplate | Partial<LabelTemplate>) => void;
     updateElement: (id: string, updates: Partial<LabelElement>) => void;
+    updateMultipleElements?: (ids: string[], updates: Partial<LabelElement>) => void;
     deleteSelected: () => void;
     setShowVarModal: (show: boolean) => void;
 }
 
 const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
-    selectedId, template, setTemplate, updateElement, deleteSelected, setShowVarModal
+    selectedId, selectedIds = [], template, setTemplate, updateElement, updateMultipleElements, deleteSelected, setShowVarModal
 }) => {
     const sel = template.elements.find((e: any) => e.id === selectedId);
     const unit = template.type === 'DOCUMENT' ? 'cm' : 'mm';
+    const multiSel = selectedIds.length > 1
+        ? template.elements.filter(e => selectedIds.includes(e.id))
+        : [];
+
+    // Batch update all selected elements
+    const updateAll = (updates: Partial<LabelElement>) => {
+        if (updateMultipleElements && selectedIds.length > 1) {
+            updateMultipleElements(selectedIds, updates);
+        } else if (sel) {
+            updateElement(sel.id, updates);
+        }
+    };
 
     const setTpl = (updates: Partial<LabelTemplate>) => {
         setTemplate({ ...template, ...updates } as LabelTemplate);
@@ -186,7 +200,126 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
         );
     }
 
-    // Element Properties
+    // ── Multi-select panel ───────────────────────────────────────────────────
+    if (multiSel.length > 1) {
+        const types = [...new Set(multiSel.map(e => e.type))];
+        const allText  = types.every(t => t === 'TEXT');
+        const allShape = types.every(t => t === 'SHAPE');
+        const hasSizes = types.some(t => ['TEXT','SHAPE','IMAGE','BARCODE','QR'].includes(t));
+
+        // Derive common values (show mixed if different)
+        const firstEl = multiSel[0];
+
+        return (
+            <div className="p-4 space-y-4 overflow-y-auto h-full">
+                <div className="flex justify-between items-center border-b pb-2">
+                    <div>
+                        <div className="text-xs font-bold text-slate-700">{multiSel.length} elementos seleccionados</div>
+                        <div className="text-[10px] text-slate-400">{types.join(', ')}</div>
+                    </div>
+                    <button
+                        onClick={() => { if (updateMultipleElements) { const newEls = template.elements.filter(e => !selectedIds.includes(e.id)); setTemplate({ ...template, elements: newEls }); } }}
+                        className="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded transition-colors"
+                        title="Eliminar seleccionados"
+                    ><Trash2 size={16}/></button>
+                </div>
+
+                {/* Geometry — apply to all */}
+                {hasSizes && (
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Tamaño (aplica a todos)</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                            <PropertyInput label={`Ancho (${unit})`} value="" placeholder="Mixto" type="number" step={0.1}
+                                onChange={(v: any) => updateAll({ width: v })}/>
+                            <PropertyInput label={`Alto (${unit})`} value="" placeholder="Mixto" type="number" step={0.1}
+                                onChange={(v: any) => updateAll({ height: v })}/>
+                        </div>
+                    </div>
+                )}
+
+                {/* Opacity */}
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Opacidad (todos)</label>
+                    <input type="range" min={0} max={1} step={0.05} defaultValue={1}
+                        onChange={e => updateAll({ opacity: parseFloat(e.target.value) })}
+                        className="w-full accent-indigo-600"
+                    />
+                </div>
+
+                {/* Text properties */}
+                {allText && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Tipografía (todos los textos)</h4>
+                        <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
+                            defaultValue={firstEl.fontFamily}
+                            onChange={e => updateAll({ fontFamily: e.target.value })}>
+                            {FONTS.map(f => <option key={f.value} value={f.value}>{f.name}</option>)}
+                        </select>
+                        <div className="flex gap-2">
+                            <PropertyInput value="" placeholder="pt" type="number" className="flex-1"
+                                onChange={(v: any) => updateAll({ fontSize: v })}/>
+                            <button onClick={() => updateAll({ fontWeight: 'bold' })} className="px-3 border rounded-lg font-bold bg-white text-slate-600 border-slate-200 hover:bg-slate-100">B</button>
+                            <button onClick={() => updateAll({ fontWeight: 'normal' })} className="px-3 border rounded-lg bg-white text-slate-600 border-slate-200 hover:bg-slate-100">N</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color Texto</label>
+                                <input type="color" defaultValue={firstEl.color || '#000000'}
+                                    onChange={e => updateAll({ color: e.target.value })}
+                                    className="h-9 w-full rounded-lg border border-slate-200 cursor-pointer"/>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fondo</label>
+                                <div className="flex gap-1">
+                                    <input type="color" defaultValue={firstEl.backgroundColor || '#ffffff'}
+                                        onChange={e => updateAll({ backgroundColor: e.target.value })}
+                                        className="h-9 flex-1 rounded-lg border border-slate-200 cursor-pointer"/>
+                                    <button onClick={() => updateAll({ backgroundColor: 'transparent' })}
+                                        className="text-[10px] px-1.5 bg-slate-100 rounded border border-slate-200">None</button>
+                                </div>
+                            </div>
+                        </div>
+                        {/* Align */}
+                        <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                            {(['left','center','right'] as const).map(a => (
+                                <button key={a} onClick={() => updateAll({ textAlign: a })}
+                                    className="flex-1 py-1 rounded flex justify-center text-slate-400 hover:text-indigo-600">
+                                    {a === 'left' ? <AlignLeft size={16}/> : a === 'center' ? <AlignCenter size={16}/> : <AlignRight size={16}/>}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Shape properties */}
+                {allShape && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Color de Relleno (todas las formas)</h4>
+                        <div className="flex gap-2 items-center">
+                            <input type="color" defaultValue={firstEl.fill || '#ffffff'}
+                                onChange={e => updateAll({ fill: e.target.value })}
+                                className="h-9 w-14 rounded-lg border border-slate-200 cursor-pointer"/>
+                            <button onClick={() => updateAll({ fill: 'transparent' })}
+                                className="text-xs px-2 py-1.5 bg-slate-100 rounded border border-slate-200">Sin relleno</button>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Color Borde</label>
+                            <input type="color" defaultValue={firstEl.stroke || '#000000'}
+                                onChange={e => updateAll({ stroke: e.target.value })}
+                                className="h-9 w-full rounded-lg border border-slate-200 cursor-pointer"/>
+                        </div>
+                    </div>
+                )}
+
+                <p className="text-[10px] text-slate-400 text-center pt-2 border-t border-slate-100">
+                    Shift+click para agregar/quitar de la selección.<br/>
+                    Arrastra sobre el fondo para seleccionar por área.
+                </p>
+            </div>
+        );
+    }
+
+    // ── Element Properties ───────────────────────────────────────────────────
     return (
         <div className="p-6 space-y-5 overflow-y-auto h-full">
             <div className="flex justify-between items-center border-b pb-2">

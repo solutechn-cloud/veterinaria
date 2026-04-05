@@ -1,8 +1,8 @@
 
-import React, { memo, useRef, useEffect, useState } from 'react';
+import React, { memo, useRef, useEffect, useState, useCallback } from 'react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import { RotateCw, ZoomIn, ZoomOut, Maximize, Lock } from 'lucide-react';
+import { RotateCw, ZoomIn, ZoomOut, Maximize, Lock, Hand, MousePointer2 } from 'lucide-react';
 import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow, EmpresaConfig } from '../../types';
 
 const defaultCols: InvoiceColumn[] = [
@@ -21,8 +21,10 @@ interface DesignerCanvasProps {
     setZoom: React.Dispatch<React.SetStateAction<number>>;
     setPan?: (p: {x:number;y:number}) => void;
     setSelectedId: (id: string | null) => void;
+    setSelectedIds?: (ids: string[]) => void;
     onPointerDown: (e: any, id: string | null, mode: any, handle?: string) => void;
     tool: 'SELECT' | 'HAND';
+    setTool?: (t: 'SELECT' | 'HAND') => void;
     pan: { x: number, y: number };
     editingId?: string | null;
     onStartEdit?: (id: string) => void;
@@ -30,6 +32,7 @@ interface DesignerCanvasProps {
     snapGuides?: { axis: 'x' | 'y'; pos: number }[];
     onContextMenu?: (e: React.MouseEvent, id: string) => void;
     empresaConfig?: Partial<EmpresaConfig>;
+    lasso?: { x1: number; y1: number; x2: number; y2: number } | null;
 }
 
 /** Resuelve tokens {{empresa.X}} en el canvas para preview */
@@ -363,12 +366,16 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
     );
 });
 
-const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setPan, setSelectedId, onPointerDown, tool, pan, editingId, onStartEdit, onCommitEdit, snapGuides = [], onContextMenu, empresaConfig }) => {
+const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setPan, setSelectedId, setSelectedIds, onPointerDown, tool, setTool, pan, editingId, onStartEdit, onCommitEdit, snapGuides = [], onContextMenu, empresaConfig, lasso }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const lastDist = useRef<number | null>(null);
     const panRef = useRef(pan);
     const zoomRef = useRef(zoom);
     const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+    const [editingZoomInput, setEditingZoomInput] = useState(false);
+    const [zoomInputVal, setZoomInputVal] = useState('');
+    // Middle-mouse panning
+    const mmPan = useRef<{ startX: number; startY: number; startPan: { x: number; y: number } } | null>(null);
 
     const currentScale = template.type === 'DOCUMENT' ? 37.795 : 3.7795;
     const currentUnit = template.type === 'DOCUMENT' ? 'cm' : 'mm';
@@ -383,14 +390,15 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
         if (!container) return;
 
         const handleWheel = (e: WheelEvent) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
+            e.preventDefault();
+            if (e.ctrlKey || e.metaKey) {
+                // Zoom toward cursor
                 const rect = container.getBoundingClientRect();
                 const mx = e.clientX - rect.left - rect.width / 2;
                 const my = e.clientY - rect.top - rect.height / 2;
-                const factor = e.deltaY < 0 ? 1.1 : 0.909;
+                const factor = e.deltaY < 0 ? 1.12 : 0.893;
                 const prevZoom = zoomRef.current;
-                const newZoom = Math.max(0.1, Math.min(5, prevZoom * factor));
+                const newZoom = Math.max(0.1, Math.min(8, prevZoom * factor));
                 const ratio = newZoom / prevZoom;
                 const prevPan = panRef.current;
                 setZoom(newZoom);
@@ -398,7 +406,32 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                     x: mx + (prevPan.x - mx) * ratio,
                     y: my + (prevPan.y - my) * ratio,
                 });
+            } else {
+                // Pan: scroll naturally (shift = horizontal)
+                const prevPan = panRef.current;
+                setPan?.({
+                    x: prevPan.x - (e.shiftKey ? e.deltaY : e.deltaX),
+                    y: prevPan.y - (e.shiftKey ? e.deltaX : e.deltaY),
+                });
             }
+        };
+
+        // Middle-mouse pan
+        const handleMouseDown = (e: MouseEvent) => {
+            if (e.button === 1) {
+                e.preventDefault();
+                mmPan.current = { startX: e.clientX, startY: e.clientY, startPan: { ...panRef.current } };
+            }
+        };
+        const handleMouseMove = (e: MouseEvent) => {
+            if (mmPan.current) {
+                const dx = e.clientX - mmPan.current.startX;
+                const dy = e.clientY - mmPan.current.startY;
+                setPan?.({ x: mmPan.current.startPan.x + dx, y: mmPan.current.startPan.y + dy });
+            }
+        };
+        const handleMouseUp = (e: MouseEvent) => {
+            if (e.button === 1) mmPan.current = null;
         };
 
         const handleTouchStart = (e: TouchEvent) => {
@@ -436,12 +469,18 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
         const handleTouchEnd = () => { lastDist.current = null; };
 
         container.addEventListener('wheel', handleWheel, { passive: false });
+        container.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
         container.addEventListener('touchstart', handleTouchStart, { passive: false });
         container.addEventListener('touchmove', handleTouchMove, { passive: false });
         container.addEventListener('touchend', handleTouchEnd);
 
         return () => {
             container.removeEventListener('wheel', handleWheel);
+            container.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
             container.removeEventListener('touchstart', handleTouchStart);
             container.removeEventListener('touchmove', handleTouchMove);
             container.removeEventListener('touchend', handleTouchEnd);
@@ -465,8 +504,8 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
     return (
         <div
             ref={containerRef}
-            className={`flex-1 bg-slate-200/50 overflow-hidden relative flex items-center justify-center p-2 md:p-8 touch-none ${tool === 'HAND' ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            onMouseDown={(e) => onPointerDown(e, null, 'PANNING')}
+            className={`flex-1 bg-slate-200/50 overflow-hidden relative flex items-center justify-center p-2 md:p-8 touch-none ${tool === 'HAND' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+            onMouseDown={(e) => onPointerDown(e, null, tool === 'HAND' ? 'PANNING' : 'PANNING')}
             onTouchStart={(e) => onPointerDown(e, null, 'PANNING')}
         >
             {/* Rulers */}
@@ -534,36 +573,115 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
             })()}
 
             {/* Viewport Controls */}
-            <div className="absolute bottom-6 left-6 flex flex-col gap-2 bg-white p-1 rounded-xl shadow-lg border border-slate-200 z-20">
-                <button onClick={() => setZoom(z => Math.min(z + 0.5, 5))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"><ZoomIn size={20}/></button>
+            <div className="absolute bottom-6 left-6 flex flex-col gap-1 bg-white p-1 rounded-xl shadow-lg border border-slate-200 z-20 select-none">
+                {/* Tool toggle */}
+                {setTool && (
+                    <div className="flex gap-1 mb-1 pb-1 border-b border-slate-100">
+                        <button
+                            title="Seleccionar (V)"
+                            onClick={() => setTool('SELECT')}
+                            className={`flex-1 p-1.5 rounded-lg transition-colors ${tool === 'SELECT' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-100 text-slate-500'}`}
+                        ><MousePointer2 size={15}/></button>
+                        <button
+                            title="Mover (H / Espacio)"
+                            onClick={() => setTool('HAND')}
+                            className={`flex-1 p-1.5 rounded-lg transition-colors ${tool === 'HAND' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-100 text-slate-500'}`}
+                        ><Hand size={15}/></button>
+                    </div>
+                )}
+                {/* Zoom in */}
+                <button onClick={() => { const r = containerRef.current; const factor = 1.25; const prevZ = zoom; const newZ = Math.min(prevZ * factor, 8); setZoom(newZ); }} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600" title="Zoom + (Ctrl+Scroll)"><ZoomIn size={18}/></button>
+                {/* Zoom % — click to type exact value */}
                 <div className="relative group">
-                    <button className="text-[10px] font-bold text-slate-400 text-center py-1 px-2 border-y border-slate-100 select-none hover:bg-slate-50 w-full transition-colors">
-                        {Math.round(zoom*100)}%
-                    </button>
-                    <div className="absolute left-full ml-1 top-0 hidden group-hover:flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50 w-16">
-                        {[50, 75, 100, 150, 200, 300].map(pct => (
-                            <button key={pct} onClick={() => setZoom(pct/100)}
-                                className={`px-3 py-1.5 text-xs font-bold hover:bg-indigo-50 text-left transition-colors ${Math.round(zoom*100) === pct ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}>
+                    {editingZoomInput ? (
+                        <input
+                            type="number"
+                            autoFocus
+                            value={zoomInputVal}
+                            onChange={e => setZoomInputVal(e.target.value)}
+                            onBlur={() => {
+                                const pct = parseInt(zoomInputVal);
+                                if (!isNaN(pct) && pct >= 5 && pct <= 800) setZoom(pct / 100);
+                                setEditingZoomInput(false);
+                            }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                                if (e.key === 'Escape') setEditingZoomInput(false);
+                            }}
+                            className="w-14 text-center text-[10px] font-bold py-1 border-y border-slate-100 outline-none bg-transparent"
+                        />
+                    ) : (
+                        <button
+                            title="Click para escribir zoom exacto"
+                            onClick={() => { setZoomInputVal(String(Math.round(zoom * 100))); setEditingZoomInput(true); }}
+                            className="text-[10px] font-bold text-slate-500 text-center py-1 px-2 border-y border-slate-100 hover:bg-slate-50 w-full transition-colors"
+                        >
+                            {Math.round(zoom * 100)}%
+                        </button>
+                    )}
+                    {/* Quick zoom presets */}
+                    <div className="absolute left-full ml-1 bottom-0 hidden group-hover:flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50 w-16">
+                        {[25, 50, 75, 100, 150, 200, 300, 400].map(pct => (
+                            <button key={pct} onClick={() => setZoom(pct / 100)}
+                                className={`px-3 py-1.5 text-xs font-bold hover:bg-indigo-50 text-left transition-colors ${Math.round(zoom * 100) === pct ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}>
                                 {pct}%
                             </button>
                         ))}
                     </div>
                 </div>
-                <button onClick={() => setZoom(z => Math.max(z - 0.5, 0.5))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"><ZoomOut size={20}/></button>
+                {/* Zoom out */}
+                <button onClick={() => setZoom(z => Math.max(z / 1.25, 0.05))} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600" title="Zoom - (Ctrl+Scroll)"><ZoomOut size={18}/></button>
+                {/* Fit page */}
                 <button
+                    title="Ajustar página"
                     onClick={() => {
                         if (!containerRef.current) return;
                         const cw = containerRef.current.offsetWidth - 64;
                         const ch = containerRef.current.offsetHeight - 64;
                         const tw = template.width * currentScale;
                         const th = template.height * currentScale;
-                        const fitZoom = Math.min(cw / tw, ch / th, 3);
-                        setZoom(z => Math.max(0.1, fitZoom));
+                        const fitZoom = Math.min(cw / tw, ch / th, 4);
+                        setZoom(Math.max(0.05, fitZoom));
                         setPan?.({ x: 0, y: 0 });
                     }}
-                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 border-t border-slate-100 mt-1"
-                ><Maximize size={20}/></button>
+                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 border-t border-slate-100 mt-0.5"
+                ><Maximize size={18}/></button>
             </div>
+
+            {/* Pan scrollbars */}
+            {containerSize.w > 0 && (() => {
+                const pageW = template.width * currentScale * zoom;
+                const pageH = template.height * currentScale * zoom;
+                const rangeH = Math.max(pageW, containerSize.w);
+                const rangeV = Math.max(pageH, containerSize.h);
+                return (
+                    <>
+                        {/* Horizontal scrollbar */}
+                        <div className="absolute bottom-0 left-5 right-5 h-3 flex items-center z-20 pointer-events-none">
+                            <div className="w-full pointer-events-auto opacity-0 hover:opacity-100 transition-opacity">
+                                <input type="range" min={-rangeH} max={rangeH} step={1}
+                                    value={pan.x}
+                                    onChange={e => setPan?.({ x: Number(e.target.value), y: pan.y })}
+                                    className="w-full h-1 accent-indigo-500 cursor-pointer"
+                                    title="Desplazar horizontalmente"
+                                />
+                            </div>
+                        </div>
+                        {/* Vertical scrollbar */}
+                        <div className="absolute top-5 bottom-5 right-0 w-3 flex justify-center z-20 pointer-events-none">
+                            <div className="h-full pointer-events-auto opacity-0 hover:opacity-100 transition-opacity flex items-center">
+                                <input type="range" min={-rangeV} max={rangeV} step={1}
+                                    value={pan.y}
+                                    onChange={e => setPan?.({ x: pan.x, y: Number(e.target.value) })}
+                                    className="h-full accent-indigo-500 cursor-pointer"
+                                    style={{ writingMode: 'vertical-lr' as any, direction: 'rtl' as any, appearance: 'slider-vertical' as any, width: 12 }}
+                                    title="Desplazar verticalmente"
+                                />
+                            </div>
+                        </div>
+                    </>
+                );
+            })()}
 
             {/* Outer wrapper: occupies visual (zoomed) space so parent overflow/centering works */}
             <div
@@ -573,10 +691,11 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                     transform: `translate(${pan.x}px, ${pan.y}px)`,
                     flexShrink: 0,
                     position: 'relative',
+                    cursor: tool === 'HAND' ? 'inherit' : undefined,
                 }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
+                onClick={(e) => { if (tool !== 'HAND') e.stopPropagation(); }}
+                onMouseDown={(e) => { if (tool !== 'HAND') e.stopPropagation(); }}
+                onTouchStart={(e) => { if (tool !== 'HAND') e.stopPropagation(); }}
             >
             {/* Dimension label — outside the scaled inner div so no counter-scale needed */}
             <div
@@ -645,6 +764,22 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                             : <line key={i} x1={-9999} y1={g.pos * currentScale} x2={9999} y2={g.pos * currentScale} stroke="#6366f1" strokeWidth={1} strokeDasharray="4 3" opacity={0.8}/>
                         )}
                     </svg>
+                )}
+
+                {/* Lasso selection rect */}
+                {lasso && (
+                    <div
+                        className="absolute pointer-events-none z-[300]"
+                        style={{
+                            left: Math.min(lasso.x1, lasso.x2) * currentScale,
+                            top:  Math.min(lasso.y1, lasso.y2) * currentScale,
+                            width:  Math.abs(lasso.x2 - lasso.x1) * currentScale,
+                            height: Math.abs(lasso.y2 - lasso.y1) * currentScale,
+                            border: '1.5px dashed #6366f1',
+                            background: 'rgba(99,102,241,0.07)',
+                            borderRadius: 2,
+                        }}
+                    />
                 )}
             </div>
             {/* /inner-page */}

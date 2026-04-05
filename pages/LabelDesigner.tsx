@@ -235,13 +235,14 @@ const LabelDesigner: React.FC = () => {
       dbSchema,
       loadTemplate, createNew,
       undo, redo,
-      addElement, updateElement, deleteSelected, updateTemplate,
+      addElement, updateElement, updateMultipleElements, deleteSelected, updateTemplate,
       insertCompanyAsElements,
       saveTemplate, moveLayer, reorderElements,
       alignElements, distributeH,
       interaction, unitLabel,
       handlePointerDown, handlePointerMove, handlePointerUp,
-      snapGuides
+      snapGuides,
+      lasso,
   } = useLabelDesigner();
 
   const [empresaConfig, setEmpresaConfig] = useState<Partial<EmpresaConfig>>({});
@@ -875,8 +876,10 @@ const LabelDesigner: React.FC = () => {
                 setZoom={setZoom}
                 setPan={setPan}
                 setSelectedId={(id) => { setSelectedId(id); setActivePanel('PROPERTIES'); setEditingId(null); if(id && window.innerWidth < 768) setIsMobilePropOpen(true); }}
+                setSelectedIds={setSelectedIds}
                 onPointerDown={handlePointerDown}
                 tool={tool}
+                setTool={setTool}
                 pan={pan}
                 editingId={editingId}
                 onStartEdit={handleStartEdit}
@@ -884,15 +887,18 @@ const LabelDesigner: React.FC = () => {
                 snapGuides={snapGuides}
                 onContextMenu={handleContextMenu}
                 empresaConfig={empresaConfig}
+                lasso={lasso}
             />
 
             <aside className="hidden md:flex w-80 bg-white border-l z-20 shadow-xl flex-col">
                 {activePanel === 'PROPERTIES' ? (
-                    <DesignerProperties 
-                        selectedId={selectedId} 
-                        template={template} 
-                        setTemplate={updateTemplate} 
-                        updateElement={updateElement} 
+                    <DesignerProperties
+                        selectedId={selectedId}
+                        selectedIds={selectedIds}
+                        template={template}
+                        setTemplate={updateTemplate}
+                        updateElement={updateElement}
+                        updateMultipleElements={updateMultipleElements}
                         deleteSelected={deleteSelected}
                         setShowVarModal={setShowVarModal}
                     />
@@ -1015,11 +1021,13 @@ const LabelDesigner: React.FC = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-4">
                 {activePanel === 'PROPERTIES' ? (
-                    <DesignerProperties 
-                        selectedId={selectedId} 
-                        template={template} 
-                        setTemplate={updateTemplate} 
-                        updateElement={updateElement} 
+                    <DesignerProperties
+                        selectedId={selectedId}
+                        selectedIds={selectedIds}
+                        template={template}
+                        setTemplate={updateTemplate}
+                        updateElement={updateElement}
+                        updateMultipleElements={updateMultipleElements}
                         deleteSelected={deleteSelected}
                         setShowVarModal={setShowVarModal}
                     />

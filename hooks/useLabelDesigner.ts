@@ -130,7 +130,7 @@ export const useLabelDesigner = () => {
 
     // Interaction State
     const [interaction, setInteraction] = useState<{
-        mode: 'NONE' | 'MOVE' | 'RESIZE' | 'ROTATE' | 'PANNING';
+        mode: 'NONE' | 'MOVE' | 'RESIZE' | 'ROTATE' | 'PANNING' | 'LASSO';
         startPos: { x: number, y: number };
         elementStart: { x: number, y: number, w: number, h: number, r: number };
         panStart: { x: number, y: number };
@@ -138,6 +138,14 @@ export const useLabelDesigner = () => {
         /** Start positions for all elements in a multi-element drag */
         multiElementStarts?: Record<string, { x: number; y: number }>;
     }>({ mode: 'NONE', startPos: {x:0, y:0}, elementStart: {x:0, y:0, w:0, h:0, r:0}, panStart: {x:0, y:0} });
+
+    // Lasso selection rect (in page/template units)
+    const [lasso, setLasso] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+
+    // Spacebar held — temporarily activates HAND tool
+    const isSpaceHeld = useRef(false);
+    // Previous tool before space was pressed
+    const preSpaceTool = useRef<'SELECT' | 'HAND'>('SELECT');
 
     // Snap Guide Lines (in template units, shown during MOVE)
     const [snapGuides, setSnapGuides] = useState<{ axis: 'x' | 'y'; pos: number }[]>([]);
@@ -214,8 +222,35 @@ export const useLabelDesigner = () => {
 
     useEffect(() => {
         fetchDbSchema();
-        window.addEventListener('keydown', handleGlobalKeyDown);
-        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+        const onKeyDown = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement)?.tagName;
+            const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag);
+            // Spacebar → temporary HAND tool
+            if (e.code === 'Space' && !inInput) {
+                e.preventDefault();
+                if (!isSpaceHeld.current) {
+                    isSpaceHeld.current = true;
+                    preSpaceTool.current = 'SELECT';
+                    setTool('HAND');
+                }
+                return;
+            }
+            handleGlobalKeyDown(e);
+        };
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.code === 'Space') {
+                if (isSpaceHeld.current) {
+                    isSpaceHeld.current = false;
+                    setTool(preSpaceTool.current);
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+        };
     }, [selectedId, template, clipboard, historyIndex]);
 
     // --- HISTORY MANAGEMENT ---
@@ -253,6 +288,14 @@ export const useLabelDesigner = () => {
     const updateElement = (id: string, updates: Partial<LabelElement>) => {
         const newElements = template.elements.map(el => el.id === id ? { ...el, ...updates } : el);
         setTemplate({ ...template, elements: newElements });
+    };
+
+    /** Apply updates to ALL elements in the given id list (for multi-select batch editing). */
+    const updateMultipleElements = (ids: string[], updates: Partial<LabelElement>) => {
+        const newElements = template.elements.map(el => ids.includes(el.id) ? { ...el, ...updates } : el);
+        const newTpl = { ...template, elements: newElements };
+        setTemplate(newTpl);
+        addToHistory(newTpl);
     };
 
     const addElement = (type: LabelElement['type'], extra: Partial<LabelElement> = {}) => {
@@ -675,9 +718,32 @@ export const useLabelDesigner = () => {
                 multiElementStarts: Object.keys(multiStarts).length > 0 ? multiStarts : undefined,
             });
         } else {
-            // Clicked on empty canvas -> Deselect
-            setSelectedId(null);
-            setSelectedIds([]);
+            // Clicked on empty canvas background
+            if (tool === 'SELECT') {
+                // Start lasso selection — convert click to page-unit coords
+                let lassoX = 0, lassoY = 0;
+                const containerEl = ('currentTarget' in e) ? (e as React.MouseEvent).currentTarget as HTMLElement : null;
+                if (containerEl) {
+                    const rect = containerEl.getBoundingClientRect();
+                    const pageW = template.width * scaleFactor * zoom;
+                    const pageH = template.height * scaleFactor * zoom;
+                    const pageOriginX = rect.width / 2 + pan.x - pageW / 2;
+                    const pageOriginY = rect.height / 2 + pan.y - pageH / 2;
+                    lassoX = (clientX - rect.left - pageOriginX) / (scaleFactor * zoom);
+                    lassoY = (clientY - rect.top - pageOriginY) / (scaleFactor * zoom);
+                }
+                setLasso({ x1: lassoX, y1: lassoY, x2: lassoX, y2: lassoY });
+                setInteraction({
+                    mode: 'LASSO',
+                    startPos: { x: clientX, y: clientY },
+                    elementStart: { x: lassoX, y: lassoY, w: 0, h: 0, r: 0 },
+                    panStart: { x: 0, y: 0 },
+                });
+            } else {
+                // HAND tool background click — pan handled by PANNING mode set earlier
+                setSelectedId(null);
+                setSelectedIds([]);
+            }
         }
     };
 
@@ -694,6 +760,18 @@ export const useLabelDesigner = () => {
             setPan({
                 x: interaction.panStart.x + deltaX,
                 y: interaction.panStart.y + deltaY
+            });
+            return;
+        }
+
+        if (interaction.mode === 'LASSO') {
+            const dx = (clientX - interaction.startPos.x) / (scaleFactor * zoom);
+            const dy = (clientY - interaction.startPos.y) / (scaleFactor * zoom);
+            setLasso({
+                x1: interaction.elementStart.x,
+                y1: interaction.elementStart.y,
+                x2: interaction.elementStart.x + dx,
+                y2: interaction.elementStart.y + dy,
             });
             return;
         }
@@ -788,6 +866,36 @@ export const useLabelDesigner = () => {
     };
 
     const handlePointerUp = () => {
+        if (interaction.mode === 'LASSO') {
+            if (lasso) {
+                const lx1 = Math.min(lasso.x1, lasso.x2);
+                const lx2 = Math.max(lasso.x1, lasso.x2);
+                const ly1 = Math.min(lasso.y1, lasso.y2);
+                const ly2 = Math.max(lasso.y1, lasso.y2);
+                const sizeThreshold = template.type === 'DOCUMENT' ? 0.3 : 2;
+                if (Math.abs(lasso.x2 - lasso.x1) > sizeThreshold || Math.abs(lasso.y2 - lasso.y1) > sizeThreshold) {
+                    // Intersect: element overlaps if NOT (fully outside on any side)
+                    const ids = template.elements
+                        .filter(el => el.visible !== false && !el.locked)
+                        .filter(el => !(el.x + el.width < lx1 || el.x > lx2 || el.y + el.height < ly1 || el.y > ly2))
+                        .map(el => el.id);
+                    if (ids.length > 0) {
+                        setSelectedIds(ids);
+                        setSelectedId(ids[ids.length - 1]);
+                    } else {
+                        setSelectedId(null);
+                        setSelectedIds([]);
+                    }
+                } else {
+                    // Just a click — deselect
+                    setSelectedId(null);
+                    setSelectedIds([]);
+                }
+            }
+            setLasso(null);
+            setInteraction({ ...interaction, mode: 'NONE' });
+            return;
+        }
         if (interaction.mode !== 'NONE' && interaction.mode !== 'PANNING') {
             addToHistory(template);
         }
@@ -805,7 +913,7 @@ export const useLabelDesigner = () => {
         dbSchema,
         loadTemplate, createNew,
         undo, redo,
-        addElement, updateElement, deleteSelected, updateTemplate,
+        addElement, updateElement, updateMultipleElements, deleteSelected, updateTemplate,
         insertCompanyAsElements,
         saveTemplate,
         moveLayer, reorderElements,
@@ -813,5 +921,6 @@ export const useLabelDesigner = () => {
         interaction, scaleFactor, unitLabel,
         handlePointerDown, handlePointerMove, handlePointerUp,
         snapValue, snapGuides,
+        lasso,
     };
 };
