@@ -37,7 +37,7 @@ function flattenObject(obj: any, prefix = ''): Record<string, string> {
 }
 
 /** Fields whose values should be formatted as DD/MM/YYYY (Spanish date). */
-const DATE_FIELD_RE = /\b(fechaLimite|fechaVenta|fechaIngreso|fechaCreacion|fechaSalida|fecha_limite|fecha_venta|fechaFactura)\b/i;
+const DATE_FIELD_RE = /\b(fecha|fechaLimite|fechaVenta|fechaIngreso|fechaCreacion|fechaSalida|fecha_limite|fecha_venta|fechaFactura)\b/i;
 
 /** Convert ISO / JS date string to DD/MM/YYYY. Returns original string if not a valid date. */
 function formatSpanishDate(val: string): string {
