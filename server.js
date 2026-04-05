@@ -172,6 +172,9 @@ const initDB = async () => {
 
                 -- MIGRACIÓN: FK técnico en reparaciones
                 BEGIN ALTER TABLE reparaciones ADD COLUMN identidad_tecnico VARCHAR(100); EXCEPTION WHEN duplicate_column THEN NULL; END;
+
+                -- MIGRACIÓN: Logo empresa en configuración
+                BEGIN ALTER TABLE configuracion ADD COLUMN logo_base64 TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END;
             END $$;
         `);
 

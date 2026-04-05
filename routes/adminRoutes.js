@@ -28,47 +28,51 @@ router.get('/schema', authenticateToken, async (req, res) => {
 });
 
 // --- CONFIGURACIÓN DE EMPRESA (TABLA CONFIGURACION) ---
+const mapConfigRow = (row) => ({
+    nombreEmpresa: row.nombreempresa || '',
+    rtn:           row.rtn           || '',
+    direccion:     row.direccion     || '',
+    telefono:      row.telefono      || '',
+    correo:        row.correo        || '',
+    cai:           row.cai           || '',
+    rangoInicial:  row.rangoinicial  || '',
+    rangoFinal:    row.rangofinal    || '',
+    fechaLimite:   row.fechalimite ? String(row.fechalimite).substring(0, 10) : '',
+    isv:           Number(row.isv)   || 15,
+    mensajeFinal:  row.mensajefinal  || 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
+    logoBase64:    row.logo_base64   || '',
+});
+
 router.get('/config', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM configuracion WHERE id = 1');
         if (r.rows.length === 0) {
-            return res.json({
-                nombreempresa: 'SmartCloud ERP',
-                rtn: '',
-                direccion: '',
-                telefono: '',
-                correo: '',
-                cai: '',
-                rangoinicial: '',
-                rangofinal: '',
-                fechalimite: '',
-                isv: 15,
-                mensajefinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
-            });
+            return res.json(mapConfigRow({ isv: 15 }));
         }
-        res.json(r.rows[0]);
+        res.json(mapConfigRow(r.rows[0]));
     } catch(e) { handleDbError(res, e); }
 });
 
 router.put('/config', authenticateToken, async (req, res) => {
     try {
-        const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal } = req.body;
+        const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal, logoBase64 } = req.body;
         await pool.query(`
-            INSERT INTO configuracion (id, nombreempresa, rtn, direccion, telefono, correo, cai, rangoinicial, rangofinal, fechalimite, isv, mensajefinal)
-            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO configuracion (id, nombreempresa, rtn, direccion, telefono, correo, cai, rangoinicial, rangofinal, fechalimite, isv, mensajefinal, logo_base64)
+            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (id) DO UPDATE SET
                 nombreempresa = EXCLUDED.nombreempresa,
-                rtn = EXCLUDED.rtn,
-                direccion = EXCLUDED.direccion,
-                telefono = EXCLUDED.telefono,
-                correo = EXCLUDED.correo,
-                cai = EXCLUDED.cai,
-                rangoinicial = EXCLUDED.rangoinicial,
-                rangofinal = EXCLUDED.rangofinal,
-                fechalimite = EXCLUDED.fechalimite,
-                isv = EXCLUDED.isv,
-                mensajefinal = EXCLUDED.mensajefinal
-        `, [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal]);
+                rtn           = EXCLUDED.rtn,
+                direccion     = EXCLUDED.direccion,
+                telefono      = EXCLUDED.telefono,
+                correo        = EXCLUDED.correo,
+                cai           = EXCLUDED.cai,
+                rangoinicial  = EXCLUDED.rangoinicial,
+                rangofinal    = EXCLUDED.rangofinal,
+                fechalimite   = EXCLUDED.fechalimite,
+                isv           = EXCLUDED.isv,
+                mensajefinal  = EXCLUDED.mensajefinal,
+                logo_base64   = EXCLUDED.logo_base64
+        `, [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal, logoBase64 || null]);
         res.json({ message: 'Configuración actualizada' });
     } catch(e) { handleDbError(res, e); }
 });

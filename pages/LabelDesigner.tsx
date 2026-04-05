@@ -14,8 +14,8 @@ import PreviewModal from '../components/LabelDesigner/PreviewModal';
 import TemplateThumbnail from '../components/LabelDesigner/TemplateThumbnail';
 import { STARTER_TEMPLATES, StarterTemplateEntry } from '../services/StarterTemplates';
 import Swal from 'sweetalert2';
-import { LabelService } from '../services/api';
-import { LabelTemplate } from '../types';
+import { LabelService, ConfigService } from '../services/api';
+import { LabelTemplate, EmpresaConfig } from '../types';
 import { useLabelDesigner } from '../hooks/useLabelDesigner';
 import DesignerCanvas from '../components/LabelDesigner/DesignerCanvas';
 import DesignerProperties from '../components/LabelDesigner/DesignerProperties';
@@ -108,6 +108,8 @@ const LabelDesigner: React.FC = () => {
       snapGuides
   } = useLabelDesigner();
 
+  const [empresaConfig, setEmpresaConfig] = useState<Partial<EmpresaConfig>>({});
+
   const [activePanel, setActivePanel] = useState<'PROPERTIES' | 'LAYERS'>('PROPERTIES');
   const [isMobilePropOpen, setIsMobilePropOpen] = useState(false);
   const [showVarModal, setShowVarModal] = useState(false);
@@ -142,6 +144,8 @@ const LabelDesigner: React.FC = () => {
 
   useEffect(() => {
     loadSavedList();
+    // Load company config for canvas preview
+    ConfigService.get().then((data: any) => { if (data) setEmpresaConfig(data); }).catch(() => {});
     // Load Google Fonts for the designer canvas preview
     const id = 'gfonts-designer';
     if (!document.getElementById(id)) {
@@ -443,20 +447,6 @@ const LabelDesigner: React.FC = () => {
                                   {/* Action buttons (visible on hover) */}
                                   <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                       <button
-                                          onClick={(e) => handleDuplicateTemplate(e, t)}
-                                          className="p-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full shadow-md transition-all hover:scale-110"
-                                          title="Duplicar"
-                                      >
-                                          <Copy size={13}/>
-                                      </button>
-                                      <button
-                                          onClick={(e) => handleExportTemplate(e, t)}
-                                          className="p-2 bg-teal-500 hover:bg-teal-600 text-white rounded-full shadow-md transition-all hover:scale-110"
-                                          title="Exportar JSON"
-                                      >
-                                          <Download size={13}/>
-                                      </button>
-                                      <button
                                           onClick={(e) => handleDeleteTemplate(e, t.id)}
                                           className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md transition-all hover:scale-110"
                                           title="Eliminar"
@@ -693,24 +683,6 @@ const LabelDesigner: React.FC = () => {
                 <button
                     onClick={() => {
                         const el = template.elements.find(e => e.id === selectedId);
-                        if (el) {
-                            // Trigger copy via keyboard simulation workaround — hook handles Ctrl+C
-                            // We directly call addElement with clipboard offset
-                            addElement(el.type, {
-                                ...el,
-                                x: el.x + (template.type === 'DOCUMENT' ? 0.5 : 2),
-                                y: el.y + (template.type === 'DOCUMENT' ? 0.5 : 2),
-                            });
-                        }
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded hover:bg-slate-200 text-slate-600 transition-colors"
-                    title="Duplicar elemento (Ctrl+C, Ctrl+V)"
-                >
-                    <Copy size={12}/> Duplicar
-                </button>
-                <button
-                    onClick={() => {
-                        const el = template.elements.find(e => e.id === selectedId);
                         if (!el) return;
                         const { id, x, y, width, height, rotation, content, type, ...style } = el;
                         styleClipboardRef.current = style;
@@ -782,6 +754,7 @@ const LabelDesigner: React.FC = () => {
                 onCommitEdit={handleCommitEdit}
                 snapGuides={snapGuides}
                 onContextMenu={handleContextMenu}
+                empresaConfig={empresaConfig}
             />
 
             <aside className="hidden md:flex w-80 bg-white border-l z-20 shadow-xl flex-col">

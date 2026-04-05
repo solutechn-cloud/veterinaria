@@ -3,7 +3,7 @@ import React, { memo, useRef, useEffect, useState } from 'react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import { RotateCw, ZoomIn, ZoomOut, Maximize, Lock } from 'lucide-react';
-import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow } from '../../types';
+import { LabelTemplate, LabelElement, InvoiceColumn, SummaryRow, EmpresaConfig } from '../../types';
 
 const defaultCols: InvoiceColumn[] = [
   { id: 'c1', header: 'Descripción', field: '{{item.descripcion}}', widthPct: 45, align: 'left', format: 'TEXT' },
@@ -29,6 +29,15 @@ interface DesignerCanvasProps {
     onCommitEdit?: (id: string, value: string) => void;
     snapGuides?: { axis: 'x' | 'y'; pos: number }[];
     onContextMenu?: (e: React.MouseEvent, id: string) => void;
+    empresaConfig?: Partial<EmpresaConfig>;
+}
+
+/** Resuelve tokens {{empresa.X}} en el canvas para preview */
+function resolveEmpresaTokens(content: string, emp: Partial<EmpresaConfig>): string {
+    return content.replace(/\{\{empresa\.(\w+)\}\}/g, (_, key) => {
+        const val = (emp as any)[key];
+        return val !== undefined && val !== null ? String(val) : `{{empresa.${key}}}`;
+    });
 }
 
 const renderBarcode = (el: LabelElement) => {
@@ -60,7 +69,8 @@ const CLIP_PATHS: Record<string, string> = {
 };
 
 // Memoized Element with Scale Injection
-const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerDown, onSelect, tool, isEditing, onStartEdit, onCommitEdit, onContextMenu }: any) => {
+const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerDown, onSelect, tool, isEditing, onStartEdit, onCommitEdit, onContextMenu, empresaConfig }: any) => {
+    const emp: Partial<EmpresaConfig> = empresaConfig || {};
     // QR: async rendering with local state
     const [qrSrc, setQrSrc] = useState('');
     useEffect(() => {
@@ -181,12 +191,14 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                         display: 'flex', alignItems: 'center',
                         justifyContent: el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start',
                         padding: '0 2px',
-                    }}>{el.content}</div>
+                    }}>{resolveEmpresaTokens(el.content || '', emp)}</div>
                 ) : null}
                 {el.type === 'BARCODE' && <img src={renderBarcode(el)} className="w-full h-full object-fill pointer-events-none"/>}
                 {el.type === 'QR' && qrSrc && <img src={qrSrc} className="w-full h-full object-contain pointer-events-none"/>}
                 {el.type === 'IMAGE' && (
-                    /^\{\{/.test(el.content || '') ? (
+                    el.content === '{{empresa.logoBase64}}' && emp.logoBase64 ? (
+                        <img src={emp.logoBase64} className="w-full h-full pointer-events-none" style={{ objectFit: (el.imageObjectFit || 'contain') as any }}/>
+                    ) : /^\{\{/.test(el.content || '') ? (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 border border-dashed border-slate-300 pointer-events-none gap-1">
                             <span className="text-[9px] font-mono text-slate-400 text-center px-1 leading-tight">{el.elementLabel || el.content}</span>
                             <span className="text-[8px] text-slate-300">Logo cargado al imprimir</span>
@@ -206,9 +218,9 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                         {/* Content */}
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '6px 10px', gap: 8 }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 3}pt`, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>NOMBRE DE LA EMPRESA</div>
-                                {el.companyShowRTN !== false && <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>RTN: 0000-0000-000000</div>}
-                                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>Dirección · Tel: 0000-0000</div>
+                                <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 3}pt`, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{emp.nombreEmpresa || 'NOMBRE DE LA EMPRESA'}</div>
+                                {el.companyShowRTN !== false && <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>RTN: {emp.rtn || '0000-0000-000000'}</div>}
+                                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: `${el.fontSize || 9}pt` }}>{emp.direccion || 'Dirección'}{emp.telefono ? ` · Tel: ${emp.telefono}` : ''}</div>
                             </div>
                             {el.companyDocTitle && (
                                 <div style={{ color: '#fff', fontWeight: 900, fontSize: `${(el.fontSize || 9) + 10}pt`, letterSpacing: 2, flexShrink: 0 }}>
@@ -222,11 +234,11 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
                 {el.type === 'COMPANY_HEADER' && el.companyStyle !== 'GEOMETRIC' && (
                     <div className={`w-full h-full p-1 overflow-hidden ${tool === 'SELECT' ? 'pointer-events-auto' : ''}`}
                         style={{ textAlign: el.companyAlign || 'center', fontSize: `${el.fontSize || 9}pt`, lineHeight: 1.4 }}>
-                        <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 2}pt`, color: el.color || '#000' }}>NOMBRE DE LA EMPRESA</div>
-                        {el.companyShowRTN !== false && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>RTN: 0000-0000-000000</div>}
-                        <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>Dirección de la Empresa</div>
-                        {el.companyShowPhone !== false && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>Tel: 0000-0000</div>}
-                        {el.companyShowEmail && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>empresa@correo.com</div>}
+                        <div style={{ fontWeight: 'bold', fontSize: `${(el.fontSize || 9) + 2}pt`, color: el.color || '#000' }}>{emp.nombreEmpresa || 'NOMBRE DE LA EMPRESA'}</div>
+                        {el.companyShowRTN !== false && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>RTN: {emp.rtn || '0000-0000-000000'}</div>}
+                        <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>{emp.direccion || 'Dirección de la Empresa'}</div>
+                        {el.companyShowPhone !== false && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>Tel: {emp.telefono || '0000-0000'}</div>}
+                        {el.companyShowEmail && <div style={{ color: el.color || '#555', fontSize: `${el.fontSize || 9}pt` }}>{emp.correo || 'empresa@correo.com'}</div>}
                     </div>
                 )}
 
@@ -326,7 +338,7 @@ const CanvasElement = memo(({ el, isSelected, isMultiSelected, scale, onPointerD
     );
 });
 
-const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setPan, setSelectedId, onPointerDown, tool, pan, editingId, onStartEdit, onCommitEdit, snapGuides = [], onContextMenu }) => {
+const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, selectedIds = [], zoom, setZoom, setPan, setSelectedId, onPointerDown, tool, pan, editingId, onStartEdit, onCommitEdit, snapGuides = [], onContextMenu, empresaConfig }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const lastDist = useRef<number | null>(null);
     const panRef = useRef(pan);
@@ -595,6 +607,7 @@ const DesignerCanvas: React.FC<DesignerCanvasProps> = ({ template, selectedId, s
                         onStartEdit={onStartEdit}
                         onCommitEdit={onCommitEdit}
                         onContextMenu={onContextMenu}
+                        empresaConfig={empresaConfig}
                     />
                 ))}
 
