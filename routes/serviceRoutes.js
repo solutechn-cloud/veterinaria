@@ -282,10 +282,15 @@ router.post('/consignaciones', authenticateToken, async (req, res) => {
 
 router.put('/consignaciones/:id', authenticateToken, async (req, res) => {
     try {
-        const { negocio_destino, precio_especial_pago, fecha_limite } = req.body;
+        const { negocio_destino, precio_especial_pago, fecha_limite, cantidad_prestada } = req.body;
         await pool.query(
-            `UPDATE consignaciones SET negocio_destino=$1, precio_especial_pago=$2, fecha_limite=$3 WHERE id_consignacion=$4`,
-            [negocio_destino, precio_especial_pago, fecha_limite || null, req.params.id]
+            `UPDATE consignaciones
+             SET negocio_destino      = COALESCE($1, negocio_destino),
+                 precio_especial_pago = COALESCE($2, precio_especial_pago),
+                 cantidad_prestada    = COALESCE($3, cantidad_prestada),
+                 fecha_limite         = CASE WHEN $4::text IS NOT NULL THEN $4::date ELSE fecha_limite END
+             WHERE id_consignacion = $5`,
+            [negocio_destino || null, precio_especial_pago ?? null, cantidad_prestada ?? null, fecha_limite || null, req.params.id]
         );
         res.json({ message: 'OK' });
     } catch(e) { handleDbError(res, e); }

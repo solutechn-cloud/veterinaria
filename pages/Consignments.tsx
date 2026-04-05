@@ -5,7 +5,7 @@ import { Consignacion, ProductoUnified } from '../types';
 import {
   Hand, Search, Store, ShoppingCart, RefreshCcw, X, RefreshCw,
   Smartphone, Package, Check, ChevronDown, ChevronRight,
-  ScanLine, Layers, DollarSign, RotateCcw, History, AlertCircle
+  ScanLine, Layers, DollarSign, RotateCcw, History, AlertCircle, Trash2, Minus, Plus
 } from 'lucide-react';
 import BarcodeScanner from '../components/BarcodeScanner';
 import Swal from 'sweetalert2';
@@ -20,7 +20,7 @@ interface BusinessGroup {
   total: number;
 }
 
-interface PriceEdit { id: number; value: string; }
+interface FieldEdit { id: number; value: string; }
 
 const Consignments: React.FC = () => {
   const location = useLocation();
@@ -34,8 +34,8 @@ const Consignments: React.FC = () => {
   // Which business accordion is expanded
   const [expandedBusiness, setExpandedBusiness] = useState<string | null>(null);
 
-  // Inline price editing
-  const [priceEdit, setPriceEdit] = useState<PriceEdit | null>(null);
+  // Inline field editing
+  const [priceEdit, setPriceEdit] = useState<FieldEdit | null>(null);
   const priceRef = useRef<HTMLInputElement>(null);
 
   // --- Scan flow ---
@@ -129,44 +129,52 @@ const Consignments: React.FC = () => {
     products.find(p => p.imei === code || p.codigo === code || String(p.id) === code);
 
   const handleScan = useCallback(async (code: string) => {
+    const product = findProduct(code);
+    if (!product) {
+      Swal.fire({ title: 'Producto no encontrado', text: code, icon: 'warning', timer: 1800, showConfirmButton: false, toast: true, position: 'top' });
+      return;
+    }
+    if (product.stock <= 0) {
+      Swal.fire({ title: 'Sin stock', text: product.nombre, icon: 'warning', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
+      return;
+    }
+
     if (pendingMode === 'single') {
-      // Single: register immediately, close scanner
-      const product = findProduct(code);
-      if (!product) {
-        Swal.fire({ title: 'Producto no encontrado', text: code, icon: 'warning', timer: 2000, showConfirmButton: false, toast: true, position: 'top' });
-        return;
-      }
-      if (product.stock <= 0) {
-        Swal.fire({ title: 'Sin stock', text: product.nombre, icon: 'warning', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
-        return;
-      }
+      // Check if this product is already consigned to this business (accessories only)
+      const existing = consignments.find(c =>
+        c.estado_consignacion === 'Prestado' &&
+        c.negocio_destino === scanBusiness &&
+        c.id_producto === product.id &&
+        c.tipo_producto === 'ACCESORIO'
+      );
       try {
-        await registerOne(product, scanBusiness, scanDueDate);
+        if (existing) {
+          // Increment quantity on existing record
+          const newQty = existing.cantidad_prestada + 1;
+          await ConsignService.update(existing.id_consignacion, {
+            cantidad_prestada: newQty,
+            negocio_destino: existing.negocio_destino,
+          });
+          Swal.fire({ title: `Cantidad: ${newQty}`, text: product.nombre, icon: 'success', timer: 1200, showConfirmButton: false, toast: true, position: 'top' });
+        } else {
+          await registerOne(product, scanBusiness, scanDueDate);
+          Swal.fire({ title: '¡Registrado!', text: product.nombre, icon: 'success', timer: 1200, showConfirmButton: false, toast: true, position: 'top' });
+        }
         setShowScanner(false);
         loadData(); loadProducts();
         setExpandedBusiness(scanBusiness);
-        Swal.fire({ title: '¡Registrado!', text: product.nombre, icon: 'success', timer: 1500, showConfirmButton: false, toast: true, position: 'top' });
       } catch (e: any) {
         Swal.fire('Error', e.message, 'error');
       }
     } else {
-      // Batch: accumulate codes
+      // Batch mode: accumulate unique product codes
       if (batchCodes.includes(code)) {
-        Swal.fire({ title: 'Ya escaneado', text: code, icon: 'info', timer: 1000, showConfirmButton: false, toast: true, position: 'top' });
-        return;
-      }
-      const product = findProduct(code);
-      if (!product) {
-        Swal.fire({ title: 'No encontrado', text: code, icon: 'warning', timer: 1200, showConfirmButton: false, toast: true, position: 'top' });
-        return;
-      }
-      if (product.stock <= 0) {
-        Swal.fire({ title: 'Sin stock', text: product.nombre, icon: 'warning', timer: 1200, showConfirmButton: false, toast: true, position: 'top' });
+        Swal.fire({ title: 'Ya en el lote', text: product.nombre, icon: 'info', timer: 1000, showConfirmButton: false, toast: true, position: 'top' });
         return;
       }
       setBatchCodes(prev => [...prev, code]);
     }
-  }, [pendingMode, scanBusiness, scanDueDate, batchCodes, products]);
+  }, [pendingMode, scanBusiness, scanDueDate, batchCodes, products, consignments]);
 
   const handleConfirmBatch = useCallback(async () => {
     if (batchCodes.length === 0) {
@@ -250,11 +258,43 @@ const Consignments: React.FC = () => {
     if (!priceEdit) return;
     const price = parseFloat(priceEdit.value);
     if (isNaN(price) || price < 0) { setPriceEdit(null); return; }
+    // Include negocio_destino to satisfy the NOT NULL constraint on the backend
+    const item = consignments.find(c => c.id_consignacion === priceEdit.id);
     try {
-      await ConsignService.update(priceEdit.id, { precio_especial_pago: price });
+      await ConsignService.update(priceEdit.id, {
+        precio_especial_pago: price,
+        negocio_destino: item?.negocio_destino,
+      });
       setConsignments(prev => prev.map(c => c.id_consignacion === priceEdit.id ? { ...c, precio_especial_pago: price } : c));
     } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
     setPriceEdit(null);
+  };
+
+  // ── Quantity editing ───────────────────────────────────────────────────────
+  const adjustQty = async (item: Consignacion, delta: number) => {
+    const newQty = item.cantidad_prestada + delta;
+    if (newQty < 1) return;
+    try {
+      await ConsignService.update(item.id_consignacion, {
+        cantidad_prestada: newQty,
+        negocio_destino: item.negocio_destino,
+      });
+      setConsignments(prev => prev.map(c => c.id_consignacion === item.id_consignacion ? { ...c, cantidad_prestada: newQty } : c));
+    } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
+  };
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  const handleDelete = async (id: number, name?: string) => {
+    const r = await Swal.fire({
+      title: '¿Eliminar registro?', text: `${name ?? ''} — el stock será devuelto.`,
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (r.isConfirmed) {
+      try { await ConsignService.delete(id); loadData(); loadProducts(); }
+      catch (e: any) { Swal.fire('Error', e.message, 'error'); }
+    }
   };
 
   const toggleBusiness = (name: string) =>
@@ -352,12 +392,23 @@ const Consignments: React.FC = () => {
                           {item.tipo_producto === 'TELEFONO' ? <Smartphone size={14}/> : <Package size={14}/>}
                         </div>
 
-                        {/* Name + price */}
+                        {/* Name + price + qty */}
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-slate-800 text-xs truncate">{item.nombre_producto}</p>
-                          {item.cantidad_prestada > 1 && (
-                            <p className="text-[10px] text-slate-400">Cant: {item.cantidad_prestada}</p>
-                          )}
+
+                          {/* Quantity row */}
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {item.tipo_producto === 'ACCESORIO' ? (
+                              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-1">
+                                <button onClick={() => adjustQty(item, -1)} className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-red-500 active:scale-90 transition-all"><Minus size={10}/></button>
+                                <span className="min-w-[20px] text-[11px] font-black text-slate-700 text-center px-0.5">{item.cantidad_prestada}</span>
+                                <button onClick={() => adjustQty(item, +1)} className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-emerald-500 active:scale-90 transition-all"><Plus size={10}/></button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-bold">×1</span>
+                            )}
+                          </div>
+
                           {/* Inline price edit */}
                           {priceEdit?.id === item.id_consignacion ? (
                             <div className="flex items-center gap-1 mt-1">
@@ -386,20 +437,29 @@ const Consignments: React.FC = () => {
                         </div>
 
                         {/* Action buttons */}
-                        <div className="flex gap-1.5 shrink-0">
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleLiquidate(item.id_consignacion, item.nombre_producto)}
+                              className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center hover:bg-emerald-200 active:scale-90 transition-all"
+                              title="Cobrar"
+                            >
+                              <DollarSign size={13}/>
+                            </button>
+                            <button
+                              onClick={() => handleReturn(item.id_consignacion, item.nombre_producto)}
+                              className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200 active:scale-90 transition-all"
+                              title="Retornar"
+                            >
+                              <RotateCcw size={13}/>
+                            </button>
+                          </div>
                           <button
-                            onClick={() => handleLiquidate(item.id_consignacion, item.nombre_producto)}
-                            className="w-9 h-9 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center hover:bg-emerald-200 active:scale-90 transition-all"
-                            title="Cobrar"
+                            onClick={() => handleDelete(item.id_consignacion, item.nombre_producto)}
+                            className="w-full h-7 bg-red-50 text-red-400 rounded-lg flex items-center justify-center hover:bg-red-100 hover:text-red-600 active:scale-90 transition-all"
+                            title="Eliminar"
                           >
-                            <DollarSign size={14}/>
-                          </button>
-                          <button
-                            onClick={() => handleReturn(item.id_consignacion, item.nombre_producto)}
-                            className="w-9 h-9 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center hover:bg-slate-200 active:scale-90 transition-all"
-                            title="Retornar"
-                          >
-                            <RotateCcw size={14}/>
+                            <Trash2 size={12}/>
                           </button>
                         </div>
                       </div>
