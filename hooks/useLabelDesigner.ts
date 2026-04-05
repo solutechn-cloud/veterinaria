@@ -25,6 +25,76 @@ const INITIAL_TEMPLATE: LabelTemplate = {
 
 const generateId = () => `el_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+/**
+ * Convierte un elemento COMPANY_HEADER monolítico en elementos individuales:
+ * un IMAGE para el logo + un TEXT por cada campo de la empresa.
+ * Usa el bounding box del elemento original para posicionar los sub-elementos.
+ */
+function expandCompanyHeader(ch: LabelElement): LabelElement[] {
+    const {
+        x, y, width: w, height: h,
+        fontSize = 9, color = '#000000',
+        companyShowRTN = true, companyShowPhone = true, companyShowEmail = false,
+        companyAlign = 'left',
+    } = ch;
+
+    const base: Partial<LabelElement> = {
+        rotation: 0, opacity: 1,
+        barcodeFormat: 'CODE128' as any, displayValue: true,
+        shapeType: 'RECTANGLE' as any, isStretchWithOverflow: false,
+    };
+
+    // Logo ocupa la parte izquierda — ancho ≈ h (área cuadrada) con máx 35% del ancho total
+    const logoW = Math.min(h * 1.1, w * 0.35);
+    const logoH = h;
+    const gap   = w > 10 ? 0.3 : 2; // cm para documentos, mm para etiquetas
+    const textX = x + logoW + gap;
+    const textW = w - logoW - gap;
+
+    // Campos a mostrar según propiedades del COMPANY_HEADER
+    const fields: { content: string; bold: boolean; label: string }[] = [
+        { content: '{{empresa.nombreEmpresa}}', bold: true,  label: 'Nombre Empresa' },
+    ];
+    if (companyShowRTN  !== false) fields.push({ content: 'RTN: {{empresa.rtn}}',       bold: false, label: 'RTN' });
+    fields.push(                               { content: '{{empresa.direccion}}',       bold: false, label: 'Dirección' });
+    if (companyShowPhone !== false) fields.push({ content: 'Tel: {{empresa.telefono}}',  bold: false, label: 'Teléfono' });
+    if (companyShowEmail)           fields.push({ content: '{{empresa.correo}}',         bold: false, label: 'Correo' });
+
+    const lineH = h / fields.length;
+
+    const logoEl: LabelElement = {
+        ...base as any,
+        id: generateId(), type: 'IMAGE',
+        x, y, width: logoW, height: logoH,
+        content: '{{empresa.logoBase64}}',
+        imageObjectFit: 'contain',
+        fontSize: 10, color: '#000000', textAlign: 'left',
+        fontWeight: 'normal', fontFamily: 'helvetica',
+        elementLabel: 'Logo Empresa',
+    };
+
+    let textY = y;
+    const textEls: LabelElement[] = fields.map(f => {
+        const el: LabelElement = {
+            ...base as any,
+            id: generateId(), type: 'TEXT',
+            x: textX, y: textY,
+            width: textW, height: lineH,
+            content: f.content,
+            fontSize: f.bold ? fontSize + 2 : fontSize,
+            fontWeight: f.bold ? 'bold' : 'normal',
+            color, textAlign: companyAlign as any,
+            fontFamily: 'helvetica',
+            isMultiline: false,
+            elementLabel: f.label,
+        };
+        textY += lineH;
+        return el;
+    });
+
+    return [logoEl, ...textEls];
+}
+
 // Definición de Tipos para Esquema Relacional
 interface SchemaTable {
     columns: { name: string, type: string }[];
@@ -89,12 +159,19 @@ export const useLabelDesigner = () => {
     };
 
     const loadTemplate = (tpl: LabelTemplate) => {
-        setTemplate(tpl);
+        // Auto-expand COMPANY_HEADER blocks into individual editable elements
+        const hasCompanyHeader = tpl.elements.some(e => e.type === 'COMPANY_HEADER');
+        const resolvedElements = hasCompanyHeader
+            ? tpl.elements.flatMap(e => e.type === 'COMPANY_HEADER' ? expandCompanyHeader(e) : [e])
+            : tpl.elements;
+        const resolvedTpl = hasCompanyHeader ? { ...tpl, elements: resolvedElements } : tpl;
+
+        setTemplate(resolvedTpl);
         setHistory([]);
         setHistoryIndex(-1);
         setSelectedIds([]);
         setSelectedId(null);
-        setZoom(computeFitZoom(tpl));
+        setZoom(computeFitZoom(resolvedTpl));
         setPan({ x: 0, y: 0 });
         setTool('SELECT');
     };
