@@ -36,12 +36,32 @@ function flattenObject(obj: any, prefix = ''): Record<string, string> {
   return result;
 }
 
+/** Fields whose values should be formatted as DD/MM/YYYY (Spanish date). */
+const DATE_FIELD_RE = /\b(fechaLimite|fechaVenta|fechaIngreso|fechaCreacion|fechaSalida|fecha_limite|fecha_venta|fechaFactura)\b/i;
+
+/** Convert ISO / JS date string to DD/MM/YYYY. Returns original string if not a valid date. */
+function formatSpanishDate(val: string): string {
+  if (!val) return val;
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return val;
+  // Use UTC getters for date-only strings (YYYY-MM-DD or with T00:00:00Z) to avoid timezone shift
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}(T00:00:00)?/.test(val);
+  const day   = String(isDateOnly ? d.getUTCDate()        : d.getDate()).padStart(2, '0');
+  const month = String(isDateOnly ? d.getUTCMonth() + 1   : d.getMonth() + 1).padStart(2, '0');
+  const year  =        isDateOnly ? d.getUTCFullYear()     : d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 /** Replace all {{key}} occurrences in content with values from the flattened context. */
 export function resolveContent(content: string, ctx: PrintDataContext): string {
   const flat = flattenObject(ctx);
   return content.replace(/\{\{([^}]+)\}\}/g, (_, path) => {
     const trimmed = path.trim();
-    return flat[trimmed] !== undefined ? flat[trimmed] : `{{${trimmed}}}`;
+    const val = flat[trimmed];
+    if (val === undefined) return `{{${trimmed}}}`;
+    // Format date fields as DD/MM/YYYY in Spanish
+    if (DATE_FIELD_RE.test(trimmed)) return formatSpanishDate(val) || val;
+    return val;
   });
 }
 

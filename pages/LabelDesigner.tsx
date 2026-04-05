@@ -609,18 +609,11 @@ const LabelDesigner: React.FC = () => {
                     <Eye size={18}/> <span className="hidden md:inline">Preview</span>
                 </button>
                 <button
-                    onClick={handlePrintCopies}
-                    className="hidden md:flex border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg font-bold items-center gap-2 text-sm transition-all active:scale-95"
-                    title="Imprimir múltiples copias"
-                >
-                    <Printer size={18}/><span className="hidden lg:inline text-xs">Copias</span>
-                </button>
-                <button
                     onClick={() => printTemplate(template, {})}
-                    className="border border-slate-200 hover:bg-slate-50 text-slate-600 p-2 rounded-lg flex items-center text-sm transition-all active:scale-95"
+                    className="border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 text-sm transition-all active:scale-95"
                     title="Imprimir"
                 >
-                    <Printer size={18}/>
+                    <Printer size={18}/><span className="hidden lg:inline text-xs">Imprimir</span>
                 </button>
                 <button
                     onClick={() => downloadHTML(template, {})}
@@ -718,7 +711,7 @@ const LabelDesigner: React.FC = () => {
                 >
                     ↓ Capa
                 </button>
-                <span className="text-[10px] text-slate-300 ml-2">Ctrl+C/V copiar · Del eliminar · Flechas mover</span>
+                <span className="text-[10px] text-slate-300 ml-2">Ctrl+C/V copiar · Ctrl+D duplicar · Ctrl+A selec. todo · Del eliminar · Flechas mover</span>
             </div>
         )}
 

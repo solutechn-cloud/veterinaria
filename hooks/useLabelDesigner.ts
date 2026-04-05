@@ -135,6 +135,8 @@ export const useLabelDesigner = () => {
         elementStart: { x: number, y: number, w: number, h: number, r: number };
         panStart: { x: number, y: number };
         handle?: string;
+        /** Start positions for all elements in a multi-element drag */
+        multiElementStarts?: Record<string, { x: number; y: number }>;
     }>({ mode: 'NONE', startPos: {x:0, y:0}, elementStart: {x:0, y:0, w:0, h:0, r:0}, panStart: {x:0, y:0} });
 
     // Snap Guide Lines (in template units, shown during MOVE)
@@ -491,6 +493,14 @@ export const useLabelDesigner = () => {
             return;
         }
 
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            const allIds = template.elements.filter(el => el.visible !== false).map(el => el.id);
+            setSelectedIds(allIds);
+            if (allIds.length > 0) setSelectedId(allIds[0]);
+            return;
+        }
+
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
             if (selectedId) {
                 const el = template.elements.find(x => x.id === selectedId);
@@ -498,36 +508,68 @@ export const useLabelDesigner = () => {
             }
             return;
         }
+
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
             if (clipboard) {
+                const offset = template.type === 'DOCUMENT' ? 1.5 : 5;
                 addElement(clipboard.type, {
                     ...clipboard,
-                    x: clipboard.x + (template.type==='DOCUMENT'?0.5:2),
-                    y: clipboard.y + (template.type==='DOCUMENT'?0.5:2)
+                    x: clipboard.x + offset,
+                    y: clipboard.y + offset,
                 });
             }
             return;
         }
 
-        if (e.key === 'Delete') {
-            if (selectedId) deleteSelected();
+        // Ctrl+D — duplicate selected element(s)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+            e.preventDefault();
+            const idsToClone = selectedIds.length > 1 ? selectedIds : (selectedId ? [selectedId] : []);
+            if (idsToClone.length === 0) return;
+            const offset = template.type === 'DOCUMENT' ? 1.5 : 5;
+            const clones = idsToClone.map(id => {
+                const src = template.elements.find(x => x.id === id);
+                if (!src) return null;
+                return { ...src, id: generateId(), x: src.x + offset, y: src.y + offset };
+            }).filter(Boolean) as typeof template.elements;
+            if (clones.length === 0) return;
+            const newElements = [...template.elements, ...clones];
+            const newTemplate = { ...template, elements: newElements };
+            setTemplate(newTemplate);
+            addToHistory(newTemplate);
+            setSelectedId(clones[clones.length - 1].id);
+            setSelectedIds(clones.map(c => c.id));
             return;
         }
 
-        if (selectedId && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            // Don't delete when typing in an input/textarea
+            if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+            if (selectedIds.length > 1) {
+                const newEls = template.elements.filter(el => !selectedIds.includes(el.id));
+                const newTpl = { ...template, elements: newEls };
+                setTemplate(newTpl);
+                addToHistory(newTpl);
+                setSelectedId(null);
+                setSelectedIds([]);
+            } else if (selectedId) {
+                deleteSelected();
+            }
+            return;
+        }
+
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            const idsToMove = selectedIds.length > 1 ? selectedIds : (selectedId ? [selectedId] : []);
+            if (idsToMove.length === 0) return;
             e.preventDefault();
-            const el = template.elements.find(x => x.id === selectedId);
-            if (!el) return;
-
-            const step = e.shiftKey ? (template.type==='DOCUMENT'?1:10) : (template.type==='DOCUMENT'?0.1:0.5);
-            let { x, y } = el;
-
-            if (e.key === 'ArrowUp') y -= step;
-            if (e.key === 'ArrowDown') y += step;
-            if (e.key === 'ArrowLeft') x -= step;
-            if (e.key === 'ArrowRight') x += step;
-
-            updateElement(selectedId, { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) });
+            const step = e.shiftKey ? (template.type === 'DOCUMENT' ? 1 : 10) : (template.type === 'DOCUMENT' ? 0.1 : 0.5);
+            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+            const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+            const newEls = template.elements.map(el => {
+                if (!idsToMove.includes(el.id)) return el;
+                return { ...el, x: Number((el.x + dx).toFixed(2)), y: Number((el.y + dy).toFixed(2)) };
+            });
+            setTemplate({ ...template, elements: newEls });
         }
 
         if (e.key === 'Escape') { setSelectedId(null); setSelectedIds([]); }
@@ -613,12 +655,21 @@ export const useLabelDesigner = () => {
                 setSelectedId(id);
             }
 
+            // For multi-element drag: capture start positions of ALL selected elements
+            const multiStarts: Record<string, { x: number; y: number }> = {};
+            if (mode === 'MOVE' && selectedIds.length > 1 && selectedIds.includes(id)) {
+                template.elements.forEach(e2 => {
+                    if (selectedIds.includes(e2.id)) multiStarts[e2.id] = { x: e2.x, y: e2.y };
+                });
+            }
+
             setInteraction({
                 mode,
                 startPos: { x: clientX, y: clientY },
                 elementStart: { x: el.x, y: el.y, w: el.width, h: el.height, r: el.rotation },
                 panStart: { x: 0, y: 0 },
-                handle
+                handle,
+                multiElementStarts: Object.keys(multiStarts).length > 0 ? multiStarts : undefined,
             });
         } else {
             // Clicked on empty canvas -> Deselect
@@ -651,6 +702,19 @@ export const useLabelDesigner = () => {
 
         const start = interaction.elementStart;
         let newEl = { ...template.elements.find(x => x.id === selectedId)! };
+
+        if (interaction.mode === 'MOVE' && interaction.multiElementStarts && Object.keys(interaction.multiElementStarts).length > 0) {
+            // Move ALL selected elements by the same delta
+            setTemplate(prev => ({
+                ...prev,
+                elements: prev.elements.map(el => {
+                    const s = interaction.multiElementStarts![el.id];
+                    if (!s) return el;
+                    return { ...el, x: Number((s.x + deltaX).toFixed(2)), y: Number((s.y + deltaY).toFixed(2)) };
+                })
+            }));
+            return;
+        }
 
         if (interaction.mode === 'MOVE') {
             let rawX = start.x + deltaX;

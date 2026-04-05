@@ -33,10 +33,25 @@ interface DesignerCanvasProps {
 }
 
 /** Resuelve tokens {{empresa.X}} en el canvas para preview */
+const DATE_KEYS_RE = /^(fechaLimite|fechaVenta|fechaIngreso|fechaCreacion|fechaSalida)$/i;
+
+function formatSpanishDatePreview(val: string): string {
+    if (!val) return val;
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}(T00:00:00)?/.test(val);
+    const day   = String(isDateOnly ? d.getUTCDate()      : d.getDate()).padStart(2, '0');
+    const month = String(isDateOnly ? d.getUTCMonth() + 1 : d.getMonth() + 1).padStart(2, '0');
+    const year  =        isDateOnly ? d.getUTCFullYear()   : d.getFullYear();
+    return `${day}/${month}/${year}`;
+}
+
 function resolveEmpresaTokens(content: string, emp: Partial<EmpresaConfig>): string {
     return content.replace(/\{\{empresa\.(\w+)\}\}/g, (_, key) => {
         const val = (emp as any)[key];
-        return val !== undefined && val !== null ? String(val) : `{{empresa.${key}}}`;
+        if (val === undefined || val === null) return `{{empresa.${key}}}`;
+        const str = String(val);
+        return DATE_KEYS_RE.test(key) ? formatSpanishDatePreview(str) || str : str;
     });
 }
 
