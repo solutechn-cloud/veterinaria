@@ -12,9 +12,10 @@ import {
   LabelTemplate,
   ProductoUnified
 } from '../types';
-import { 
-  Search, PlusCircle, Package, Smartphone, Layers, MapPin, Tag, Edit2, Trash2, X, RefreshCw, Box, Filter, Printer, Hand, CheckCircle, Clock, AlertTriangle
+import {
+  Search, PlusCircle, Package, Smartphone, Layers, MapPin, Tag, Edit2, Trash2, X, RefreshCw, Box, Filter, Printer, Hand, CheckCircle, Clock, AlertTriangle, ScanLine
 } from 'lucide-react';
+import BarcodeScanner from '../components/BarcodeScanner';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
@@ -29,6 +30,7 @@ const Inventory: React.FC = () => {
   const [activeTab, setActiveTab] = useState<InventoryTab>('TELEPHONES');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
 
@@ -423,7 +425,7 @@ const Inventory: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1">
           {(activeTab === 'TELEPHONES' || activeTab === 'STOCK' || activeTab === 'MASTER') && (
             <div className="p-4 border-b border-slate-100 flex flex-wrap gap-4 bg-slate-50/50">
-                <div className="relative flex-1 min-w-[250px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Búsqueda rápida..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" /></div>
+                <div className="flex gap-2 flex-1 min-w-[250px]"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Búsqueda rápida..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none" /></div><button onClick={() => setShowScanner(true)} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95 shrink-0" title="Buscar por código de barras"><ScanLine size={18}/></button></div>
                 {activeTab === 'TELEPHONES' && (
                     <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2"><Filter size={16} className="text-slate-400"/><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-transparent text-sm font-bold text-slate-700 outline-none"><option value="ALL">Todos los Estados</option><option value="Disponible">Disponible</option><option value="Vendido">Vendido</option><option value="Defectuoso">Dañado</option><option value="Garantia">Garantía</option></select></div>
                 )}
@@ -514,6 +516,14 @@ const Inventory: React.FC = () => {
              </form></div>
           </div>
         </div>
+      )}
+      {showScanner && (
+        <BarcodeScanner
+          onScan={(code) => { setSearchTerm(code); setShowScanner(false); }}
+          onClose={() => setShowScanner(false)}
+          title="Buscar en Inventario"
+          hint="Apunta al código de barras o IMEI del producto"
+        />
       )}
     </div>
   );

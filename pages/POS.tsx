@@ -4,7 +4,8 @@ import { InventoryService, ClientService, SalesService, ConfigService } from '..
 import { offlineDB } from '../services/offlineDB';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { ProductoUnified, DetalleVenta, Cliente, VentaPayload } from '../types';
-import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet } from 'lucide-react';
+import { Search, ShoppingCart, RefreshCw, User, X, Check, Plus, Minus, UserPlus, Zap, LayoutGrid, Tag, Save, Wallet, ScanLine } from 'lucide-react';
+import BarcodeScanner from '../components/BarcodeScanner';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -77,6 +78,7 @@ const POS: React.FC = (): React.ReactElement => {
   const [selectedBrand, setSelectedBrand] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [mobileTab, setMobileTab] = useState<'CATALOG' | 'CART'>('CATALOG');
+  const [showScanner, setShowScanner] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [paymentType, setPaymentType] = useState<'Contado' | 'Credito' | 'KrediYa'>('Contado');
@@ -151,6 +153,26 @@ const POS: React.FC = (): React.ReactElement => {
     } catch (e) {
       Swal.fire('Error', 'No se pudo cargar la factura para editar', 'error');
     } finally { setIsLoading(false); }
+  };
+
+  const handleBarcodeScan = (code: string) => {
+    setShowScanner(false);
+    const normalizedCode = code.trim();
+    // Match by IMEI, codigo, or id
+    const found = products.find(p =>
+      p.imei === normalizedCode ||
+      p.codigo === normalizedCode ||
+      p.id === normalizedCode
+    );
+    if (found) {
+      addToCart(found);
+      setMobileTab('CART');
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${found.nombre} agregado`, showConfirmButton: false, timer: 1500 });
+    } else {
+      // Prefill search so user can see what was scanned
+      setSearchTerm(normalizedCode);
+      Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Producto no encontrado', text: `Código: ${normalizedCode}`, showConfirmButton: false, timer: 2500 });
+    }
   };
 
   const addToCart = (product: ProductoUnified) => {
@@ -553,6 +575,7 @@ const POS: React.FC = (): React.ReactElement => {
           <div className="p-4 border-b border-slate-100 space-y-4">
             <div className="flex gap-3">
                <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar Producto, IMEI o Código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium" /></div>
+               <button onClick={() => setShowScanner(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-indigo-600/20" title="Escanear código de barras"><ScanLine size={20}/></button>
                <button onClick={loadInitialData} className="bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2.5 rounded-xl transition-all active:scale-95"><RefreshCw size={20} className={isLoading ? 'animate-spin' : ''}/></button>
             </div>
             <div className="flex flex-col gap-2">
@@ -650,6 +673,14 @@ const POS: React.FC = (): React.ReactElement => {
           </div>
         </div>
       </div>
+      {showScanner && (
+        <BarcodeScanner
+          onScan={handleBarcodeScan}
+          onClose={() => setShowScanner(false)}
+          title="Escanear Producto"
+          hint="Apunta al código de barras o IMEI del producto"
+        />
+      )}
     </div>
   );
 };
