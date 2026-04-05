@@ -21,52 +21,188 @@ import DesignerCanvas from '../components/LabelDesigner/DesignerCanvas';
 import DesignerProperties from '../components/LabelDesigner/DesignerProperties';
 import DesignerToolbar from '../components/LabelDesigner/DesignerToolbar';
 
-// --- COMPONENT: Recursive Schema Node ---
-const SchemaNode = ({ table, path, schema, onSelect, level = 0 }: any) => {
+// --- Context variable name mapping (DB table name → print context key) ---
+const TABLE_CONTEXT_MAP: Record<string, string> = {
+    configuracion: 'empresa',
+    ventas:        'venta',
+    clientes:      'cliente',
+    telefonos:     'producto',
+    inventario:    'producto',
+    accesorios:    'producto',
+    empleado:      'empleado',
+    usuarios:      'usuario',
+    detalleventa:  'item',
+    reparaciones:  'reparacion',
+};
+
+// DB column name → camelCase context name (PostgreSQL stores names lowercase)
+const COLUMN_CAMEL_MAP: Record<string, string> = {
+    codventa: 'codVenta', fechaventa: 'fechaVenta', codvendedor: 'codVendedor',
+    identidadcliente: 'identidadCliente', tipompra: 'tipoCompra', metodopago: 'metodoPago',
+    nombrevndedor: 'nombreVendedor', nombreccliente: 'nombreCliente',
+    nombreeempresa: 'nombreEmpresa', nombreempresa: 'nombreEmpresa',
+    rangoinicial: 'rangoInicial', rangofinal: 'rangoFinal',
+    fechalimite: 'fechaLimite', mensajefinal: 'mensajeFinal', logo_base64: 'logoBase64',
+    coddetalle: 'codDetalleVenta', precioventa: 'precioVenta', cantdad: 'cantidad',
+    tipoproducto: 'tipoProducto', descuento: 'descuento',
+    fechaingreso: 'fechaIngreso', fechacreacion: 'fechaCreacion',
+    idreparacion: 'idReparacion', nombretecnico: 'nombreTecnico',
+    nombrecliente: 'nombreCliente', apellidocliente: 'apellidoCliente',
+    direccioncliente: 'direccionCliente',
+};
+
+function toContextColName(col: string): string {
+    return COLUMN_CAMEL_MAP[col.toLowerCase()] || col;
+}
+
+// --- Well-known context variables for each data source ---
+interface CtxVar { key: string; label: string; example?: string }
+interface CtxGroup { icon: string; label: string; color: string; vars: CtxVar[] }
+
+const CONTEXT_GROUPS: CtxGroup[] = [
+    {
+        icon: '🏢', label: 'Empresa / CAI', color: 'indigo',
+        vars: [
+            { key: 'empresa.nombreEmpresa', label: 'Nombre Empresa', example: 'Mi Empresa S.A.' },
+            { key: 'empresa.rtn',           label: 'RTN',            example: '0801-1990-01234' },
+            { key: 'empresa.direccion',     label: 'Dirección',      example: 'Col. Palmira, Teg.' },
+            { key: 'empresa.telefono',      label: 'Teléfono',       example: '2222-3333' },
+            { key: 'empresa.correo',        label: 'Correo',         example: 'info@empresa.hn' },
+            { key: 'empresa.cai',           label: 'CAI',            example: 'A1B2C3-D4E5F6-...' },
+            { key: 'empresa.rangoInicial',  label: 'Rango Inicial Emisión', example: '001-001-01-00000001' },
+            { key: 'empresa.rangoFinal',    label: 'Rango Final Emisión',   example: '001-001-01-00099999' },
+            { key: 'empresa.fechaLimite',   label: 'Fecha Límite Emisión',  example: '31/12/2026' },
+            { key: 'empresa.mensajeFinal',  label: 'Mensaje Final',         example: 'EXIJA SU FACTURA' },
+        ],
+    },
+    {
+        icon: '🧾', label: 'Venta / Factura', color: 'green',
+        vars: [
+            { key: 'venta.codVenta',       label: 'Código Venta',      example: 'FACT-0001' },
+            { key: 'venta.fecha',          label: 'Fecha Venta',       example: '05/04/2026' },
+            { key: 'venta.total',          label: 'Total',             example: '1150.00' },
+            { key: 'venta.isv',            label: 'ISV (15%)',         example: '150.00' },
+            { key: 'venta.descuento',      label: 'Descuento',         example: '0.00' },
+            { key: 'venta.metodoPago',     label: 'Método de Pago',    example: 'Efectivo' },
+            { key: 'venta.nombreVendedor', label: 'Nombre Vendedor',   example: 'Juan Pérez' },
+            { key: 'venta.nombreCliente',  label: 'Nombre Cliente',    example: 'María García' },
+            { key: 'venta.estado',         label: 'Estado Venta',      example: 'Completada' },
+        ],
+    },
+    {
+        icon: '👤', label: 'Cliente', color: 'sky',
+        vars: [
+            { key: 'cliente.nombre',    label: 'Nombre',           example: 'María García' },
+            { key: 'cliente.identidad', label: 'Identidad / RTN',  example: '0801-1985-12345' },
+            { key: 'cliente.direccion', label: 'Dirección',        example: 'Col. Alameda, Teg.' },
+        ],
+    },
+    {
+        icon: '📦', label: 'Ítem de Tabla (en columnas)', color: 'amber',
+        vars: [
+            { key: '{{item.descripcion}}', label: 'Descripción',    example: 'iPhone 13 128GB' },
+            { key: '{{item.cantidad}}',    label: 'Cantidad',       example: '1' },
+            { key: '{{item.precioVenta}}', label: 'Precio Unitario', example: '15000.00' },
+            { key: '{{item.isv}}',         label: 'ISV Ítem',       example: '1956.52' },
+            { key: '{{item.total}}',       label: 'Total Ítem',     example: '15000.00' },
+        ],
+    },
+    {
+        icon: '🔧', label: 'Reparación', color: 'rose',
+        vars: [
+            { key: 'reparacion.idReparacion',  label: 'ID Reparación',    example: 'REP-0001' },
+            { key: 'reparacion.nombreCliente', label: 'Cliente',          example: 'Luis Pérez' },
+            { key: 'reparacion.equipo',        label: 'Equipo',           example: 'iPhone 12' },
+            { key: 'reparacion.descripcion',   label: 'Descripción Falla',example: 'Pantalla rota' },
+            { key: 'reparacion.estado',        label: 'Estado',           example: 'En progreso' },
+            { key: 'reparacion.costo',         label: 'Costo',            example: '800.00' },
+        ],
+    },
+    {
+        icon: '🏷️', label: 'Producto / Etiqueta', color: 'purple',
+        vars: [
+            { key: 'producto.marca',       label: 'Marca',        example: 'Samsung' },
+            { key: 'producto.modelo',      label: 'Modelo',       example: 'Galaxy A54' },
+            { key: 'producto.imei',        label: 'IMEI',         example: '356938035643809' },
+            { key: 'producto.precioVenta', label: 'Precio Venta', example: '8500.00' },
+            { key: 'producto.descripcion', label: 'Descripción',  example: 'Accesorio' },
+        ],
+    },
+];
+
+const COLOR_MAP: Record<string, { bg: string; badge: string; text: string }> = {
+    indigo: { bg: 'bg-indigo-50 border-indigo-100', badge: 'bg-indigo-100 text-indigo-700', text: 'text-indigo-800' },
+    green:  { bg: 'bg-green-50 border-green-100',   badge: 'bg-green-100 text-green-700',   text: 'text-green-800' },
+    sky:    { bg: 'bg-sky-50 border-sky-100',        badge: 'bg-sky-100 text-sky-700',       text: 'text-sky-800' },
+    amber:  { bg: 'bg-amber-50 border-amber-100',   badge: 'bg-amber-100 text-amber-700',   text: 'text-amber-800' },
+    rose:   { bg: 'bg-rose-50 border-rose-100',      badge: 'bg-rose-100 text-rose-700',     text: 'text-rose-800' },
+    purple: { bg: 'bg-purple-50 border-purple-100', badge: 'bg-purple-100 text-purple-700', text: 'text-purple-800' },
+};
+
+// --- COMPONENT: Recursive Schema Node (DB Schema browser) ---
+const SchemaNode = ({ table, contextPath, schema, onSelect, level = 0 }: any) => {
     const [expanded, setExpanded] = useState(false);
     const tableDef = schema[table];
-    
+
     if (!tableDef) return null;
+
+    const displayPath = contextPath || TABLE_CONTEXT_MAP[table] || table;
 
     return (
         <div style={{ marginLeft: level * 12 }} className="border-l border-slate-200 pl-1 mt-1">
-            <button 
+            <button
                 onClick={() => setExpanded(!expanded)}
                 className="flex items-center gap-2 p-2 w-full hover:bg-slate-100 rounded text-left"
             >
                 {expanded ? <ChevronDown size={14} className="text-slate-400"/> : <ChevronRight size={14} className="text-slate-400"/>}
                 <span className="font-bold text-slate-700 text-xs uppercase flex items-center gap-1">
                     {level === 0 ? <Table size={14} className="text-indigo-500"/> : <Key size={12} className="text-amber-500"/>}
-                    {table}
+                    <span>{table}</span>
+                    {level === 0 && TABLE_CONTEXT_MAP[table] && (
+                        <span className="ml-1 text-[9px] font-normal text-slate-400 normal-case">→ {'{{'}{TABLE_CONTEXT_MAP[table]}{'}}'}...</span>
+                    )}
                 </span>
             </button>
 
             {expanded && (
                 <div className="pl-4">
                     <div className="grid grid-cols-2 gap-1 mb-2">
-                        {tableDef.columns.map((col: any) => (
-                            <button 
-                                key={col.name}
-                                onClick={() => onSelect(`${path}.${col.name}`)}
-                                className="flex items-center gap-2 p-1.5 hover:bg-indigo-50 rounded text-left group transition-all"
-                            >
-                                <div className="w-4 h-4 rounded bg-slate-100 text-slate-500 flex items-center justify-center text-[8px] font-bold group-hover:bg-indigo-100 group-hover:text-indigo-600">
-                                    {col.type === 'integer' || col.type === 'numeric' ? '#' : 'T'}
-                                </div>
-                                <span className="text-[10px] font-medium text-slate-600 group-hover:text-indigo-700 truncate">{col.name}</span>
-                            </button>
-                        ))}
+                        {tableDef.columns.map((col: any) => {
+                            const mapped = toContextColName(col.name);
+                            const varPath = `${displayPath}.${mapped}`;
+                            return (
+                                <button
+                                    key={col.name}
+                                    onClick={() => onSelect(varPath)}
+                                    title={`Insertar {{${varPath}}}`}
+                                    className="flex items-center gap-2 p-1.5 hover:bg-indigo-50 rounded text-left group transition-all"
+                                >
+                                    <div className="w-4 h-4 rounded bg-slate-100 text-slate-500 flex items-center justify-center text-[8px] font-bold group-hover:bg-indigo-100 group-hover:text-indigo-600">
+                                        {col.type === 'integer' || col.type === 'numeric' ? '#' : 'T'}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-medium text-slate-600 group-hover:text-indigo-700 truncate">{col.name}</div>
+                                        {mapped !== col.name && <div className="text-[9px] text-slate-400 truncate">{mapped}</div>}
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
-                    {tableDef.relations.map((rel: any) => (
-                        <SchemaNode 
-                            key={rel.foreignTable}
-                            table={rel.foreignTable}
-                            path={`${path}.${rel.foreignTable}`}
-                            schema={schema}
-                            onSelect={onSelect}
-                            level={level + 1}
-                        />
-                    ))}
+                    {tableDef.relations.length > 0 && (
+                        <div className="mb-2">
+                            <div className="text-[9px] text-slate-400 uppercase tracking-wide px-1 mb-1">Relaciones (JOIN)</div>
+                            {tableDef.relations.map((rel: any) => (
+                                <SchemaNode
+                                    key={`${rel.foreignTable}-${rel.column}`}
+                                    table={rel.foreignTable}
+                                    contextPath={TABLE_CONTEXT_MAP[rel.foreignTable] || rel.foreignTable}
+                                    schema={schema}
+                                    onSelect={onSelect}
+                                    level={level + 1}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -986,37 +1122,109 @@ const LabelDesigner: React.FC = () => {
         )}
 
         {/* --- MODALS (Mismo código anterior) --- */}
-        {showVarModal && (
+        {showVarModal && (() => {
+            const [varTab, setVarTab] = React.useState<'context'|'schema'>('context');
+            const [varSearch, setVarSearch] = React.useState('');
+            const insertVar = (varKey: string) => {
+                // Item table vars already have {{...}} wrapper - strip to get the inner key
+                const inner = varKey.startsWith('{{') ? varKey.slice(2, -2) : varKey;
+                if (selectedId) {
+                    const oldContent = template.elements.find(e => e.id === selectedId)?.content || '';
+                    updateElement(selectedId, { content: oldContent + `{{${inner}}}` });
+                }
+                setShowVarModal(false);
+            };
+            const search = varSearch.toLowerCase();
+            return (
             <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-2xl w-full max-w-lg h-[80vh] shadow-2xl flex flex-col overflow-hidden">
-                    <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+                <div className="bg-white rounded-2xl w-full max-w-lg h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="p-4 border-b flex justify-between items-center bg-slate-50">
                         <div>
-                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Database className="text-indigo-600" size={20}/> Explorador de Datos</h3>
-                            <p className="text-xs text-slate-500">Navega por las tablas y relaciones.</p>
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Database className="text-indigo-600" size={20}/> Explorador de Variables</h3>
+                            <p className="text-[11px] text-slate-500">{selectedId ? 'Click en una variable para insertarla.' : 'Selecciona un elemento primero.'}</p>
                         </div>
-                        <button onClick={() => setShowVarModal(false)} className="p-2 hover:bg-slate-200 rounded-full"><X/></button>
+                        <button onClick={() => setShowVarModal(false)} className="p-2 hover:bg-slate-200 rounded-full"><X size={18}/></button>
                     </div>
-                    
-                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        {Object.keys(dbSchema).map(tableName => (
-                            <SchemaNode 
-                                key={tableName}
-                                table={tableName}
-                                path={tableName}
-                                schema={dbSchema}
-                                onSelect={(val: string) => {
-                                    if(selectedId) {
-                                        const oldContent = template.elements.find(e => e.id === selectedId)?.content || '';
-                                        updateElement(selectedId, { content: oldContent + `{{${val}}}` });
-                                    }
-                                    setShowVarModal(false);
-                                }}
-                            />
-                        ))}
+
+                    {/* Tabs */}
+                    <div className="flex border-b bg-white">
+                        <button onClick={() => setVarTab('context')} className={`flex-1 py-2 text-xs font-semibold transition-colors ${varTab === 'context' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                            Variables Conocidas
+                        </button>
+                        <button onClick={() => setVarTab('schema')} className={`flex-1 py-2 text-xs font-semibold transition-colors ${varTab === 'schema' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                            Explorador BD / JOINs
+                        </button>
+                    </div>
+
+                    {/* Search */}
+                    <div className="px-4 py-2 border-b bg-slate-50">
+                        <input
+                            value={varSearch}
+                            onChange={e => setVarSearch(e.target.value)}
+                            placeholder="Buscar variable..."
+                            className="w-full text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {varTab === 'context' ? (
+                            /* ── Tab 1: Well-known context variables ── */
+                            <div className="p-3 space-y-3">
+                                {CONTEXT_GROUPS.map(group => {
+                                    const filtered = group.vars.filter(v =>
+                                        !search || v.key.toLowerCase().includes(search) || v.label.toLowerCase().includes(search)
+                                    );
+                                    if (!filtered.length) return null;
+                                    const c = COLOR_MAP[group.color] || COLOR_MAP.indigo;
+                                    return (
+                                        <div key={group.label} className={`rounded-xl border p-3 ${c.bg}`}>
+                                            <div className={`text-xs font-bold mb-2 ${c.text}`}>{group.icon} {group.label}</div>
+                                            <div className="grid grid-cols-1 gap-1">
+                                                {filtered.map(v => (
+                                                    <button
+                                                        key={v.key}
+                                                        onClick={() => insertVar(v.key)}
+                                                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-white/70 text-left transition-all group"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="text-[11px] font-medium text-slate-700 group-hover:text-indigo-700">{v.label}</div>
+                                                            <code className={`text-[9px] px-1 rounded ${c.badge}`}>{`{{${v.key}}}`}</code>
+                                                        </div>
+                                                        {v.example && <span className="text-[9px] text-slate-400 flex-shrink-0 hidden sm:block">{v.example}</span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            /* ── Tab 2: DB Schema browser with FK/JOINs ── */
+                            <div className="p-3">
+                                <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">
+                                    Navega la base de datos. Las relaciones (FK) permiten hacer JOIN entre tablas.
+                                    El nombre de variable generado ya está mapeado al contexto correcto.
+                                </p>
+                                {Object.keys(dbSchema).filter(t => !search || t.includes(search)).map(tableName => (
+                                    <SchemaNode
+                                        key={tableName}
+                                        table={tableName}
+                                        contextPath={TABLE_CONTEXT_MAP[tableName] || tableName}
+                                        schema={dbSchema}
+                                        onSelect={insertVar}
+                                    />
+                                ))}
+                                {Object.keys(dbSchema).length === 0 && (
+                                    <p className="text-xs text-slate-400 text-center py-8">Cargando esquema...</p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
-        )}
+            );
+        })()}
 
         {showShapeModal && (
             <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">

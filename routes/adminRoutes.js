@@ -6,23 +6,60 @@ const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('..
 const { authenticateToken } = require('../middleware/auth');
 
 // --- ENDPOINT PARA ESQUEMA DE DATOS (REQUERIDO POR IMPRESIÓN/DISEÑO) ---
+const SCHEMA_TABLES = ['telefonos', 'inventario', 'accesorios', 'ventas', 'clientes', 'configuracion', 'empleado', 'usuarios', 'detalleventa', 'reparaciones'];
+
 router.get('/schema', authenticateToken, async (req, res) => {
     try {
-        const query = `
-            SELECT 
-                table_name as "table", 
-                column_name as "column", 
+        const colQuery = `
+            SELECT
+                table_name as "table",
+                column_name as "column",
                 data_type as "type"
-            FROM information_schema.columns 
+            FROM information_schema.columns
             WHERE table_schema = 'public'
-            AND table_name IN ('telefonos', 'inventario', 'accesorios', 'ventas', 'clientes', 'configuracion')
+            AND table_name = ANY($1::text[])
+            ORDER BY table_name, ordinal_position
         `;
-        const result = await pool.query(query);
-        const schema = result.rows.reduce((acc, curr) => {
+        // Query FK relationships from information_schema
+        const fkQuery = `
+            SELECT
+                tc.table_name AS "fromTable",
+                kcu.column_name AS "fromColumn",
+                ccu.table_name AS "toTable",
+                ccu.column_name AS "toColumn"
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.key_column_usage AS kcu
+                ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage AS ccu
+                ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema = 'public'
+            AND tc.table_name = ANY($1::text[])
+        `;
+        const [colResult, fkResult] = await Promise.all([
+            pool.query(colQuery, [SCHEMA_TABLES]),
+            pool.query(fkQuery, [SCHEMA_TABLES]),
+        ]);
+
+        const schema = colResult.rows.reduce((acc, curr) => {
             if (!acc[curr.table]) acc[curr.table] = { columns: [], relations: [] };
             acc[curr.table].columns.push({ name: curr.column, type: curr.type });
             return acc;
         }, {});
+
+        // Add FK relationships
+        for (const fk of fkResult.rows) {
+            if (!schema[fk.fromTable]) continue;
+            const alreadyExists = schema[fk.fromTable].relations.some(r => r.foreignTable === fk.toTable && r.column === fk.fromColumn);
+            if (!alreadyExists) {
+                schema[fk.fromTable].relations.push({
+                    column: fk.fromColumn,
+                    foreignTable: fk.toTable,
+                    foreignColumn: fk.toColumn,
+                });
+            }
+        }
+
         res.json(schema);
     } catch(e) { handleDbError(res, e); }
 });

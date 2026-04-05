@@ -261,6 +261,9 @@ export const useLabelDesigner = () => {
         const defW = isDoc ? 5 : 30; // 5cm vs 30mm
         const defH = isDoc ? 2 : 5;  // 2cm vs 5mm
 
+        // Strip any incoming id so paste/duplicate always gets a fresh unique ID
+        const { id: _dropId, ...restExtra } = extra as any;
+
         const newEl: LabelElement = {
             id: generateId(),
             type,
@@ -273,7 +276,7 @@ export const useLabelDesigner = () => {
             barcodeFormat: 'CODE128', displayValue: true, shapeType: 'RECTANGLE',
             isStretchWithOverflow: false,
             opacity: 1,
-            ...extra
+            ...restExtra
         };
 
         if (type === 'BARCODE') { newEl.content = '123456'; newEl.width = isDoc?6:30; newEl.height = isDoc?2:10; }
