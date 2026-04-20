@@ -66,7 +66,7 @@ router.get('/inventory/telefonos', authenticateToken, async (req, res) => {
 router.post('/inventory/telefonos', authenticateToken, async (req, res) => {
     try {
         const { imei1, imei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion } = req.body;
-        const safeImei2 = imei2 || ''; 
+        const safeImei2 = (imei2 && imei2.trim() !== '') ? imei2.trim() : null;
         const codigo = await generateNextId('telefonos', 'codigo', 'TEL');
         await pool.query(
             `INSERT INTO telefonos (codigo, imei1, imei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado)
@@ -80,7 +80,7 @@ router.post('/inventory/telefonos', authenticateToken, async (req, res) => {
 router.put('/inventory/telefonos/:id', authenticateToken, async (req, res) => {
     try {
         const { imei1, imei2, marca, modelo, precioCompra, precioVenta, codProveedor, fecha, idubicacion, estado } = req.body;
-        const safeImei2 = imei2 || '';
+        const safeImei2 = (imei2 && imei2.trim() !== '') ? imei2.trim() : null;
         await pool.query(
             `UPDATE telefonos SET imei1=$1, imei2=$2, marca=$3, modelo=$4, precioCompra=$5, precioVenta=$6, codProveedor=$7, fecha=$8, idubicacion=$9, estado=$10
              WHERE codigo=$11`,
