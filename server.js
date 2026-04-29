@@ -485,5 +485,5 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
 app.use(express.static(path.join(__dirname, 'build')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'build', 'index.html')));
 
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : (process.env.HOST || '127.0.0.1');
 app.listen(port, host, () => console.log(`SmartCloud running on ${host}:${port}`));
