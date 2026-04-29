@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ReportsService, CashService } from '../services/api';
+import { ReportsService, CashService, InventoryService } from '../services/api';
 import {
   TrendingUp, Package, DollarSign, Activity, RefreshCw, Smartphone
 } from 'lucide-react';
@@ -29,6 +29,7 @@ const Dashboard: React.FC = () => {
   const [kpiSummary, setKpiSummary] = useState<any>(null);
   const [invCosto, setInvCosto] = useState(0);
   const [ventasHoy, setVentasHoy] = useState(0);
+  const [lowStock, setLowStock] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -37,17 +38,19 @@ const Dashboard: React.FC = () => {
       const today = new Date().toISOString().split('T')[0];
       const year = new Date().getFullYear();
 
-      const [trend, valuation, boxes, kpi, dailySales] = await Promise.all([
+      const [trend, valuation, boxes, kpi, dailySales, stockAlerts] = await Promise.all([
         ReportsService.getSalesTrend(year),
         ReportsService.getInventoryValuation(),
         CashService.getAdminBoxesStatus(),
         ReportsService.getKpiSummary(today, today).catch(() => null),
         ReportsService.getDailySales(today, today).catch(() => []),
+        InventoryService.getLowStock().catch(() => []),
       ]);
 
       setSalesTrend(Array.isArray(trend) ? trend : []);
       setBoxStatus(Array.isArray(boxes) ? boxes : []);
       setKpiSummary(kpi);
+      setLowStock(Array.isArray(stockAlerts) ? stockAlerts : []);
 
       const costo = (Array.isArray(valuation) ? valuation : []).reduce(
         (acc: number, v: any) => acc + Number(v.costo_total || 0), 0
@@ -240,7 +243,7 @@ const Dashboard: React.FC = () => {
               ))}
             </div>
           ) : (
-            <AlertsCenter boxes={boxStatus} />
+            <AlertsCenter boxes={boxStatus} lowStock={lowStock} />
           )}
         </div>
 

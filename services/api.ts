@@ -191,7 +191,7 @@ export const InventoryService = {
   createStock: (data: Partial<Inventario>) => request('/inventory/stock', { method: 'POST', body: JSON.stringify(data) }),
   updateStock: (id: string, data: Partial<Inventario>) => request(`/inventory/stock/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteStock: (id: string) => request(`/inventory/stock/${id}`, { method: 'DELETE' }),
-  
+
   getAccesoriosMaster: () => request<Accesorio[]>('/inventory/accesorios-master'),
   createAccesorioMaster: (data: Partial<Accesorio>) => request('/inventory/accesorios-master', { method: 'POST', body: JSON.stringify(data) }),
   updateAccesorioMaster: (id: string, data: Partial<Accesorio>) => request(`/inventory/accesorios-master/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -207,6 +207,9 @@ export const InventoryService = {
   updateUbicacion: (id: string, data: Partial<Ubicacion>) => request(`/inventory/ubicaciones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUbicacion: (id: string) => request(`/inventory/ubicaciones/${id}`, { method: 'DELETE' }),
   
+  generatePurchaseOrder: () => request<any>('/inventory/purchase-order', { method: 'POST' }),
+  getLowStock: () => request<any[]>('/inventory/low-stock'),
+
   getProveedores: () => request<Proveedor[]>('/proveedores'),
   createProveedor: (data: Partial<Proveedor>) => request('/proveedores', { method: 'POST', body: JSON.stringify(data) }),
   updateProveedor: (id: string, data: Partial<Proveedor>) => request(`/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

@@ -263,6 +263,52 @@ router.delete('/garantias/:id', authenticateToken, async (req, res) => {
     } catch(e) { handleDbError(res, e); }
 });
 
+// Ruta publica para rastreo de reparaciones (sin autenticacion)
+router.get('/public/repair/:id', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                r.id_reparacion,
+                r.marca,
+                r.modelo,
+                r.estado_reparacion,
+                r.descripcion_falla,
+                r.fecha_ingreso,
+                r.fecha_entrega_estimada,
+                c.nombre,
+                c.apellido
+            FROM reparaciones r
+            LEFT JOIN clientes c ON r.identidad_cliente = c.identidad
+            WHERE r.id_reparacion = $1
+        `, [req.params.id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Orden de reparación no encontrada' });
+        }
+
+        const rep = result.rows[0];
+        // Only expose necessary public data (no PII beyond first name)
+        res.json({
+            id: rep.id_reparacion,
+            equipo: `${rep.marca} ${rep.modelo}`,
+            estado: rep.estado_reparacion,
+            fechaIngreso: rep.fecha_ingreso,
+            fechaEstimada: rep.fecha_entrega_estimada,
+            clienteNombre: rep.nombre ? rep.nombre.split(' ')[0] : 'Cliente', // Only first name
+            descripcion: rep.descripcion_falla,
+            estadoColor: {
+                'Pendiente': 'yellow',
+                'En Proceso': 'blue',
+                'Esperando Repuesto': 'orange',
+                'Lista para Retirar': 'green',
+                'Listo': 'green',
+                'Entregado': 'gray',
+                'Cancelado': 'red'
+            }[rep.estado_reparacion] || 'gray'
+        });
+    } catch(e) { handleDbError(res, e); }
+});
+
 // --- CONSIGNACIONES ---
 router.get('/consignaciones', authenticateToken, async (req, res) => {
     try {

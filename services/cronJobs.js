@@ -296,7 +296,78 @@ function startCronJobs() {
     // Weekly report — Monday 8:00 AM Honduras = 14:00 UTC
     cron.schedule('0 14 * * 1', runWeeklyReport, { timezone: 'UTC' });
 
-    console.log('[cronJobs] Cron jobs registrados: reporte diario, garantias, saldo bajo, reporte semanal.');
+    // Alerta semanal de consignaciones vencidas/sin movimiento — Viernes 5PM Honduras = Viernes 23:00 UTC
+    cron.schedule('0 23 * * 5', async () => {
+      if (!process.env.ADMIN_EMAIL) return;
+      try {
+        // Get consignments older than 30 days that haven't been settled
+        const result = await pool.query(`
+          SELECT c.idConsignacion, c.fechaConsignacion, c.estado,
+                 cli.nombre || ' ' || cli.apellido as consignatario,
+                 COUNT(dc.id) as totalEquipos,
+                 (CURRENT_DATE - c.fechaConsignacion::date) as diasTranscurridos
+          FROM consignaciones c
+          JOIN clientes cli ON c.idCliente = cli.idCliente
+          LEFT JOIN detalle_consignacion dc ON c.idConsignacion = dc.idConsignacion
+          WHERE c.estado = 'Activa'
+            AND (CURRENT_DATE - c.fechaConsignacion::date) > 30
+          GROUP BY c.idConsignacion, c.fechaConsignacion, c.estado, consignatario
+          ORDER BY diasTranscurridos DESC
+        `);
+
+        if (result.rows.length === 0) return;
+
+        // Build simple email report
+        const { Resend } = require('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const rows = result.rows.map(r =>
+          `<tr><td>${r.consignatario}</td><td>${r.totalequipos}</td><td>${r.diastranscurridos} días</td></tr>`
+        ).join('');
+
+        await resend.emails.send({
+          from: process.env.EMAIL_FROM || 'SmartCloud <noreply@erpsmartcloud.com>',
+          to: process.env.ADMIN_EMAIL,
+          subject: `⚠️ ${result.rows.length} consignación(es) sin liquidar — Semana del ${new Date().toLocaleDateString('es-HN')}`,
+          html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#dc2626">Consignaciones sin liquidar</h2>
+            <p>Las siguientes consignaciones llevan más de 30 días activas sin ser liquidadas:</p>
+            <table border="1" cellpadding="8" style="border-collapse:collapse;width:100%">
+              <thead><tr style="background:#f3f4f6"><th>Consignatario</th><th>Equipos</th><th>Tiempo</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <p style="color:#6b7280;font-size:12px">Sistema ERP SmartCloud</p>
+          </div>`
+        });
+        console.log('[CRON] Alertas consignaciones enviadas:', result.rows.length);
+      } catch(err) {
+        console.error('[CRON] Error alertas consignaciones:', err.message);
+      }
+    }, { timezone: 'UTC' });
+
+    // Daily database backup — midnight Honduras (UTC-6) = 06:00 UTC
+    cron.schedule('0 6 * * *', async () => {
+        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) return;
+        try {
+            const { backupDatabase, deleteOldBackups } = require('./googleDriveService');
+            const result = await backupDatabase();
+            await deleteOldBackups(30);
+            if (result.success && process.env.ADMIN_EMAIL) {
+                const { sendBackupConfirmationEmail } = require('./emailService');
+                const sizeKB = Math.round((result.size || 0) / 1024);
+                await sendBackupConfirmationEmail(
+                    process.env.ADMIN_EMAIL,
+                    new Date().toLocaleDateString('es-HN'),
+                    `${sizeKB} KB`,
+                    result.webViewLink
+                );
+            }
+            console.log('[BACKUP] Backup exitoso:', result.filename);
+        } catch (err) {
+            console.error('[BACKUP] Error en backup automático:', err.message);
+        }
+    }, { timezone: 'UTC' });
+
+    console.log('[cronJobs] Cron jobs registrados: reporte diario, garantias, saldo bajo, reporte semanal, backup Drive.');
 }
 
 module.exports = { startCronJobs, runDailyReport, runWarrantyCheck, runLowBalanceMonitor, runWeeklyReport };

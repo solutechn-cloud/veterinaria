@@ -71,6 +71,7 @@ const CashRegister: React.FC = () => {
   const [saldos, setSaldos] = useState<Saldo[]>([]);
   const [paquetes, setPaquetes] = useState<Paquete[]>([]);
 
+  const [rechargePrediction, setRechargePrediction] = useState<{TIGO?: any; CLARO?: any}>({});
   const [existingBalances, setExistingBalances] = useState({ tigo: false, claro: false });
   const [openForm, setOpenForm] = useState({ monto: '', tigo: '', claro: '' });
   
@@ -102,8 +103,21 @@ const CashRegister: React.FC = () => {
     return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
   };
 
-  useEffect(() => { if (user) { loadData(); loadCatalogos(); loadConfig(); } }, [user]);
+  useEffect(() => { if (user) { loadData(); loadCatalogos(); loadConfig(); loadRechargePredictions(); } }, [user]);
   const loadConfig = async () => { try { const cfg = await ConfigService.get(); setCompanyConfig(cfg); } catch (e) { console.error(e); } };
+
+  const loadRechargePredictions = async () => {
+    try {
+      const [tigo, claro] = await Promise.allSettled([
+        fetch('/api/ai/recharge-prediction/TIGO', { headers: { Authorization: `Bearer ${localStorage.getItem('smartcloud_token')}` } }).then(r => r.json()),
+        fetch('/api/ai/recharge-prediction/CLARO', { headers: { Authorization: `Bearer ${localStorage.getItem('smartcloud_token')}` } }).then(r => r.json()),
+      ]);
+      setRechargePrediction({
+        TIGO: tigo.status === 'fulfilled' ? tigo.value : null,
+        CLARO: claro.status === 'fulfilled' ? claro.value : null,
+      });
+    } catch(e) { console.error('Prediction error:', e); }
+  };
   const loadCatalogos = async () => { try { const [p, s] = await Promise.all([PackagesService.getAll(), AccountingService.getSocios()]); setPaquetes(p || []); setPartners(s || []); } catch(e) { console.error(e); } };
 
   const loadData = async () => {
@@ -454,7 +468,8 @@ const CashRegister: React.FC = () => {
          )}
 
          {activeTab === 'RECHARGES' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+            <div className="space-y-4 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                {['TIGO', 'CLARO'].map(red => (
                   <div key={red} className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col ${red === 'TIGO' ? 'border-blue-100' : 'border-red-100'}`}>
                     <div className={`${red === 'TIGO' ? 'bg-blue-600' : 'bg-red-600'} text-white p-4 flex justify-between items-center`}><h3 className="font-bold text-lg">{red}</h3><span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">Saldo: L. {Number(getSaldoRed(red)).toFixed(2)}</span></div>
@@ -464,6 +479,23 @@ const CashRegister: React.FC = () => {
                     </div>
                   </div>
                ))}
+              </div>
+              {(rechargePrediction.TIGO || rechargePrediction.CLARO) && (
+                <div className="mt-3 p-3 bg-purple-50 rounded-xl border border-purple-100">
+                  <p className="text-xs font-black text-purple-700 uppercase mb-2">🤖 Predicción IA de Saldo</p>
+                  {(['TIGO', 'CLARO'] as const).map(red => {
+                    const pred = rechargePrediction[red];
+                    if (!pred || pred.error) return null;
+                    return (
+                      <div key={red} className="mb-2">
+                        <span className="text-xs font-bold text-purple-800">{red}: </span>
+                        <span className="text-xs text-purple-600">Compra sugerida L.{pred.cantidadSugerida?.toLocaleString()}</span>
+                        {pred.justificacion && <p className="text-[10px] text-purple-500 mt-0.5">{pred.justificacion}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
          )}
 

@@ -27,6 +27,7 @@ import Accounting from './pages/Accounting';
 import Repairs from './pages/Repairs';
 import Consignments from './pages/Consignments';
 import ReturnsWarranties from './pages/ReturnsWarranties';
+import RepairTracker from './pages/RepairTracker';
 
 const App: React.FC = () => {
   return (
@@ -36,6 +37,7 @@ const App: React.FC = () => {
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/repair/:id" element={<RepairTracker />} />
 
           {/* Rutas Protegidas Envueltas en Layout */}
           <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />

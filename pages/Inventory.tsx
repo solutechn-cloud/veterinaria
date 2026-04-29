@@ -25,6 +25,7 @@ import {
 import BarcodeScanner from '../components/BarcodeScanner';
 import Swal from 'sweetalert2';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import * as ReactRouterDOM from 'react-router-dom';
@@ -289,6 +290,77 @@ const Inventory: React.FC = () => {
       }
   };
 
+  const generatePurchaseOrderPDF = async () => {
+    try {
+      const data = await InventoryService.generatePurchaseOrder();
+      if (!data.items || data.items.length === 0) {
+        Swal.fire({ icon: 'info', title: 'Sin alertas', text: 'No hay productos bajo stock mínimo en este momento' });
+        return;
+      }
+      const doc = new jsPDF();
+      const fecha = new Date().toLocaleDateString('es-HN');
+
+      // Header
+      doc.setFillColor(30, 41, 59);
+      doc.rect(0, 0, 210, 28, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ORDEN DE COMPRA SUGERIDA', 105, 12, { align: 'center' });
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Fecha: ${fecha}  |  Total de productos: ${data.totalItems}`, 105, 22, { align: 'center' });
+
+      // Group by proveedor
+      const grouped: Record<string, typeof data.items> = {};
+      for (const item of data.items) {
+        const key = item.proveedor || 'Sin proveedor asignado';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
+      }
+
+      let startY = 35;
+      for (const [proveedor, items] of Object.entries(grouped)) {
+        doc.setTextColor(79, 70, 229);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Proveedor: ${proveedor}`, 14, startY);
+        startY += 2;
+
+        autoTable(doc, {
+          startY,
+          head: [['Producto', 'Categoría', 'Proveedor', 'Stock Actual', 'Mínimo', 'Cantidad a Pedir']],
+          body: items.map((i: any) => [
+            i.nombre,
+            i.categoria || '—',
+            i.proveedor,
+            i.stockactual,
+            i.stockminimo,
+            i.cantidadsugerida
+          ]),
+          theme: 'grid',
+          headStyles: { fillColor: [79, 70, 229], fontSize: 8 },
+          bodyStyles: { fontSize: 8 },
+          columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center', fontStyle: 'bold', textColor: [220, 38, 38] } },
+          margin: { left: 14, right: 14 },
+        });
+
+        startY = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Footer
+      doc.setTextColor(100);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total de productos: ${data.totalItems}`, 14, startY);
+
+      const fechaFile = new Date().toISOString().split('T')[0];
+      doc.save(`OrdenCompra_${fechaFile}.pdf`);
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo generar la orden de compra', 'error');
+    }
+  };
+
   const handleAiSuggestPrice = async () => {
     if (!phoneForm.modelo || !phoneForm.precioCompra) return;
     setAiPriceLoading(true);
@@ -449,7 +521,12 @@ const Inventory: React.FC = () => {
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Package className="text-indigo-600"/> Gestión de Inventario</h2>
             <p className="text-slate-500 text-sm">Control de teléfonos, accesorios y configuraciones.</p>
           </div>
-          <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-indigo-600/20 transition-all"><PlusCircle size={20}/><span>Nuevo Registro</span></button>
+          <div className="flex items-center gap-2">
+            <button onClick={generatePurchaseOrderPDF} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2">
+              📋 Orden de Compra
+            </button>
+            <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-indigo-600/20 transition-all"><PlusCircle size={20}/><span>Nuevo Registro</span></button>
+          </div>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
           {[{ id: 'TELEPHONES', label: 'Teléfonos', icon: <Smartphone size={18}/> }, { id: 'STOCK', label: 'Stock Accesorios', icon: <Box size={18}/> }, { id: 'MASTER', label: 'Accesorios', icon: <Layers size={18}/> }, { id: 'CATEGORIES', label: 'Categorías', icon: <Tag size={18}/> }, { id: 'LOCATIONS', label: 'Ubicaciones', icon: <MapPin size={18}/> }].map(tab => (
@@ -527,6 +604,9 @@ const Inventory: React.FC = () => {
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Cantidad</label><input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-lg" value={stockForm.cantidad || ''} onChange={e => setStockForm({...stockForm, cantidad: Number(e.target.value)})} /></div>
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">P. Compra</label><input required type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" value={stockForm.precioCompra || ''} onChange={e => setStockForm({...stockForm, precioCompra: Number(e.target.value)})} /></div>
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">P. Venta</label><input required type="number" className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl font-black text-emerald-700 text-lg" value={stockForm.precioVenta || ''} onChange={e => setStockForm({...stockForm, precioVenta: Number(e.target.value)})} /></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Stock Mínimo</label><input type="number" min="0" className="w-full p-3 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-700 font-bold" placeholder="Ej: 5" value={(stockForm as any).stockMinimo ?? ''} onChange={e => setStockForm({...stockForm, stockMinimo: e.target.value !== '' ? Number(e.target.value) : null} as any)} /></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Ubicación</label><select required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={stockForm.idubicacion || ''} onChange={e => setStockForm({...stockForm, idubicacion: e.target.value})}><option value="">Seleccionar...</option>{locations.map(l => (<option key={l.idUbicacion} value={l.idUbicacion}>{l.nombre}{l.estante ? ` — Mueble: ${l.estante}` : ''}{l.nivel ? ` | Nivel: ${l.nivel}` : ''}</option>))}</select></div>

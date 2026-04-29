@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { CashService, SalesService, AccountingService, PackagesService } from '../services/api';
+import { CashService, SalesService, AccountingService, PackagesService, AIService } from '../services/api';
 import { Arqueo, Ingreso, Egreso, Saldo, Socio, SubtipoIngreso, SubtipoEgreso } from '../types';
 import { Activity, Lock, Unlock, RefreshCw, AlertTriangle, Eye, ArrowUpCircle, ArrowDownCircle, Settings, X, Save, Edit2, Trash2, FileText, Smartphone, Printer, History, Calendar, Ticket, Info, PlusCircle, ArrowUpRight, UserCheck, DollarSign } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -57,6 +57,8 @@ const AdminCashDashboard: React.FC = () => {
   const [newForm, setNewForm] = useState({ descripcion: '', monto: '', costo: '0', subtipo: '', idSocio: '' });
 
   const [saldosSession, setSaldosSession] = useState<Saldo[]>([]);
+  const [anomalyResult, setAnomalyResult] = useState<any>(null);
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
 
   useEffect(() => { loadData(); loadPartners(); }, []);
 
@@ -87,6 +89,7 @@ const AdminCashDashboard: React.FC = () => {
       try {
           const details = await CashService.getSessionDetails(idArqueo);
           setSessionDetails(details);
+          setAnomalyResult(null);
           
           const historicalBoxInfo: BoxStatus = {
               ...boxInfo,
@@ -182,6 +185,19 @@ const AdminCashDashboard: React.FC = () => {
         loadData();
         Swal.fire('Éxito', 'Movimiento registrado correctamente en la fecha seleccionada.', 'success');
     } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
+  };
+
+  const handleAnomalyCheck = async () => {
+    if (!sessionDetails?.arqueo?.idArqueo) return;
+    setAnomalyLoading(true);
+    try {
+      const result = await AIService.checkAnomaly(sessionDetails.arqueo.idArqueo);
+      setAnomalyResult(result);
+    } catch (e) {
+      setAnomalyResult({ error: 'No disponible' });
+    } finally {
+      setAnomalyLoading(false);
+    }
   };
 
   const handleEditInvoice = (descripcion: string) => {
@@ -393,7 +409,21 @@ const AdminCashDashboard: React.FC = () => {
                             <div className="flex gap-2 w-full md:w-auto">
                                 <button onClick={() => generateClosingReportPDF(true)} className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"><Printer size={16}/> REPORTE SIN RECARGAS</button>
                                 <button onClick={() => generateClosingReportPDF(false)} className="flex-1 md:flex-none bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-red-600/20"><FileText size={16}/> REPORTE COMPLETO</button>
+                                <button onClick={handleAnomalyCheck} disabled={anomalyLoading} className="flex-1 md:flex-none bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20">{anomalyLoading ? <RefreshCw size={16} className="animate-spin"/> : <span>🤖</span>} ANÁLISIS IA</button>
                             </div>
+                            {anomalyResult && !anomalyResult.error && (
+                              <div className={`mt-3 p-4 rounded-xl border text-sm ${anomalyResult.esAnomal ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                                <div className="flex items-center gap-2 font-black text-xs uppercase mb-2">
+                                  <span>{anomalyResult.esAnomal ? '⚠️' : '✅'}</span>
+                                  <span>{anomalyResult.esAnomal ? `Anomalía detectada — Riesgo ${anomalyResult.nivelRiesgo}` : 'Arqueo normal'}</span>
+                                </div>
+                                <p className="text-slate-600 text-xs">{anomalyResult.observaciones}</p>
+                                {anomalyResult.recomendacion && <p className="text-slate-500 text-xs mt-1 italic">{anomalyResult.recomendacion}</p>}
+                              </div>
+                            )}
+                            {anomalyResult?.error && (
+                              <p className="mt-2 text-xs text-slate-400 text-center">IA no disponible</p>
+                            )}
                        </div>
                    </div>
 

@@ -151,12 +151,37 @@ router.post('/inventory/stock', authenticateToken, async (req, res) => {
 
 router.put('/inventory/stock/:id', authenticateToken, async (req, res) => {
     try {
-        const { cantidad, precioCompra, precioVenta, codProveedor, idubicacion, estado } = req.body;
+        const { cantidad, precioCompra, precioVenta, codProveedor, idubicacion, estado, stockMinimo } = req.body;
         await pool.query(
-            `UPDATE inventario SET cantidad=$1, precioCompra=$2, precioVenta=$3, codProveedor=$4, idubicacion=$5, estado=$6 WHERE codInventario=$7`,
-            [cantidad, precioCompra, precioVenta, codProveedor, idubicacion, estado, req.params.id]
+            `UPDATE inventario SET cantidad=$1, precioCompra=$2, precioVenta=$3, codProveedor=$4, idubicacion=$5, estado=$6, stockMinimo=$7 WHERE codInventario=$8`,
+            [cantidad, precioCompra, precioVenta, codProveedor, idubicacion, estado, stockMinimo ?? null, req.params.id]
         );
         res.json({ message: 'Stock actualizado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+// GET /inventory/low-stock — accesorios con stock bajo el minimo
+router.get('/inventory/low-stock', authenticateToken, async (req, res) => {
+    try {
+        const r = await pool.query(`
+            SELECT
+                i.codInventario as "codInventario",
+                i.codAccesorio as "codAccesorio",
+                a.descripcion as nombre,
+                c.tipo as categoria,
+                i.cantidad,
+                i.stockMinimo as "stockMinimo",
+                u.nombre as ubicacion
+            FROM inventario i
+            JOIN accesorios a ON i.codAccesorio = a.codAccesorio
+            LEFT JOIN categoria c ON a.codCategoria = c.codCategoria
+            LEFT JOIN ubicacion u ON i.idubicacion = u.idUbicacion
+            WHERE i.stockMinimo IS NOT NULL
+              AND i.stockMinimo > 0
+              AND i.cantidad <= i.stockMinimo
+            ORDER BY (i.stockMinimo - i.cantidad) DESC
+        `);
+        res.json(r.rows);
     } catch(e) { handleDbError(res, e); }
 });
 
@@ -331,6 +356,42 @@ router.delete('/paquetes/:id', authenticateToken, async (req, res) => {
     try {
         await pool.query('DELETE FROM paquetes WHERE idPaquete=$1', [req.params.id]);
         res.json({ message: 'Paquete eliminado' });
+    } catch(e) { handleDbError(res, e); }
+});
+
+// POST /inventory/purchase-order — genera orden de compra para items bajo stock minimo
+router.post('/inventory/purchase-order', authenticateToken, async (req, res) => {
+    try {
+        // Get low stock items
+        const r = await pool.query(`
+            SELECT
+                i.codInventario,
+                i.codAccesorio,
+                a.descripcion as nombre,
+                c.tipo as categoria,
+                i.cantidad as stockActual,
+                i.stockMinimo,
+                (i.stockMinimo - i.cantidad + COALESCE(i.stockMinimo, 5)) as cantidadSugerida,
+                COALESCE(p.nombre, 'Sin proveedor asignado') as proveedor,
+                i.codProveedor
+            FROM inventario i
+            JOIN accesorios a ON i.codAccesorio = a.codAccesorio
+            LEFT JOIN categoria c ON a.codCategoria = c.codCategoria
+            LEFT JOIN proveedores p ON i.codProveedor = p.codProveedor
+            WHERE i.stockMinimo IS NOT NULL AND i.stockMinimo > 0
+              AND i.cantidad <= i.stockMinimo
+            ORDER BY c.tipo, a.descripcion
+        `);
+
+        if (r.rows.length === 0) {
+            return res.json({ message: 'No hay productos bajo stock mínimo', items: [] });
+        }
+
+        res.json({
+            items: r.rows,
+            generatedAt: new Date().toISOString(),
+            totalItems: r.rows.length
+        });
     } catch(e) { handleDbError(res, e); }
 });
 

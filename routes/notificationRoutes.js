@@ -44,4 +44,19 @@ router.post('/notifications/test-repair-ready', authenticateToken, requireAdmin,
     }
 });
 
+// POST /api/notifications/backup-now
+// Manually trigger a Google Drive database backup (admin only)
+router.post('/notifications/backup-now', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+            return res.status(400).json({ error: 'Google Drive no configurado. Agrega GOOGLE_SERVICE_ACCOUNT_KEY.' });
+        }
+        const { backupDatabase } = require('../services/googleDriveService');
+        const result = await backupDatabase();
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;
