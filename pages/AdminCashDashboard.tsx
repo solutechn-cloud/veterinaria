@@ -211,7 +211,7 @@ const AdminCashDashboard: React.FC = () => {
       const mInicial = Number(arqueo.montoInicial ?? 0);
       
       let ingresosList = sessionDetails.ingresos;
-      if (excludeRecharges) ingresosList = ingresosList.filter(i => !(i.descripcion || "").toUpperCase().includes('RECARGA'));
+      if (excludeRecharges) ingresosList = ingresosList.filter(i => i.subtipo_movimiento !== 'Recarga' && i.subtipo_movimiento !== 'Paquete');
 
       const tCostoIn = ingresosList.reduce((a, b) => a + Number(b.costo || 0), 0);
       const tVentaIn = ingresosList.reduce((a, b) => a + Number(b.monto || 0), 0);
