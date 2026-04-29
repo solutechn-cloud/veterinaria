@@ -1,6 +1,7 @@
 'use strict';
 
 const { google } = require('googleapis');
+const { getSystemConfig } = require('../config/systemConfig');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -53,9 +54,10 @@ async function backupDatabase() {
             return { success: false, error: 'pg_dump falló: ' + pgErr.message };
         }
 
+        const { driveFolderId } = await getSystemConfig();
         const fileMetadata = {
             name: backupFilename,
-            parents: [process.env.GOOGLE_DRIVE_FOLDER_ID || 'root'],
+            parents: [driveFolderId],
         };
         const media = {
             mimeType: 'application/sql',
@@ -103,7 +105,7 @@ async function deleteOldBackups(retentionDays = 30) {
 
     const drive = google.drive({ version: 'v3', auth });
 
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || 'root';
+    const { driveFolderId: folderId } = await getSystemConfig();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
     const cutoffISO = cutoffDate.toISOString();

@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const BCRYPT_ROUNDS = 12;
 const { pool, generateNextId, handleDbError, updateArqueoBalance } = require('../config/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { invalidateSystemConfigCache } = require('../config/systemConfig');
 
 // --- ENDPOINT PARA ESQUEMA DE DATOS (REQUERIDO POR IMPRESIÓN/DISEÑO) ---
 const SCHEMA_TABLES = ['telefonos', 'inventario', 'accesorios', 'ventas', 'clientes', 'configuracion', 'empleado', 'usuarios', 'detalleventa', 'reparaciones'];
@@ -68,18 +69,24 @@ router.get('/schema', authenticateToken, requireAdmin, async (req, res) => {
 
 // --- CONFIGURACIÓN DE EMPRESA (TABLA CONFIGURACION) ---
 const mapConfigRow = (row) => ({
-    nombreEmpresa: row.nombreempresa || '',
-    rtn:           row.rtn           || '',
-    direccion:     row.direccion     || '',
-    telefono:      row.telefono      || '',
-    correo:        row.correo        || '',
-    cai:           row.cai           || '',
-    rangoInicial:  row.rangoinicial  || '',
-    rangoFinal:    row.rangofinal    || '',
-    fechaLimite:   row.fechalimite ? String(row.fechalimite).substring(0, 10) : '',
-    isv:           Number(row.isv)   || 15,
-    mensajeFinal:  row.mensajefinal  || 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
-    logoBase64:    row.logo_base64   || '',
+    nombreEmpresa:    row.nombreempresa    || '',
+    rtn:              row.rtn              || '',
+    direccion:        row.direccion        || '',
+    telefono:         row.telefono         || '',
+    correo:           row.correo           || '',
+    cai:              row.cai              || '',
+    rangoInicial:     row.rangoinicial     || '',
+    rangoFinal:       row.rangofinal       || '',
+    fechaLimite:      row.fechalimite ? String(row.fechalimite).substring(0, 10) : '',
+    isv:              Number(row.isv)      || 15,
+    mensajeFinal:     row.mensajefinal     || 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
+    logoBase64:       row.logo_base64      || '',
+    // Automatizaciones (gestionadas desde el sistema)
+    adminEmail:       row.admin_email      || process.env.ADMIN_EMAIL                || '',
+    emailFrom:        row.email_from       || process.env.EMAIL_FROM                 || '',
+    saldoTigoUmbral:  Number(row.saldo_tigo_umbral  ?? process.env.SALDO_TIGO_UMBRAL  ?? 500),
+    saldoClaroUmbral: Number(row.saldo_claro_umbral ?? process.env.SALDO_CLARO_UMBRAL ?? 500),
+    driveFolderId:    row.drive_folder_id  || process.env.GOOGLE_DRIVE_FOLDER_ID     || '',
 });
 
 router.get('/config', authenticateToken, async (req, res) => {
@@ -94,24 +101,45 @@ router.get('/config', authenticateToken, async (req, res) => {
 
 router.put('/config', authenticateToken, express.json({ limit: '10mb' }), async (req, res) => {
     try {
-        const { nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal, logoBase64 } = req.body;
+        const {
+            nombreEmpresa, rtn, direccion, telefono, correo, cai,
+            rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal, logoBase64,
+            adminEmail, emailFrom, saldoTigoUmbral, saldoClaroUmbral, driveFolderId,
+        } = req.body;
         await pool.query(`
-            INSERT INTO configuracion (id, nombreempresa, rtn, direccion, telefono, correo, cai, rangoinicial, rangofinal, fechalimite, isv, mensajefinal, logo_base64)
-            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            INSERT INTO configuracion (
+                id, nombreempresa, rtn, direccion, telefono, correo, cai,
+                rangoinicial, rangofinal, fechalimite, isv, mensajefinal, logo_base64,
+                admin_email, email_from, saldo_tigo_umbral, saldo_claro_umbral, drive_folder_id
+            )
+            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (id) DO UPDATE SET
-                nombreempresa = EXCLUDED.nombreempresa,
-                rtn           = EXCLUDED.rtn,
-                direccion     = EXCLUDED.direccion,
-                telefono      = EXCLUDED.telefono,
-                correo        = EXCLUDED.correo,
-                cai           = EXCLUDED.cai,
-                rangoinicial  = EXCLUDED.rangoinicial,
-                rangofinal    = EXCLUDED.rangofinal,
-                fechalimite   = EXCLUDED.fechalimite,
-                isv           = EXCLUDED.isv,
-                mensajefinal  = EXCLUDED.mensajefinal,
-                logo_base64   = EXCLUDED.logo_base64
-        `, [nombreEmpresa, rtn, direccion, telefono, correo, cai, rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal, logoBase64 || null]);
+                nombreempresa     = EXCLUDED.nombreempresa,
+                rtn               = EXCLUDED.rtn,
+                direccion         = EXCLUDED.direccion,
+                telefono          = EXCLUDED.telefono,
+                correo            = EXCLUDED.correo,
+                cai               = EXCLUDED.cai,
+                rangoinicial      = EXCLUDED.rangoinicial,
+                rangofinal        = EXCLUDED.rangofinal,
+                fechalimite       = EXCLUDED.fechalimite,
+                isv               = EXCLUDED.isv,
+                mensajefinal      = EXCLUDED.mensajefinal,
+                logo_base64       = EXCLUDED.logo_base64,
+                admin_email       = EXCLUDED.admin_email,
+                email_from        = EXCLUDED.email_from,
+                saldo_tigo_umbral  = EXCLUDED.saldo_tigo_umbral,
+                saldo_claro_umbral = EXCLUDED.saldo_claro_umbral,
+                drive_folder_id   = EXCLUDED.drive_folder_id
+        `, [
+            nombreEmpresa, rtn, direccion, telefono, correo, cai,
+            rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal, logoBase64 || null,
+            adminEmail || null, emailFrom || null,
+            saldoTigoUmbral != null ? Number(saldoTigoUmbral) : null,
+            saldoClaroUmbral != null ? Number(saldoClaroUmbral) : null,
+            driveFolderId || null,
+        ]);
+        invalidateSystemConfigCache();
         res.json({ message: 'Configuración actualizada' });
     } catch(e) { handleDbError(res, e); }
 });

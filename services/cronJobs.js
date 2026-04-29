@@ -3,6 +3,7 @@
 const cron = require('node-cron');
 const { pool } = require('../config/db');
 const emailService = require('./emailService');
+const { getSystemConfig } = require('../config/systemConfig');
 
 // In-memory Set to prevent duplicate low-balance alerts per day per red
 const alertasSaldoEnviadas = new Set();
@@ -28,7 +29,7 @@ function getWeekLabel(offsetWeeks = 0) {
 // a) Daily report — 11:00 PM Honduras = 05:00 UTC
 // ---------------------------------------------------------------------------
 async function runDailyReport() {
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const { adminEmail } = await getSystemConfig();
     if (!adminEmail) {
         console.warn('[cronJobs] ADMIN_EMAIL no configurado, omitiendo reporte diario.');
         return;
@@ -156,11 +157,8 @@ async function runWarrantyCheck() {
 // c) Low balance monitor — every hour
 // ---------------------------------------------------------------------------
 async function runLowBalanceMonitor() {
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const { adminEmail, saldoTigoUmbral: umbralTigo, saldoClaroUmbral: umbralClaro } = await getSystemConfig();
     if (!adminEmail) return;
-
-    const umbralTigo  = Number(process.env.SALDO_TIGO_UMBRAL)  || 500;
-    const umbralClaro = Number(process.env.SALDO_CLARO_UMBRAL) || 500;
     const hoyKey      = getHondurasDateString();
 
     try {
@@ -204,7 +202,7 @@ async function runLowBalanceMonitor() {
 // d) Weekly report — Monday 8:00 AM Honduras = 14:00 UTC
 // ---------------------------------------------------------------------------
 async function runWeeklyReport() {
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const { adminEmail } = await getSystemConfig();
     if (!adminEmail) {
         console.warn('[cronJobs] ADMIN_EMAIL no configurado, omitiendo reporte semanal.');
         return;
@@ -279,10 +277,6 @@ async function runWeeklyReport() {
 // Register all cron jobs
 // ---------------------------------------------------------------------------
 function startCronJobs() {
-    if (!process.env.ADMIN_EMAIL) {
-        console.warn('[cronJobs] ADMIN_EMAIL no configurado. Los cron jobs de notificaciones no se iniciaran.');
-        return;
-    }
 
     // Daily report — 11:00 PM Honduras (UTC-6) = 05:00 UTC
     cron.schedule('0 5 * * *', runDailyReport, { timezone: 'UTC' });

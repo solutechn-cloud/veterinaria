@@ -11,8 +11,21 @@ function getResend() {
     return _resend;
 }
 
-function getFROM() { return process.env.EMAIL_FROM || 'ERPSmartCloud <noreply@erpsmartcloud.com>'; }
-function getCOMPANY() { return process.env.COMPANY_NAME || 'ERPSmartCloud'; }
+const { getSystemConfig } = require('../config/systemConfig');
+
+// Module-level cache so getFROM/getCOMPANY stay synchronous inside template literals.
+// Call warmEmailConfig() at the start of every exported send function.
+let _cfg = null;
+async function warmEmailConfig() {
+    _cfg = await getSystemConfig();
+}
+function getFROM() {
+    return _cfg?.emailFrom || process.env.EMAIL_FROM || 'ERPSmartCloud <noreply@erpsmartcloud.com>';
+}
+function getCOMPANY() {
+    const raw = _cfg?.emailFrom || '';
+    return raw.match(/^(.+?)\s*</)?.[1] || process.env.COMPANY_NAME || 'ERPSmartCloud';
+}
 
 // ---------------------------------------------------------------------------
 // Helper — shared HTML wrapper
@@ -62,6 +75,7 @@ function wrapHtml(title, accentColor, bodyContent) {
 // a) Repair ready notification
 // ---------------------------------------------------------------------------
 async function sendRepairReadyEmail(to, clientName, repairId, deviceDesc, techNotes) {
+    await warmEmailConfig();
     try {
         const html = wrapHtml(
             'Equipo listo para retirar',
@@ -105,6 +119,7 @@ async function sendRepairReadyEmail(to, clientName, repairId, deviceDesc, techNo
 // b) Warranty expiry warning
 // ---------------------------------------------------------------------------
 async function sendWarrantyExpiryEmail(to, clientName, warrantyId, deviceDesc, expiryDate, daysLeft) {
+    await warmEmailConfig();
     const urgency = daysLeft <= 3 ? 'danger-box' : 'alert-box';
     try {
         const html = wrapHtml(
@@ -167,6 +182,7 @@ async function sendDailyReportEmail(to, reportData) {
         topProductos = []
     } = reportData;
 
+    await warmEmailConfig();
     const fmt = (n) => `L. ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const gananciaColor = gananciaEstimada >= 0 ? '#2e7d32' : '#c62828';
 
@@ -249,6 +265,7 @@ async function sendDailyReportEmail(to, reportData) {
 // d) Weekly report
 // ---------------------------------------------------------------------------
 async function sendWeeklyReportEmail(to, reportData) {
+    await warmEmailConfig();
     const {
         semana,
         ventas = 0,
@@ -326,6 +343,7 @@ async function sendWeeklyReportEmail(to, reportData) {
 // e) Low balance alert
 // ---------------------------------------------------------------------------
 async function sendLowBalanceAlertEmail(to, red, saldoActual, umbral) {
+    await warmEmailConfig();
     try {
         const fmt = (n) => `L. ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const html = wrapHtml(
@@ -375,6 +393,7 @@ async function sendLowBalanceAlertEmail(to, red, saldoActual, umbral) {
 // f) Backup confirmation
 // ---------------------------------------------------------------------------
 async function sendBackupConfirmationEmail(to, date, fileSize, driveLink) {
+    await warmEmailConfig();
     try {
         const html = wrapHtml(
             `Backup exitoso ${date}`,

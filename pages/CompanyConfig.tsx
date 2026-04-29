@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ConfigService } from '../services/api';
 import { EmpresaConfig } from '../types';
-import { Settings, Save, Building2, FileText, AlertCircle, ImageIcon, X, Camera, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Settings, Save, Building2, FileText, AlertCircle, ImageIcon, X, Camera, CheckCircle2, ShieldAlert, Bell, Cloud } from 'lucide-react';
 import { useCameraPermission } from '../hooks/useCameraPermission';
 import Swal from 'sweetalert2';
 
@@ -18,7 +18,13 @@ const CompanyConfig: React.FC = () => {
     if (ok) Swal.fire({ title: 'Cámara autorizada', text: 'El escáner ya no volverá a pedir permiso.', icon: 'success', timer: 2000, showConfirmButton: false });
     else    Swal.fire({ title: 'Permiso denegado', text: 'Ve a configuración del navegador y permite el acceso a la cámara para este sitio.', icon: 'warning' });
   };
-  const [config, setConfig] = useState<EmpresaConfig>({
+  const [config, setConfig] = useState<EmpresaConfig & {
+    adminEmail?: string;
+    emailFrom?: string;
+    saldoTigoUmbral?: number;
+    saldoClaroUmbral?: number;
+    driveFolderId?: string;
+  }>({
     nombreEmpresa: '',
     rtn: '',
     direccion: '',
@@ -29,7 +35,12 @@ const CompanyConfig: React.FC = () => {
     rangoFinal: '',
     fechaLimite: '',
     isv: 15,
-    mensajeFinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA'
+    mensajeFinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
+    adminEmail: '',
+    emailFrom: '',
+    saldoTigoUmbral: 500,
+    saldoClaroUmbral: 500,
+    driveFolderId: '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -270,6 +281,67 @@ const CompanyConfig: React.FC = () => {
                     </p>
                 </div>
             )}
+        </div>
+
+        {/* SECCION AUTOMATIZACIONES */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h3 className="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2 border-b border-slate-100 pb-2">
+                <Bell className="text-purple-600"/> Automatizaciones y Notificaciones
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">Configura las alertas automáticas, reportes por correo y backup a Google Drive sin necesidad de ir al servidor.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo de Administrador <span className="text-purple-500">(recibe reportes y alertas)</span></label>
+                    <input type="email" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder="admin@tuempresa.com"
+                        value={config.adminEmail ?? ''}
+                        onChange={e => setConfig({...config, adminEmail: e.target.value})} />
+                </div>
+                <div className="md:col-span-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Remitente de correos <span className="text-slate-400">(from)</span></label>
+                    <input type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                        placeholder='SmartCloud <noreply@erpsmartcloud.com>'
+                        value={config.emailFrom ?? ''}
+                        onChange={e => setConfig({...config, emailFrom: e.target.value})} />
+                    <p className="text-xs text-slate-400 mt-1">Formato: <code>Nombre Empresa &lt;correo@dominio.com&gt;</code></p>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Umbral saldo TIGO (L.)</label>
+                    <input type="number" min={0} className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none"
+                        placeholder="500"
+                        value={config.saldoTigoUmbral ?? 500}
+                        onChange={e => setConfig({...config, saldoTigoUmbral: Number(e.target.value)})} />
+                    <p className="text-xs text-slate-400 mt-1">Alerta cuando el saldo cae por debajo de este valor</p>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Umbral saldo CLARO (L.)</label>
+                    <input type="number" min={0} className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none"
+                        placeholder="500"
+                        value={config.saldoClaroUmbral ?? 500}
+                        onChange={e => setConfig({...config, saldoClaroUmbral: Number(e.target.value)})} />
+                    <p className="text-xs text-slate-400 mt-1">Alerta cuando el saldo cae por debajo de este valor</p>
+                </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100">
+                <h4 className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2">
+                    <Cloud size={16} className="text-teal-600"/> Google Drive Backup
+                </h4>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ID de carpeta en Google Drive</label>
+                    <input type="text" className="w-full p-3 border border-teal-200 bg-teal-50 rounded-xl focus:ring-2 focus:ring-teal-400 outline-none font-mono text-sm"
+                        placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs"
+                        value={config.driveFolderId ?? ''}
+                        onChange={e => setConfig({...config, driveFolderId: e.target.value})} />
+                    <p className="text-xs text-slate-400 mt-1">Copia el ID de la URL de tu carpeta en Google Drive: drive.google.com/drive/folders/<strong>ID_AQUI</strong></p>
+                </div>
+            </div>
+
+            <div className="mt-4 bg-purple-50 border border-purple-100 rounded-xl p-3 text-xs text-purple-700 flex gap-2">
+                <AlertCircle size={15} className="shrink-0 mt-0.5"/>
+                <span>Las claves de API (Resend, Anthropic, Google Service Account) deben configurarse en el servidor por seguridad. Solo los ajustes operativos se gestionan aquí.</span>
+            </div>
         </div>
 
         <div className="flex justify-end pt-4">
