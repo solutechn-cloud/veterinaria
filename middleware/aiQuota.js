@@ -12,6 +12,35 @@ function currentDateHN() {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Tegucigalpa' }); // 'YYYY-MM-DD'
 }
 
+function toFiniteNumber(value, fallback = 0) {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function normalizeDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+        return value.toLocaleDateString('sv-SE', { timeZone: 'America/Tegucigalpa' });
+    }
+    return String(value).slice(0, 10);
+}
+
+function normalizeProcessList(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+    } catch {
+        // Fall back to Postgres text-array parsing below.
+    }
+    return value
+        .replace(/[{}\[\]"]/g, '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
 // ── Obtener límites efectivos del tenant ─────────────────────────────────────
 
 async function getTenantLimits(tenantId) {
@@ -60,8 +89,16 @@ async function checkAIQuota(req, res, next) {
         }
 
         // Verificar si el proceso está habilitado para este plan
+        const normalizedLimits = {
+            ...limits,
+            tokens_limite: toFiniteNumber(limits.tokens_limite),
+            requests_limite: toFiniteNumber(limits.requests_limite),
+            req_diario_limite: toFiniteNumber(limits.req_diario_limite),
+            procesos_habilitados: normalizeProcessList(limits.procesos_habilitados),
+        };
+
         const processKey = req.aiProcessKey; // se inyecta en cada ruta
-        if (processKey && !limits.procesos_habilitados.includes(processKey)) {
+        if (processKey && !normalizedLimits.procesos_habilitados.includes(processKey)) {
             return res.status(403).json({
                 error: `El proceso "${processKey}" no está disponible en su plan "${limits.plan}"`,
                 code: 'AI_PROCESS_NOT_IN_PLAN',
@@ -74,13 +111,25 @@ async function checkAIQuota(req, res, next) {
         const usage = await getCurrentUsage(tenantId, periodo);
 
         // Reset diario si cambió el día
-        const requests_hoy = usage.fecha_reset_diario === hoy ? usage.requests_hoy : 0;
+        const usageNumbers = {
+            tokens_consumidos: toFiniteNumber(usage.tokens_consumidos),
+            requests_totales: toFiniteNumber(usage.requests_totales),
+            requests_hoy: toFiniteNumber(usage.requests_hoy),
+        };
+        const fechaResetDiario = normalizeDateOnly(usage.fecha_reset_diario);
+        const requests_hoy = fechaResetDiario === hoy ? usageNumbers.requests_hoy : 0;
 
         // Guardar límites en req para el post-call
-        req.aiQuota = { limits, periodo, hoy, usage, requests_hoy };
+        req.aiQuota = {
+            limits: normalizedLimits,
+            periodo,
+            hoy,
+            usage: { ...usage, ...usageNumbers, fecha_reset_diario: fechaResetDiario },
+            requests_hoy,
+        };
 
         // Verificar tope de tokens mensual
-        if (usage.tokens_consumidos >= limits.tokens_limite) {
+        if (normalizedLimits.tokens_limite > 0 && usageNumbers.tokens_consumidos >= normalizedLimits.tokens_limite) {
             const resetAt = new Date();
             resetAt.setMonth(resetAt.getMonth() + 1);
             resetAt.setDate(1);
@@ -89,8 +138,8 @@ async function checkAIQuota(req, res, next) {
                 error: 'Cuota de IA agotada para este período',
                 code: 'AI_QUOTA_EXCEEDED',
                 detail: {
-                    tokens_consumidos: Number(usage.tokens_consumidos),
-                    tokens_limite: Number(limits.tokens_limite),
+                    tokens_consumidos: usageNumbers.tokens_consumidos,
+                    tokens_limite: normalizedLimits.tokens_limite,
                     periodo,
                     reset_at: resetAt.toISOString(),
                     plan: limits.plan,
@@ -99,13 +148,13 @@ async function checkAIQuota(req, res, next) {
         }
 
         // Verificar tope de requests mensual
-        if (usage.requests_totales >= limits.requests_limite) {
+        if (normalizedLimits.requests_limite > 0 && usageNumbers.requests_totales >= normalizedLimits.requests_limite) {
             return res.status(429).json({
                 error: 'Límite mensual de solicitudes de IA alcanzado',
                 code: 'AI_REQUESTS_EXCEEDED',
                 detail: {
-                    requests_totales: usage.requests_totales,
-                    requests_limite: Number(limits.requests_limite),
+                    requests_totales: usageNumbers.requests_totales,
+                    requests_limite: normalizedLimits.requests_limite,
                     periodo,
                     plan: limits.plan,
                 },
@@ -113,13 +162,13 @@ async function checkAIQuota(req, res, next) {
         }
 
         // Verificar tope diario anti-abuso
-        if (requests_hoy >= limits.req_diario_limite) {
+        if (normalizedLimits.req_diario_limite > 0 && requests_hoy >= normalizedLimits.req_diario_limite) {
             return res.status(429).json({
                 error: 'Límite diario de solicitudes de IA alcanzado',
                 code: 'AI_DAILY_LIMIT_EXCEEDED',
                 detail: {
                     requests_hoy,
-                    req_diario_limite: Number(limits.req_diario_limite),
+                    req_diario_limite: normalizedLimits.req_diario_limite,
                     reset_at: hoy + 'T23:59:59',
                     plan: limits.plan,
                 },
@@ -147,7 +196,7 @@ async function recordAIUsage(tenantId, usage, processKey) {
         (usage.promptTokenCount || 0) + (usage.candidatesTokenCount || 0) ||    // Gemini fallback
         0
     );
-    if (tokensUsed <= 0) return;
+    if (!Number.isFinite(tokensUsed) || tokensUsed <= 0) return;
 
     const periodo = currentPeriod();
     const hoy = currentDateHN();
