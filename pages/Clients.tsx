@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AIService, ClientService } from '../services/api';
 import { Cliente } from '../types';
 import { useOfflineSync } from '../hooks/useOfflineSync';
-import { Search, PlusCircle, Users, Edit2, Trash2, X, RefreshCw } from 'lucide-react';
+import { Bot, Search, PlusCircle, Users, Edit2, Trash2, X, RefreshCw } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const Clients: React.FC = () => {
@@ -86,12 +86,12 @@ const Clients: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
-      title: 'Â¿Eliminar Cliente?',
-      text: "Esta acciÃ³n no se puede deshacer.",
+      title: '¿Eliminar cliente?',
+      text: 'Esta acción no se puede deshacer.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
-      confirmButtonText: 'SÃ­, eliminar',
+      confirmButtonText: 'Sí, eliminar',
       cancelButtonText: 'Cancelar'
     });
 
@@ -154,8 +154,8 @@ const Clients: React.FC = () => {
               <tr>
                 <th className="p-4">Identidad</th>
                 <th className="p-4">Nombre Completo</th>
-                <th className="p-4">DirecciÃ³n</th>
-                <th className="p-4">TelÃ©fono</th>
+                <th className="p-4">Dirección</th>
+                <th className="p-4">Teléfono</th>
                 <th className="p-4">Correo</th>
                 <th className="p-4 text-center">Acciones</th>
               </tr>
@@ -173,8 +173,8 @@ const Clients: React.FC = () => {
                     <td className="p-4 text-sm text-blue-600">{c.correo}</td>
                     <td className="p-4 text-center">
                       <div className="flex justify-center gap-2">
-                        <button onClick={() => handleAIAnalyze(c.identidad)} disabled={clientAILoading === c.identidad} title="AnÃ¡lisis IA" className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-all border border-indigo-100 flex items-center gap-1">
-                          {clientAILoading === c.identidad ? <span className="inline-block w-2.5 h-2.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/> : 'ðŸ¤–'}
+                        <button onClick={() => handleAIAnalyze(c.identidad)} disabled={clientAILoading === c.identidad} title="Análisis IA" className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-all border border-indigo-100 flex items-center gap-1">
+                          {clientAILoading === c.identidad ? <span className="inline-block w-2.5 h-2.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/> : <Bot size={12} />}
                           IA
                         </button>
                         <button onClick={() => openEditModal(c)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
@@ -203,7 +203,7 @@ const Clients: React.FC = () => {
                             )}
                             {clientAI[c.identidad].sugerenciaAccion && (
                               <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 shadow-sm">
-                                <p className="text-[9px] font-black text-amber-600 uppercase mb-1">Accion sugerida</p>
+                                <p className="text-[9px] font-black text-amber-600 uppercase mb-1">Acción sugerida</p>
                                 <p className="text-xs font-bold text-amber-800">{clientAI[c.identidad].sugerenciaAccion}</p>
                               </div>
                             )}
@@ -259,12 +259,12 @@ const Clients: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">DirecciÃ³n</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">Dirección</label>
                 <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={form.direccion || ''} onChange={e => setForm({...form, direccion: e.target.value})} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                   <label className="text-xs font-bold text-slate-500 uppercase">TelÃ©fono</label>
+                   <label className="text-xs font-bold text-slate-500 uppercase">Teléfono</label>
                    <input required className="w-full p-2.5 bg-slate-50 border rounded-lg mt-1" value={form.telefono || ''} onChange={e => setForm({...form, telefono: e.target.value})} />
                 </div>
                 <div>
