@@ -16,6 +16,14 @@ const ROUTE_PLAN_FEATURES = [
     { pattern: /^\/api\/proveedores\b/,          feature: 'modulo_proveedores' },
     { pattern: /^\/api\/admin\/boxes\b/,         feature: 'modulo_panel_cajas' },
     { pattern: /^\/api\/admin\/arqueo\b/,        feature: 'modulo_panel_cajas' },
+    { pattern: /^\/api\/tutores\b/,              feature: 'modulo_pacientes' },
+    { pattern: /^\/api\/pacientes\b/,            feature: 'modulo_pacientes' },
+    { pattern: /^\/api\/citas\b/,                feature: 'modulo_citas' },
+    { pattern: /^\/api\/tipos-cita\b/,           feature: 'modulo_citas' },
+    { pattern: /^\/api\/consultas\b/,            feature: 'modulo_expediente' },
+    { pattern: /^\/api\/vacunas\b/,              feature: 'modulo_vacunas' },
+    { pattern: /^\/api\/recordatorios\b/,        feature: 'modulo_recordatorios' },
+    { pattern: /^\/api\/clinica\/flowboard\b/,   feature: 'modulo_hospitalizacion' },
 ];
 
 const PLAN_ORDER = ['basico', 'profesional', 'enterprise'];

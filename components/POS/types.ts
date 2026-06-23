@@ -4,11 +4,13 @@ export interface CartItem {
   key: string;
   id_medicamento: string;
   id_presentacion: number;
+  id_servicio?: number;
   nombre: string;
   cantidad: number;
   precioVenta: number;
   precioTerceraEdad?: number;
   tipoIsv: 'exento' | '15' | '18';
+  tipoProducto?: 'MEDICAMENTO' | 'SERVICIO';
   requiereReceta: boolean;
   esControlado: boolean;
   stock: number;

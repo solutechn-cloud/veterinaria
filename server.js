@@ -50,6 +50,7 @@ const aiRoutes           = require('./routes/aiRoutes');
 const dashboardRoutes    = require('./routes/dashboardRoutes');
 const entregasRoutes     = require('./routes/entregasRoutes');
 const loyaltyRoutes      = require('./routes/loyaltyRoutes');
+const veterinaryRoutes   = require('./routes/veterinaryRoutes');
 
 // SaaS Routes
 const { router: saasAuthRoutes } = require('./routes/saasAuthRoutes');
@@ -187,6 +188,7 @@ function mountRoutes() {
     apiRouter.use(notifRoutes);
     apiRouter.use(entregasRoutes);
     apiRouter.use(loyaltyRoutes);
+    apiRouter.use(veterinaryRoutes);
     apiRouter.use('/ai', aiRoutes);
     app.use('/api', apiRouter);
 
@@ -205,7 +207,7 @@ async function startServer() {
 
         const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : (process.env.HOST || '127.0.0.1');
         app.listen(port, host, () => {
-            console.log(`ERP Farmacia SaaS running on ${host}:${port}`);
+            console.log(`ERP Veterinaria SaaS running on ${host}:${port}`);
             startCronJobs();
             planFeaturesCache.load().catch(err => console.error('[planFeatures] Error al cargar cache inicial:', err.message));
             console.log('[server] Cron jobs iniciados.');

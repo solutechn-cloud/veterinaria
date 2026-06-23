@@ -66,7 +66,46 @@ function registerRoutes(router) {
                 LIMIT 200
             `, params);
 
-            const rows = result.rows;
+            const serviceParams = [req.tenantId];
+            let serviceWhere = 'WHERE tenant_id = $1 AND activo = TRUE';
+            if (q) {
+                const esc = String(q).substring(0, 100).replace(/[\\%_]/g, '\\$&');
+                serviceParams.push(`%${esc}%`);
+                serviceWhere += ` AND (LOWER(nombre) LIKE LOWER($${serviceParams.length}) OR LOWER(categoria) LIKE LOWER($${serviceParams.length}))`;
+            }
+            const services = await pool.query(`
+                SELECT
+                    'SERV-' || id_servicio AS codigo,
+                    nombre AS "nombreGenerico",
+                    categoria AS "nombreComercial",
+                    NULL AS concentracion,
+                    tipo_isv AS "tipoIsv",
+                    FALSE AS "requiereReceta",
+                    FALSE AS "esControlado",
+                    descripcion AS advertencias,
+                    categoria,
+                    'Servicio' AS "formaFarmaceutica",
+                    999999 AS stock,
+                    NULL AS "urlImagen",
+                    NULL AS "imagenBase64",
+                    NULL AS "r2Key",
+                    'SERVICIO' AS "tipoProducto",
+                    json_agg(jsonb_build_object(
+                        'id_presentacion', id_servicio,
+                        'nombre', nombre,
+                        'factor', 1,
+                        'precio_venta', precio,
+                        'precio_tercera_edad', precio,
+                        'codigo_barras', codigo
+                    )) AS presentaciones
+                FROM servicios_veterinarios
+                ${serviceWhere}
+                GROUP BY id_servicio, nombre, categoria, tipo_isv, descripcion, precio, codigo
+                ORDER BY nombre
+                LIMIT 100
+            `, serviceParams);
+
+            const rows = [...result.rows.map(r => ({ ...r, tipoProducto: r.tipoProducto || 'MEDICAMENTO' })), ...services.rows];
             await Promise.all(rows.map(async row => {
                 if (row.r2Key) {
                     try { row.urlImagen = await getSignedImageUrl(row.r2Key, 3600); } catch {}

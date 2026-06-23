@@ -467,6 +467,46 @@ async function sendWelcomeEmail(to, nombre, apellido) {
 }
 
 // ---------------------------------------------------------------------------
+// h) Veterinary appointment / preventive-care reminder
+// ---------------------------------------------------------------------------
+async function sendVeterinaryReminderEmail(to, reminder) {
+    await warmEmailConfig();
+    try {
+        const company = getCOMPANY();
+        const html = wrapHtml(
+            reminder.asunto || 'Recordatorio veterinario',
+            '#0f766e',
+            `<div class="header" style="background:#0f766e;">
+               <h1>${reminder.asunto || 'Recordatorio veterinario'}</h1>
+               <p>${company}</p>
+             </div>
+             <div class="body">
+               <p>Hola,</p>
+               <p>${reminder.cuerpo || 'Le recordamos una actividad pendiente para el cuidado de su mascota.'}</p>
+               <div class="card">
+                 <div class="label">Fecha programada</div>
+                 <div class="value">${new Date(reminder.fecha_programada).toLocaleString('es-HN')}</div>
+               </div>
+               <div class="success-box">
+                 Si necesita reprogramar, responda este correo o comunÃ­quese con la clÃ­nica.
+               </div>
+               <p style="font-size:13px;color:#555;"><strong>${company}</strong></p>
+             </div>`
+        );
+        await getResend().emails.send({
+            from: getFROM(),
+            to,
+            subject: reminder.asunto || `Recordatorio - ${company}`,
+            html,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('[emailService] sendVeterinaryReminderEmail error:', err.message);
+        throw err;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // h) Monthly report email - receives pre-built HTML content
 // ---------------------------------------------------------------------------
 async function sendMonthlyReportEmail(to, mes, htmlBody) {
@@ -593,6 +633,7 @@ module.exports = {
     sendLowBalanceAlertEmail,
     sendBackupConfirmationEmail,
     sendWelcomeEmail,
+    sendVeterinaryReminderEmail,
     sendMonthlyReportEmail,
     sendFollowUpEmail,
     sendTokenUpgradeRequestEmail,

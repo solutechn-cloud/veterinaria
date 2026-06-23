@@ -342,7 +342,7 @@ export default function Medicamentos() {
         <div className="bg-white border-b border-slate-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-bold text-slate-800">Medicamentos</h1>
+              <h1 className="text-lg font-bold text-slate-800">Inventario Clínico</h1>
               <p className="text-xs text-slate-400 mt-0.5">{medicamentos.length} registros cargados</p>
             </div>
             {mainTab === 'MEDICAMENTOS' && (
@@ -351,7 +351,7 @@ export default function Medicamentos() {
                   <RefreshCw className="w-4 h-4" />
                 </button>
                 <button onClick={openNewMed} className={btnPrimary}>
-                  <Plus className="w-4 h-4" />Nuevo medicamento
+                  <Plus className="w-4 h-4" />Nuevo producto
                 </button>
               </div>
             )}
@@ -359,7 +359,7 @@ export default function Medicamentos() {
 
           <div className="flex gap-1 mt-4">
             {([
-              ['MEDICAMENTOS', <Pill className="w-3.5 h-3.5" />,          'Medicamentos'],
+              ['MEDICAMENTOS', <Pill className="w-3.5 h-3.5" />,          'Productos'],
               ['LOTES',        <Boxes className="w-3.5 h-3.5" />,         'Lotes'],
               ['ALERTAS',      <AlertTriangle className="w-3.5 h-3.5" />, 'Alertas'],
             ] as [MainTab, React.ReactNode, string][]).map(([t, icon, label]) => (

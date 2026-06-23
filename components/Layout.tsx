@@ -12,6 +12,7 @@ import {
   Briefcase, Box, UserCog, Calculator, Activity, Tag, Settings, PieChart,
   ClipboardList, AlertTriangle, Building2, ArrowLeftRight, ShoppingBag,
   KeyRound, Eye, EyeOff, BookOpen, Sparkles, Info, CheckCheck, Trash2, Zap, Star,
+  PawPrint, CalendarDays, FileHeart, Syringe, Stethoscope, HeartPulse,
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ interface NavItem {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Comercial', 'Logística', 'Finanzas', 'Administración']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Comercial', 'Clínica', 'Inventario', 'Finanzas', 'Administración']);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', next: '', confirm: '' });
   const [pwdError, setPwdError] = useState('');
@@ -174,17 +175,28 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigationStructure: NavItem[] = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
     {
-      name: 'Ventas', icon: <ShoppingCart size={20} />, permission: 'VER_POS',
+      name: 'Comercial', icon: <ShoppingCart size={20} />, permission: 'VER_POS',
       subItems: [
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
-        { name: 'Clientes', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
-        { name: 'Recetas Médicas', path: '/recetas', icon: <ClipboardList size={18} />, permission: 'VER_RECETAS', planFeature: 'modulo_recetas', minimumPlan: 'profesional' },
+        { name: 'Tutores', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
+        { name: 'Servicios', path: '/servicios-veterinarios', icon: <Stethoscope size={18} />, permission: 'VER_SERVICIOS_VET' },
+        { name: 'Recetas Veterinarias', path: '/recetas', icon: <ClipboardList size={18} />, permission: 'VER_RECETAS', planFeature: 'modulo_recetas', minimumPlan: 'profesional' },
+      ]
+    },
+    {
+      name: 'Clínica', icon: <HeartPulse size={20} />,
+      subItems: [
+        { name: 'Pacientes', path: '/pacientes', icon: <PawPrint size={18} />, permission: 'VER_PACIENTES', planFeature: 'modulo_pacientes', minimumPlan: 'basico' },
+        { name: 'Agenda', path: '/agenda', icon: <CalendarDays size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_citas', minimumPlan: 'basico' },
+        { name: 'Expediente', path: '/expediente', icon: <FileHeart size={18} />, permission: 'VER_EXPEDIENTE', planFeature: 'modulo_expediente', minimumPlan: 'profesional' },
+        { name: 'Vacunas', path: '/vacunas', icon: <Syringe size={18} />, permission: 'VER_VACUNAS', planFeature: 'modulo_vacunas', minimumPlan: 'profesional' },
+        { name: 'Flowboard', path: '/flowboard', icon: <Activity size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_hospitalizacion', minimumPlan: 'enterprise' },
       ]
     },
     {
       name: 'Inventario', icon: <Pill size={20} />, permission: 'VER_INVENTARIO',
       subItems: [
-        { name: 'Medicamentos', path: '/medicamentos', icon: <Pill size={18} />, permission: 'VER_INVENTARIO' },
+        { name: 'Inventario Clínico', path: '/medicamentos', icon: <Pill size={18} />, permission: 'VER_INVENTARIO' },
         { name: 'Control Vencimientos', path: '/vencimientos', icon: <AlertTriangle size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_vencimientos', minimumPlan: 'profesional' },
         { name: 'Transferencias', path: '/transferencias', icon: <ArrowLeftRight size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_transferencias', minimumPlan: 'enterprise' },
         { name: 'Entregas Sucursal', path: '/cross-branch/deliveries', icon: <Truck size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_entregas', minimumPlan: 'enterprise' },
@@ -366,7 +378,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
               <h1 className="font-bold text-sm tracking-tight leading-tight text-white truncate">{theme.appName}</h1>
-              <p className="text-[10px] text-indigo-300/60 font-medium tracking-widest mt-0.5 uppercase">ERP Farmacia</p>
+              <p className="text-[10px] text-indigo-300/60 font-medium tracking-widest mt-0.5 uppercase">ERP Veterinaria</p>
             </div>
           )}
 
@@ -623,7 +635,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 )}
                 <div className="min-w-0">
                   <span className="font-bold text-base text-white leading-tight block truncate max-w-[180px]">{theme.appName}</span>
-                  <span className="text-[10px] text-indigo-300/60 tracking-widest uppercase font-medium">ERP Farmacia</span>
+                  <span className="text-[10px] text-indigo-300/60 tracking-widest uppercase font-medium">ERP Veterinaria</span>
                 </div>
               </div>
               <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white hover:bg-slate-700/50 p-2 rounded-lg transition-all shrink-0">

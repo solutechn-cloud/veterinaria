@@ -22,6 +22,14 @@ import {
   LoyaltyPreview,
   LoyaltyAccountList,
   LoyaltyStats,
+  Paciente,
+  Cita,
+  TipoCita,
+  Consulta,
+  VacunaProtocolo,
+  VacunaAplicada,
+  RecordatorioVet,
+  ServicioVeterinario,
 } from '../types';
 import { offlineDB } from './offlineDB';
 import { getAccessToken, getCurrentSucursalId, getCurrentTenantId, setAccessToken, setStoredUser } from './authSession';
@@ -55,6 +63,10 @@ const ENTITY_MAP: { prefix: string; idField: string; cacheKey?: string }[] = [
   { prefix: '/ordenes-compra',               idField: 'codigo' },
   { prefix: '/transferencias',               idField: 'codigo' },
   { prefix: '/sucursales',                   idField: 'id_sucursal' },
+  { prefix: '/pacientes',                    idField: 'id_paciente' },
+  { prefix: '/citas',                        idField: 'id_cita' },
+  { prefix: '/consultas',                    idField: 'id_consulta' },
+  { prefix: '/servicios-veterinarios',       idField: 'id_servicio' },
 ];
 
 interface EndpointInfo { collection: string; urlId: string | null; idField: string; cacheKey: string; }
@@ -225,6 +237,70 @@ export const ClientService = {
   create: (data: Cliente) => request('/clientes', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Cliente>) => request(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/clientes/${id}`, { method: 'DELETE' }),
+};
+
+export const PacientesService = {
+  getAll: (params?: { q?: string; id_tutor?: string; estado?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<Paciente[]>(`/pacientes${qs}`);
+  },
+  getByTutor: (idTutor: string) => request<Paciente[]>(`/tutores/${encodeURIComponent(idTutor)}/pacientes`),
+  getById: (id: number) => request<Paciente>(`/pacientes/${id}`),
+  create: (data: Partial<Paciente>) => request<{ id_paciente: number }>('/pacientes', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<Paciente>) => request(`/pacientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  addPeso: (id: number, data: { peso: number; notas?: string }) => request(`/pacientes/${id}/pesos`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const CitasService = {
+  getTipos: () => request<TipoCita[]>('/tipos-cita'),
+  createTipo: (data: Partial<TipoCita>) => request<TipoCita>('/tipos-cita', { method: 'POST', body: JSON.stringify(data) }),
+  getAll: (params?: { fecha_desde?: string; fecha_hasta?: string; estado?: string; id_paciente?: number; id_veterinario?: string; id_sucursal?: number }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<Cita[]>(`/citas${qs}`);
+  },
+  create: (data: Partial<Cita>) => request<{ id_cita: number }>('/citas', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<Cita>) => request(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateEstado: (id: number, estado: Cita['estado']) => request(`/citas/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
+  checkIn: (id: number) => request(`/citas/${id}/check-in`, { method: 'POST' }),
+  getFlowboard: (fecha?: string) => request<Cita[]>(`/clinica/flowboard${fecha ? `?fecha=${fecha}` : ''}`),
+};
+
+export const ConsultasService = {
+  getAll: (params?: { id_paciente?: number; estado?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<Consulta[]>(`/consultas${qs}`);
+  },
+  getById: (id: number) => request<Consulta>(`/consultas/${id}`),
+  create: (data: Partial<Consulta>) => request<{ id_consulta: number }>('/consultas', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<Consulta>) => request(`/consultas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+export const VacunasService = {
+  getProtocolos: () => request<VacunaProtocolo[]>('/vacunas/protocolos'),
+  createProtocolo: (data: Partial<VacunaProtocolo>) => request<VacunaProtocolo>('/vacunas/protocolos', { method: 'POST', body: JSON.stringify(data) }),
+  getAplicadas: (params?: { id_paciente?: number; desde?: string; hasta?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<VacunaAplicada[]>(`/vacunas/aplicadas${qs}`);
+  },
+  aplicar: (data: Partial<VacunaAplicada> & { id_paciente: number; nombre_vacuna: string }) =>
+    request<{ id_vacuna_aplicada: number }>('/vacunas/aplicar', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const RecordatoriosService = {
+  getAll: (params?: { estado?: string; tipo?: string; id_paciente?: number }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<RecordatorioVet[]>(`/recordatorios${qs}`);
+  },
+  enviar: (id: number) => request(`/recordatorios/${id}/enviar`, { method: 'POST' }),
+};
+
+export const ServiciosVeterinariosService = {
+  getAll: (params?: { q?: string; categoria?: string; activo?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<ServicioVeterinario[]>(`/servicios-veterinarios${qs}`);
+  },
+  create: (data: Partial<ServicioVeterinario>) => request<ServicioVeterinario>('/servicios-veterinarios', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: Partial<ServicioVeterinario>) => request(`/servicios-veterinarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 export const SalesService = {

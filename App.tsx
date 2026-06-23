@@ -32,6 +32,12 @@ import Transferencias from './pages/Transferencias';
 import EntregasPendientes from './pages/EntregasPendientes';
 import Lealtad from './pages/Lealtad';
 import OrdenesCompra from './pages/OrdenesCompra';
+import Pacientes from './pages/Pacientes';
+import Agenda from './pages/Agenda';
+import Expediente from './pages/Expediente';
+import Vacunas from './pages/Vacunas';
+import ServiciosVeterinarios from './pages/ServiciosVeterinarios';
+import Flowboard from './pages/Flowboard';
 
 // SaaS Super Admin
 import SuperAdmin from './pages/SuperAdmin';
@@ -63,6 +69,36 @@ const App: React.FC = () => {
           <Route path="/clients" element={
             <ProtectedRoute requiredPermission="VER_CLIENTES">
               <Layout><Clients /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/pacientes" element={
+            <ProtectedRoute requiredPermission="VER_PACIENTES" requiredFeature="modulo_pacientes">
+              <Layout><Pacientes /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/agenda" element={
+            <ProtectedRoute requiredPermission="VER_CITAS" requiredFeature="modulo_citas">
+              <Layout><Agenda /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/expediente" element={
+            <ProtectedRoute requiredPermission="VER_EXPEDIENTE" requiredFeature="modulo_expediente">
+              <Layout><Expediente /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/vacunas" element={
+            <ProtectedRoute requiredPermission="VER_VACUNAS" requiredFeature="modulo_vacunas">
+              <Layout><Vacunas /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/servicios-veterinarios" element={
+            <ProtectedRoute requiredPermission="VER_SERVICIOS_VET">
+              <Layout><ServiciosVeterinarios /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/flowboard" element={
+            <ProtectedRoute requiredPermission="VER_CITAS" requiredFeature="modulo_hospitalizacion">
+              <Layout><Flowboard /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/recetas" element={

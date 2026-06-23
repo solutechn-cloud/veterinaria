@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: erpveterinaria
+    env: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SAAS_SUPER_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false

@@ -74,7 +74,7 @@ const Clients: React.FC = () => {
       setShowModal(false);
       Swal.fire({
         icon: 'success',
-        title: isEditing ? 'Cliente Actualizado' : 'Cliente Registrado',
+        title: isEditing ? 'Tutor Actualizado' : 'Tutor Registrado',
         timer: 1500,
         showConfirmButton: false
       });
@@ -86,7 +86,7 @@ const Clients: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
-      title: '¿Eliminar cliente?',
+      title: '¿Eliminar tutor?',
       text: 'Esta acción no se puede deshacer.',
       icon: 'warning',
       showCancelButton: true,
@@ -98,7 +98,7 @@ const Clients: React.FC = () => {
     if (result.isConfirmed) {
       try {
         await ClientService.delete(id);
-        Swal.fire('Eliminado', 'El cliente ha sido eliminado.', 'success');
+        Swal.fire('Eliminado', 'El tutor ha sido eliminado.', 'success');
         loadClients();
       } catch (error: any) {
         Swal.fire('Error', error.message, 'error');
@@ -116,16 +116,16 @@ const Clients: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-end mb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Users className="text-indigo-600" /> Registro Clientes
+            <Users className="text-indigo-600" /> Tutores
           </h2>
-          <p className="text-slate-500 text-sm">Gestiona la base de datos de clientes</p>
+          <p className="text-slate-500 text-sm">Gestiona tutores responsables de pacientes veterinarios</p>
         </div>
         <button 
            onClick={openNewModal}
            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-emerald-600/20 transition-all"
         >
           <PlusCircle size={20} />
-          <span>Nuevo Cliente</span>
+          <span>Nuevo Tutor</span>
         </button>
       </div>
 
@@ -153,7 +153,7 @@ const Clients: React.FC = () => {
             <thead className="bg-slate-100 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10">
               <tr>
                 <th className="p-4">Identidad</th>
-                <th className="p-4">Nombre Completo</th>
+                <th className="p-4">Tutor</th>
                 <th className="p-4">Dirección</th>
                 <th className="p-4">Teléfono</th>
                 <th className="p-4">Correo</th>
@@ -231,7 +231,7 @@ const Clients: React.FC = () => {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6 animate-fade-in">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h3 className="text-xl font-bold text-slate-800">
-                {isEditing ? 'Editar Cliente' : 'Registro de Clientes'}
+                {isEditing ? 'Editar Tutor' : 'Registro de Tutor'}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
             </div>

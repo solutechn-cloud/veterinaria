@@ -335,6 +335,9 @@ function LimitedDashboard() {
     { show: hasPermission('VER_CAJA'), to: '/cash', label: 'Caja y movimientos' },
     { show: hasPermission('VER_INVENTARIO'), to: '/medicamentos', label: 'Inventario' },
     { show: hasPermission('VER_CLIENTES'), to: '/clients', label: 'Clientes' },
+    { show: hasPermission('VER_PACIENTES'), to: '/pacientes', label: 'Pacientes' },
+    { show: hasPermission('VER_CITAS'), to: '/agenda', label: 'Agenda' },
+    { show: hasPermission('VER_EXPEDIENTE'), to: '/expediente', label: 'Expediente clinico' },
   ].filter(l => l.show);
   return (
     <div className="space-y-7">

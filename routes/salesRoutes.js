@@ -106,6 +106,7 @@ router.get('/ventas/:id/detalles', authenticateToken, async (req, res) => {
                 COALESCE(dv.precioUnitario, dv.precioVenta) AS "precioVenta",
                 dv.tipoProducto     AS "tipoProducto",
                 dv.id_presentacion  AS "id_presentacion",
+                dv.id_servicio       AS "id_servicio",
                 dv.tipo_isv         AS "tipoIsv",
                 dv.subtotal_exento  AS "subtotalExento",
                 dv.subtotal_gravado AS "subtotalGravado",
@@ -220,6 +221,29 @@ router.post('/ventas', authenticateToken, async (req, res) => {
         );
 
         for (const item of detalles) {
+            if (item.tipoProducto === 'SERVICIO') {
+                const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
+                const tipoIsv = item.tipoIsv || 'exento';
+                let subExento = 0, subGravado = 0, isvLinea = 0;
+                if (tipoIsv === 'exento') subExento = lineTotal;
+                else {
+                    const rate = tipoIsv === '18' ? 0.18 : 0.15;
+                    subGravado = lineTotal / (1 + rate);
+                    isvLinea = lineTotal - subGravado;
+                }
+                const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
+                await client.query(
+                    `INSERT INTO detalleventa
+                     (codDetalleVenta, idVenta, producto, cantidad, precioUnitario, tipoProducto,
+                      id_servicio, tipo_isv, subtotal_exento, subtotal_gravado, isv_linea, tenant_id)
+                     VALUES ($1,$2,$3,$4,$5,'SERVICIO',$6,$7,$8,$9,$10,$11)`,
+                    [codDetalle, codVenta, item.descripcionProducto || 'Servicio veterinario',
+                     item.cantidad, item.precioVenta, item.id_servicio || item.id_presentacion || null,
+                     tipoIsv, subExento, subGravado, isvLinea, req.tenantId]
+                );
+                continue;
+            }
+
             if (item.tipoProducto !== 'MEDICAMENTO' || !item.id_medicamento) continue;
 
             const presR = await client.query(
@@ -419,6 +443,29 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
         );
 
         for (const item of detalles) {
+            if (item.tipoProducto === 'SERVICIO') {
+                const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
+                const tipoIsv = item.tipoIsv || 'exento';
+                let subExento = 0, subGravado = 0, isvLinea = 0;
+                if (tipoIsv === 'exento') subExento = lineTotal;
+                else {
+                    const rate = tipoIsv === '18' ? 0.18 : 0.15;
+                    subGravado = lineTotal / (1 + rate);
+                    isvLinea = lineTotal - subGravado;
+                }
+                const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
+                await client.query(
+                    `INSERT INTO detalleventa
+                     (codDetalleVenta, idVenta, producto, cantidad, precioUnitario, tipoProducto,
+                      id_servicio, tipo_isv, subtotal_exento, subtotal_gravado, isv_linea, tenant_id)
+                     VALUES ($1,$2,$3,$4,$5,'SERVICIO',$6,$7,$8,$9,$10,$11)`,
+                    [codDetalle, codVenta, item.descripcionProducto || 'Servicio veterinario',
+                     item.cantidad, item.precioVenta, item.id_servicio || item.id_presentacion || null,
+                     tipoIsv, subExento, subGravado, isvLinea, req.tenantId]
+                );
+                continue;
+            }
+
             if (item.tipoProducto !== 'MEDICAMENTO' || !item.id_medicamento) continue;
 
             const presR = await client.query(

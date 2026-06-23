@@ -195,6 +195,47 @@ async function runWeeklyReport(tenantId = null) {
     }
 }
 
+async function runVeterinaryReminders(tenantId = null) {
+    try {
+        const params = tenantId ? [tenantId] : [];
+        const tenantFilter = tenantId ? 'AND tenant_id = $1' : '';
+        const { rows } = await pool.query(`
+            SELECT *
+            FROM recordatorios
+            WHERE estado = 'Pendiente'
+              AND fecha_programada <= NOW()
+              AND correo_destino IS NOT NULL
+              ${tenantFilter}
+            ORDER BY fecha_programada ASC
+            LIMIT 50
+        `, params);
+
+        for (const reminder of rows) {
+            try {
+                await emailService.sendVeterinaryReminderEmail(reminder.correo_destino, reminder);
+                await pool.query(`
+                    UPDATE recordatorios
+                    SET estado='Enviado', fecha_envio=NOW(), intentos=intentos+1, ultimo_error=NULL
+                    WHERE id_recordatorio=$1
+                `, [reminder.id_recordatorio]);
+            } catch (err) {
+                await pool.query(`
+                    UPDATE recordatorios
+                    SET intentos=intentos+1,
+                        ultimo_error=$2,
+                        estado=CASE WHEN intentos + 1 >= 3 THEN 'Error' ELSE 'Pendiente' END
+                    WHERE id_recordatorio=$1
+                `, [reminder.id_recordatorio, err.message.substring(0, 1000)]);
+            }
+        }
+        if (rows.length > 0) console.log(`[cronJobs] Veterinary reminders processed: ${rows.length}`);
+    } catch (err) {
+        if (!/relation "recordatorios" does not exist/i.test(err.message)) {
+            console.error('[cronJobs] Error processing veterinary reminders:', err.message);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Register all cron jobs — fan out per active tenant
 // ---------------------------------------------------------------------------
@@ -271,7 +312,13 @@ function startCronJobs() {
         }
     }, { timezone: 'UTC' });
 
-    console.log('[cronJobs] Cron jobs registered: daily report, weekly report, Drive backup, AI quota cleanup, loyalty expiry.');
+    // Veterinary reminders every 15 minutes.
+    cron.schedule('*/15 * * * *', async () => {
+        const tenants = await getActiveTenants();
+        await Promise.allSettled(tenants.map(t => runVeterinaryReminders(t.id)));
+    }, { timezone: 'UTC' });
+
+    console.log('[cronJobs] Cron jobs registered: daily report, weekly report, Drive backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
 }
 
-module.exports = { startCronJobs, runDailyReport, runWeeklyReport };
+module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runVeterinaryReminders };

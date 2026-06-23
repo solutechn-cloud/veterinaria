@@ -26,6 +26,12 @@ const FEATURE_LABELS: Record<string, string> = {
   modulo_transferencias:'Transferencias entre Sucursales',
   modulo_entregas:      'Seguimiento de Entregas',
   modulo_panel_cajas:   'Panel de Cajas',
+  modulo_pacientes:     'Pacientes Veterinarios',
+  modulo_citas:         'Agenda Veterinaria',
+  modulo_expediente:    'Expediente Clínico',
+  modulo_recordatorios: 'Recordatorios por Correo',
+  modulo_vacunas:       'Vacunas y Preventiva',
+  modulo_hospitalizacion:'Flowboard Clínico',
 };
 
 const PlanUpgradeModal: React.FC<Props> = ({ featureKey, minimumPlan = 'profesional', onClose }) => {

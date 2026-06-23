@@ -31,7 +31,9 @@ export type PlanFeatureKey =
     | 'modulo_config' | 'ia_basica' | 'modulo_recetas' | 'modulo_lealtad'
     | 'modulo_ordenes_compra' | 'modulo_vencimientos' | 'modulo_proveedores'
     | 'modulo_contabilidad' | 'modulo_etiquetas' | 'reportes_exportar' | 'ia_avanzada'
-    | 'modulo_sucursales' | 'modulo_transferencias' | 'modulo_entregas' | 'modulo_panel_cajas';
+    | 'modulo_sucursales' | 'modulo_transferencias' | 'modulo_entregas' | 'modulo_panel_cajas'
+    | 'modulo_pacientes' | 'modulo_citas' | 'modulo_expediente' | 'modulo_recordatorios'
+    | 'modulo_vacunas' | 'modulo_hospitalizacion';
 
 export const PERMISSIONS = {
     VER_POS: 'VER_POS', VER_CLIENTES: 'VER_CLIENTES', VER_INVENTARIO: 'VER_INVENTARIO',
@@ -45,6 +47,11 @@ export const PERMISSIONS = {
     ELIMINAR_MEDICAMENTO: 'ELIMINAR_MEDICAMENTO', CONFIGURAR_LEALTAD: 'CONFIGURAR_LEALTAD',
     AJUSTAR_PUNTOS_LEALTAD: 'AJUSTAR_PUNTOS_LEALTAD',
     AUTORIZAR_PSICOFARMACOS: 'AUTORIZAR_PSICOFARMACOS', EXPORTAR_REPORTES: 'EXPORTAR_REPORTES',
+    VER_PACIENTES: 'VER_PACIENTES', GESTIONAR_PACIENTES: 'GESTIONAR_PACIENTES',
+    VER_CITAS: 'VER_CITAS', GESTIONAR_CITAS: 'GESTIONAR_CITAS',
+    VER_EXPEDIENTE: 'VER_EXPEDIENTE', EDITAR_EXPEDIENTE: 'EDITAR_EXPEDIENTE',
+    VER_VACUNAS: 'VER_VACUNAS', GESTIONAR_VACUNAS: 'GESTIONAR_VACUNAS',
+    VER_SERVICIOS_VET: 'VER_SERVICIOS_VET',
 } as const;
 
 export interface LoginCredentials {
@@ -156,6 +163,7 @@ export interface DetalleVenta {
   // Pharmacy fields
   id_medicamento?: string;
   id_presentacion?: number;
+  id_servicio?: number;
   tipoIsv?: 'exento' | '15' | '18';
 }
 
@@ -362,6 +370,12 @@ export interface Medicamento {
   condicion_almacenamiento: string;
   activo: boolean;
   fecha_alta?: string;
+  tipo_producto?: 'Medicamento' | 'Vacuna' | 'Insumo' | 'Alimento' | 'Antiparasitario' | 'Laboratorio';
+  especies_permitidas?: string;
+  dosis_recomendada?: string;
+  unidad_dosis?: string;
+  intervalo_dosis?: string;
+  periodo_retiro?: string;
   categoriaNombre?: string;
   formaNombre?: string;
   unidadBase?: string;
@@ -564,6 +578,7 @@ export interface Sucursal {
 
 export interface ProductoFarmacia {
   codigo: string;
+  tipoProducto?: 'MEDICAMENTO' | 'SERVICIO';
   nombreGenerico: string;
   nombreComercial?: string;
   concentracion?: string;
@@ -577,6 +592,152 @@ export interface ProductoFarmacia {
   urlImagen?: string;
   imagenBase64?: string;
   presentaciones?: PresentacionVenta[];
+}
+
+// Veterinary platform
+export type EstadoCita = 'Programada' | 'Confirmada' | 'En espera' | 'En consulta' | 'Completada' | 'No asistio' | 'Cancelada';
+export type EstadoConsulta = 'Abierta' | 'Cerrada' | 'Anulada';
+
+export interface Paciente {
+  id_paciente: number;
+  id_tutor: string;
+  nombre: string;
+  especie: string;
+  raza?: string;
+  sexo?: string;
+  color?: string;
+  fecha_nacimiento?: string;
+  fecha_nacimiento_estimada?: boolean;
+  peso_actual?: number;
+  microchip?: string;
+  estado_reproductivo?: string;
+  alergias?: string;
+  condiciones_cronicas?: string;
+  foto_base64?: string;
+  estado: string;
+  tutorNombre?: string;
+  tutorTelefono?: string;
+  tutorCorreo?: string;
+  proximaCita?: string;
+  totalConsultas?: number;
+  pesos?: any[];
+  citas?: Cita[];
+  consultas?: Consulta[];
+  vacunas?: VacunaAplicada[];
+}
+
+export interface TipoCita {
+  id_tipo_cita: number;
+  nombre: string;
+  duracion_minutos: number;
+  color?: string;
+  requiere_veterinario: boolean;
+  activo: boolean;
+}
+
+export interface Cita {
+  id_cita: number;
+  id_paciente?: number;
+  id_tutor?: string;
+  id_tipo_cita?: number;
+  fecha_inicio: string;
+  fecha_fin: string;
+  id_veterinario?: string;
+  id_sucursal?: number;
+  sala_recurso?: string;
+  estado: EstadoCita;
+  motivo?: string;
+  notas?: string;
+  pacienteNombre?: string;
+  tutorNombre?: string;
+  tutorTelefono?: string;
+  tutorCorreo?: string;
+  tipoCitaNombre?: string;
+  tipoCitaColor?: string;
+  sucursalNombre?: string;
+  veterinarioNombre?: string;
+}
+
+export interface Consulta {
+  id_consulta: number;
+  id_paciente: number;
+  id_tutor?: string;
+  id_cita?: number;
+  id_veterinario?: string;
+  fecha: string;
+  motivo?: string;
+  subjetivo?: string;
+  objetivo?: string;
+  evaluacion?: string;
+  plan?: string;
+  peso?: number;
+  temperatura?: number;
+  frecuencia_cardiaca?: number;
+  frecuencia_respiratoria?: number;
+  condicion_corporal?: string;
+  notas_alta?: string;
+  estado: EstadoConsulta;
+  pacienteNombre?: string;
+  tutorNombre?: string;
+  diagnosticos?: Array<{ id?: number; diagnostico: string; codigo?: string; notas?: string }>;
+  tratamientos?: Array<{ id?: number; descripcion: string; id_medicamento?: string; dosis?: string; frecuencia?: string; duracion?: string; instrucciones?: string }>;
+}
+
+export interface VacunaProtocolo {
+  id_protocolo: number;
+  nombre: string;
+  especie: string;
+  edad_inicial_dias?: number;
+  intervalo_dias?: number;
+  dosis_totales?: number;
+  id_medicamento?: string;
+  activo: boolean;
+}
+
+export interface VacunaAplicada {
+  id_vacuna_aplicada: number;
+  id_paciente: number;
+  id_protocolo?: number;
+  id_medicamento?: string;
+  id_lote?: number;
+  nombre_vacuna: string;
+  fecha_aplicacion: string;
+  proxima_dosis?: string;
+  veterinario?: string;
+  notas?: string;
+  pacienteNombre?: string;
+  tutorNombre?: string;
+}
+
+export interface RecordatorioVet {
+  id_recordatorio: number;
+  tipo: string;
+  referencia_tabla?: string;
+  referencia_id?: number;
+  id_tutor?: string;
+  id_paciente?: number;
+  correo_destino?: string;
+  asunto: string;
+  cuerpo?: string;
+  fecha_programada: string;
+  fecha_envio?: string;
+  estado: string;
+  intentos: number;
+  pacienteNombre?: string;
+  tutorNombre?: string;
+}
+
+export interface ServicioVeterinario {
+  id_servicio: number;
+  codigo?: string;
+  nombre: string;
+  categoria: string;
+  descripcion?: string;
+  duracion_minutos: number;
+  precio: number;
+  tipo_isv: 'exento' | '15' | '18';
+  requiere_paciente: boolean;
+  activo: boolean;
 }
 
 export type EstadoEntrega = 'Pendiente' | 'Entregado' | 'Cancelado';
