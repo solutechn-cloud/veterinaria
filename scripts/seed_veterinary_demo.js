@@ -208,8 +208,12 @@ async function seedClinic(client, clinic, clinicIndex) {
         await client.query(`
             INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono, correo, estado, tenant_id)
             VALUES ($1,$2,$3,$4,$5,$6,'Activo',$7)
-            ON CONFLICT (identidad, tenant_id) DO UPDATE SET correo=EXCLUDED.correo
+            ON CONFLICT DO NOTHING
         `, [vet[0], vet[1], vet[2], clinic.address, clinic.phone, vet[3], tenantId]);
+        await client.query(
+            'UPDATE empleado SET correo=$1, telefono=$2, tenant_id=$3 WHERE identidad=$4',
+            [vet[3], clinic.phone, tenantId, vet[0]]
+        );
         const cod = await ensureUser(client, tenantId, { identity: vet[0], email: vet[3] }, vetRole, branchId);
         vetUserIds.push(String(cod));
     }
@@ -218,8 +222,12 @@ async function seedClinic(client, clinic, clinicIndex) {
     await client.query(`
         INSERT INTO empleado (identidad, nombre, apellido, direccion, telefono, correo, estado, tenant_id)
         VALUES ($1,'Recepcion','Demo',$2,$3,$4,'Activo',$5)
-        ON CONFLICT (identidad, tenant_id) DO UPDATE SET correo=EXCLUDED.correo
+        ON CONFLICT DO NOTHING
     `, [receptionIdentity, clinic.address, clinic.phone, receptionEmail, tenantId]);
+    await client.query(
+        'UPDATE empleado SET correo=$1, telefono=$2, tenant_id=$3 WHERE identidad=$4',
+        [receptionEmail, clinic.phone, tenantId, receptionIdentity]
+    );
     await ensureUser(client, tenantId, { identity: receptionIdentity, email: receptionEmail }, recepRole, branchId);
     counts.empleados = 3;
     counts.usuarios = 3;
@@ -310,13 +318,22 @@ async function seedClinic(client, clinic, clinicIndex) {
         await client.query(`
             INSERT INTO clientes (identidad,nombre,apellido,direccion,telefono,correo,fechaCreacion,tenant_id)
             VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7)
-            ON CONFLICT (identidad, tenant_id) DO UPDATE SET telefono=EXCLUDED.telefono, correo=EXCLUDED.correo
+            ON CONFLICT DO NOTHING
         `, [
             identity, first, last, `${pick(['Colonia Kennedy', 'Barrio El Centro', 'Residencial Los Alamos', 'Colonia Universidad', 'Barrio La Isla'], i)}, ${clinic.city}`,
             `+504 ${String(90000000 + clinicIndex * 100000 + i * 137).slice(0, 8)}`,
             `${first.toLowerCase()}.${last.toLowerCase()}.${clinicIndex + 1}${i}@demo.local`,
             tenantId
         ]);
+        await client.query(
+            'UPDATE clientes SET telefono=$1, correo=$2, tenant_id=$3 WHERE identidad=$4',
+            [
+                `+504 ${String(90000000 + clinicIndex * 100000 + i * 137).slice(0, 8)}`,
+                `${first.toLowerCase()}.${last.toLowerCase()}.${clinicIndex + 1}${i}@demo.local`,
+                tenantId,
+                identity
+            ]
+        );
         tutorIds.push(identity);
     }
     counts.tutores = tutorIds.length;
