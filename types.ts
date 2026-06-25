@@ -193,6 +193,13 @@ export interface EmpresaConfig {
   isv: number;
   mensajeFinal: string;
   logoBase64?: string;
+  adminEmail?: string;
+  emailFrom?: string;
+  automationSenderName?: string;
+  backupR2Prefix?: string;
+  backupRetentionDays?: number;
+  backupEnabled?: boolean;
+  backupTime?: string;
 }
 
 export interface InvoiceColumn {

@@ -15,9 +15,11 @@ async function ensureColumns() {
             ALTER TABLE configuracion
                 ADD COLUMN IF NOT EXISTS admin_email        VARCHAR(255),
                 ADD COLUMN IF NOT EXISTS email_from         VARCHAR(255),
-                ADD COLUMN IF NOT EXISTS saldo_tigo_umbral  NUMERIC(12,2) DEFAULT 500,
-                ADD COLUMN IF NOT EXISTS saldo_claro_umbral NUMERIC(12,2) DEFAULT 500,
-                ADD COLUMN IF NOT EXISTS drive_folder_id    VARCHAR(255)
+                ADD COLUMN IF NOT EXISTS automation_sender_name VARCHAR(120),
+                ADD COLUMN IF NOT EXISTS backup_r2_prefix VARCHAR(255) DEFAULT 'backups',
+                ADD COLUMN IF NOT EXISTS backup_retention_days INTEGER DEFAULT 30,
+                ADD COLUMN IF NOT EXISTS backup_enabled BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS backup_time TIME DEFAULT '02:30'
         `);
     } catch (_) { /* already exists or no-op */ }
     _migrated = true;
@@ -25,10 +27,12 @@ async function ensureColumns() {
 
 const ENV_FALLBACK = () => ({
     adminEmail:       process.env.ADMIN_EMAIL                 || '',
-    emailFrom:        process.env.EMAIL_FROM                  || 'ERP Farmacia <noreply@erpfarmacia.com>',
-    saldoTigoUmbral:  Number(process.env.SALDO_TIGO_UMBRAL   ?? 500),
-    saldoClaroUmbral: Number(process.env.SALDO_CLARO_UMBRAL  ?? 500),
-    driveFolderId:    process.env.GOOGLE_DRIVE_FOLDER_ID      || 'root',
+    emailFrom:        process.env.EMAIL_FROM                  || 'VetCare ERP <noreply@erpsmartcloud.com>',
+    automationSenderName: process.env.AUTOMATION_SENDER_NAME  || 'VetCare ERP',
+    backupR2Prefix:   process.env.BACKUP_R2_PREFIX            || 'backups',
+    backupRetentionDays: Number(process.env.BACKUP_RETENTION_DAYS ?? 30),
+    backupEnabled:    process.env.BACKUP_ENABLED !== 'false',
+    backupTime:       process.env.BACKUP_TIME                 || '02:30',
 });
 
 /**
@@ -46,7 +50,8 @@ async function getSystemConfig(tenantId = null) {
         let r;
         if (tenantId) {
             r = await pool.query(
-                `SELECT admin_email, email_from, saldo_tigo_umbral, saldo_claro_umbral, drive_folder_id
+                `SELECT admin_email, email_from, automation_sender_name, backup_r2_prefix,
+                        backup_retention_days, backup_enabled, backup_time
                  FROM configuracion WHERE tenant_id = $1`,
                 [tenantId]
             );
@@ -59,10 +64,12 @@ async function getSystemConfig(tenantId = null) {
         const row = r.rows[0] || {};
         const data = {
             adminEmail:       row.admin_email                              || process.env.ADMIN_EMAIL  || '',
-            emailFrom:        row.email_from                               || process.env.EMAIL_FROM   || 'ERP Farmacia <noreply@erpfarmacia.com>',
-            saldoTigoUmbral:  Number(row.saldo_tigo_umbral  ?? process.env.SALDO_TIGO_UMBRAL  ?? 500),
-            saldoClaroUmbral: Number(row.saldo_claro_umbral ?? process.env.SALDO_CLARO_UMBRAL ?? 500),
-            driveFolderId:    row.drive_folder_id                          || process.env.GOOGLE_DRIVE_FOLDER_ID || 'root',
+            emailFrom:        row.email_from                               || process.env.EMAIL_FROM   || 'VetCare ERP <noreply@erpsmartcloud.com>',
+            automationSenderName: row.automation_sender_name               || process.env.AUTOMATION_SENDER_NAME || 'VetCare ERP',
+            backupR2Prefix:   row.backup_r2_prefix                         || process.env.BACKUP_R2_PREFIX || 'backups',
+            backupRetentionDays: Number(row.backup_retention_days ?? process.env.BACKUP_RETENTION_DAYS ?? 30),
+            backupEnabled:    row.backup_enabled !== false && process.env.BACKUP_ENABLED !== 'false',
+            backupTime:       row.backup_time ? String(row.backup_time).slice(0, 5) : (process.env.BACKUP_TIME || '02:30'),
         };
         _cache.set(cacheKey, { data, cachedAt: now });
         return data;

@@ -172,14 +172,13 @@ async function sendDailyReportEmail(to, reportData) {
     const {
         fecha,
         totalVentas = 0,
-        totalRecargas = 0,
+        numFacturas = 0,
+        citasHoy = 0,
+        vacunasAplicadas = 0,
         gananciaEstimada = 0,
         totalEgresos = 0,
-        saldoTigoFinal = 0,
-        saldoClaroFinal = 0,
-        reparacionesCompletadas = 0,
-        reparacionesPendientes = 0,
-        topProductos = []
+        topProductos = [],
+        stockCritico = []
     } = reportData;
 
     await warmEmailConfig();
@@ -189,6 +188,9 @@ async function sendDailyReportEmail(to, reportData) {
     const topProductosRows = topProductos.length > 0
         ? topProductos.map(p => `<tr><td>${p.producto ?? p.nombre ?? ''}</td><td style="text-align:right;font-weight:600;">${p.cantidad}</td></tr>`).join('')
         : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin datos</td></tr>';
+    const stockRows = stockCritico.length > 0
+        ? stockCritico.map(s => `<tr><td>${s.producto}</td><td style="text-align:right;color:#c62828;font-weight:600;">${s.stock}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin productos criticos</td></tr>';
 
     try {
         const html = wrapHtml(
@@ -205,8 +207,18 @@ async function sendDailyReportEmail(to, reportData) {
                    <div class="highlight">${fmt(totalVentas)}</div>
                  </div>
                  <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Recargas</div>
-                   <div class="highlight">${fmt(totalRecargas)}</div>
+                   <div class="label">Facturas Completadas</div>
+                   <div class="highlight">${numFacturas}</div>
+                 </div>
+               </div>
+               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
+                 <div class="card" style="flex:1;min-width:160px;">
+                   <div class="label">Citas del Dia</div>
+                   <div class="highlight" style="color:#1565c0;">${citasHoy}</div>
+                 </div>
+                 <div class="card" style="flex:1;min-width:160px;">
+                   <div class="label">Vacunas Aplicadas</div>
+                   <div class="highlight" style="color:#2e7d32;">${vacunasAplicadas}</div>
                  </div>
                </div>
                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
@@ -215,36 +227,21 @@ async function sendDailyReportEmail(to, reportData) {
                    <div class="highlight" style="color:#c62828;">${fmt(totalEgresos)}</div>
                  </div>
                  <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Ganancia Estimada</div>
+                   <div class="label">Margen Estimado</div>
                    <div class="highlight" style="color:${gananciaColor};">${fmt(gananciaEstimada)}</div>
                  </div>
                </div>
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Saldo TIGO Final</div>
-                   <div class="value">${fmt(saldoTigoFinal)}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Saldo CLARO Final</div>
-                   <div class="value">${fmt(saldoClaroFinal)}</div>
-                 </div>
-               </div>
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Reparaciones Completadas</div>
-                   <div class="highlight" style="color:#2e7d32;">${reparacionesCompletadas}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Reparaciones Pendientes</div>
-                   <div class="highlight" style="color:#f57c00;">${reparacionesPendientes}</div>
-                 </div>
-               </div>
                ${topProductos.length > 0 ? `
-               <h3 style="font-size:15px;margin-bottom:10px;">Top Productos del Dia</h3>
-               <table class="data">
+               <h3 style="font-size:15px;margin-bottom:10px;">Top Productos y Servicios</h3>
+               <table class="data" style="margin-bottom:20px;">
                  <thead><tr><th>Producto</th><th style="text-align:right;">Cantidad</th></tr></thead>
                  <tbody>${topProductosRows}</tbody>
                </table>` : ''}
+               <h3 style="font-size:15px;margin-bottom:10px;">Inventario Critico</h3>
+               <table class="data">
+                 <thead><tr><th>Item</th><th style="text-align:right;">Stock</th></tr></thead>
+                 <tbody>${stockRows}</tbody>
+               </table>
              </div>`
         );
 
@@ -392,7 +389,7 @@ async function sendLowBalanceAlertEmail(to, red, saldoActual, umbral) {
 // ---------------------------------------------------------------------------
 // f) Backup confirmation
 // ---------------------------------------------------------------------------
-async function sendBackupConfirmationEmail(to, date, fileSize, driveLink) {
+async function sendBackupConfirmationEmail(to, date, fileSize, objectKey) {
     await warmEmailConfig();
     try {
         const html = wrapHtml(
@@ -414,9 +411,9 @@ async function sendBackupConfirmationEmail(to, date, fileSize, driveLink) {
                  <div class="label">Tamano del archivo</div>
                  <div class="value">${fileSize}</div>
                </div>
-               ${driveLink ? `<div class="card">
-                 <div class="label">Enlace de descarga</div>
-                 <div class="value"><a href="${driveLink}" style="color:#00695c;">Ver en Google Drive</a></div>
+               ${objectKey ? `<div class="card">
+                 <div class="label">Ubicacion en Cloudflare R2</div>
+                 <div class="value" style="font-family:monospace;font-size:13px;">${objectKey}</div>
                </div>` : ''}
                <p style="font-size:13px;color:#555;margin-top:16px;"><strong>${getCOMPANY()}</strong></p>
              </div>`

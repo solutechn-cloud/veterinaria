@@ -150,13 +150,9 @@ router.post('/tenants/:slug/provision-admin', requireSuperAdmin, async (req, res
  */
 router.post('/backup-now', requireSuperAdmin, async (req, res) => {
     try {
-        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-            return res.status(400).json({ error: 'Google Drive no configurado.' });
-        }
-
-        const { backupDatabase } = require('../services/googleDriveService');
-        const result = await backupDatabase();
-        res.json({ data: result, message: 'Backup completado' });
+        const { backupDatabaseToR2 } = require('../services/r2BackupService');
+        const result = await backupDatabaseToR2({ tenantSlug: 'all-tenants', scope: 'all_tenants' });
+        res.json({ data: result, message: 'Backup completado en Cloudflare R2' });
     } catch (err) {
         console.error('[saasAuthRoutes] backup-now error:', err.message);
         res.status(500).json({ error: 'Error ejecutando backup' });

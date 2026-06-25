@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const { pool } = require('../config/db');
 const emailService = require('./emailService');
 const { getSystemConfig } = require('../config/systemConfig');
+const automationService = require('./automationService');
 
 function getHondurasDateString() {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Tegucigalpa' });
@@ -95,19 +96,20 @@ async function runDailyReport(tenantId = null) {
         const topProductos = topRow.rows.map(r => ({ producto: r.producto, cantidad: Number(r.cantidad), total: Number(r.total) }));
         const stockCritico = stockRow.rows.map(r => ({ producto: r.producto, stock: Number(r.stock) }));
 
-        await emailService.sendDailyReportEmail(adminEmail, {
+        const reportPayload = {
             fecha: hoy,
             totalVentas,
             numFacturas,
             gananciaEstimada: 0,
             totalEgresos: 0,
-            saldoTigoFinal: 0,
-            saldoClaroFinal: 0,
-            reparacionesCompletadas: 0,
-            reparacionesPendientes: 0,
+            citasHoy: 0,
+            vacunasAplicadas: 0,
             topProductos,
             stockCritico,
-        });
+        };
+        await automationService.sendEventEmail(tenantId, 'daily_report', (to) =>
+            emailService.sendDailyReportEmail(to, reportPayload)
+        );
 
         console.log(`[cronJobs] Daily report sent (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'})`);
     } catch (err) {
@@ -252,27 +254,45 @@ function startCronJobs() {
         await Promise.allSettled(tenants.map(t => runWeeklyReport(t.id)));
     }, { timezone: 'UTC' });
 
-    // Daily database backup — midnight Honduras (UTC-6) = 06:00 UTC
-    // Backup runs once (global), not per-tenant; email uses env var
-    cron.schedule('0 6 * * *', async () => {
-        if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) return;
+    // Daily database backup — 2:30 AM Honduras (UTC-6) = 08:30 UTC.
+    // Backup runs once globally because the database contains all tenants.
+    cron.schedule('30 8 * * *', async () => {
+        const { backupEnabled, backupRetentionDays, backupR2Prefix } = await getSystemConfig();
+        if (!backupEnabled) return;
+        let jobId = null;
         try {
-            const { backupDatabase, deleteOldBackups } = require('./googleDriveService');
-            const result = await backupDatabase();
-            await deleteOldBackups(30);
-            if (result.success && process.env.ADMIN_EMAIL) {
-                const { sendBackupConfirmationEmail } = require('./emailService');
-                const sizeKB = Math.round((result.size || 0) / 1024);
-                await sendBackupConfirmationEmail(
-                    process.env.ADMIN_EMAIL,
-                    new Date().toLocaleDateString('es-HN'),
-                    `${sizeKB} KB`,
-                    result.webViewLink
-                );
-            }
+            const started = await pool.query(`
+                INSERT INTO backup_jobs (tenant_id, scope, provider, estado, started_at)
+                VALUES (NULL, 'all_tenants', 'cloudflare_r2', 'Ejecutando', NOW())
+                RETURNING id
+            `);
+            jobId = started.rows[0].id;
+            const { backupDatabaseToR2, deleteOldR2Backups } = require('./r2BackupService');
+            const result = await backupDatabaseToR2({ tenantSlug: 'all-tenants', scope: 'all_tenants', prefix: backupR2Prefix });
+            await deleteOldR2Backups(backupRetentionDays, backupR2Prefix);
+            await pool.query(`
+                UPDATE backup_jobs
+                SET estado = 'Completado', object_key = $1, size_bytes = $2, finished_at = NOW()
+                WHERE id = $3
+            `, [result.objectKey, result.size, jobId]);
+
+            const tenants = await getActiveTenants();
+            await Promise.allSettled(tenants.filter(t => t.id).map(t =>
+                automationService.sendEventEmail(t.id, 'backup_ok', (to) =>
+                    emailService.sendBackupConfirmationEmail(
+                        to,
+                        new Date().toLocaleDateString('es-HN'),
+                        `${Math.round((result.size || 0) / 1024)} KB`,
+                        result.objectKey
+                    )
+                )
+            ));
             console.log('[BACKUP] Backup exitoso:', result.filename);
         } catch (err) {
-            console.error('[BACKUP] Error en backup automático:', err.message);
+            if (jobId) {
+                await pool.query(`UPDATE backup_jobs SET estado = 'Error', error = $1, finished_at = NOW() WHERE id = $2`, [err.message, jobId]).catch(() => {});
+            }
+            console.error('[BACKUP] Error en backup automatico:', err.message);
         }
     }, { timezone: 'UTC' });
 
@@ -318,7 +338,7 @@ function startCronJobs() {
         await Promise.allSettled(tenants.map(t => runVeterinaryReminders(t.id)));
     }, { timezone: 'UTC' });
 
-    console.log('[cronJobs] Cron jobs registered: daily report, weekly report, Drive backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
+    console.log('[cronJobs] Cron jobs registered: daily report, weekly report, R2 backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
 }
 
 module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runVeterinaryReminders };

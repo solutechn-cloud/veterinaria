@@ -372,6 +372,55 @@ export const ConfigService = {
   update: (data: any) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
 };
 
+export interface AutomationEvent {
+  key: string;
+  label: string;
+  category: string;
+  recommendedTime: string;
+  description: string;
+}
+
+export interface AutomationRecipientEvent {
+  eventKey: string;
+  enabled: boolean;
+  scheduledTime?: string | null;
+}
+
+export interface AutomationRecipient {
+  id: number;
+  nombre: string;
+  email: string;
+  tipo: 'persona' | 'grupo';
+  activo: boolean;
+  events: AutomationRecipientEvent[];
+}
+
+export interface BackupJob {
+  id: number;
+  tenant_id: string | null;
+  scope: string;
+  provider: string;
+  estado: 'Pendiente' | 'Ejecutando' | 'Completado' | 'Error';
+  object_key?: string | null;
+  size_bytes?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  created_at: string;
+}
+
+export const AutomationService = {
+  getEvents: () => request<AutomationEvent[]>('/admin/automation/events'),
+  getRecipients: () => request<AutomationRecipient[]>('/admin/automation/recipients'),
+  createRecipient: (data: Partial<AutomationRecipient>) =>
+    request<AutomationRecipient>('/admin/automation/recipients', { method: 'POST', body: JSON.stringify(data) }),
+  updateRecipientEvents: (id: number, events: AutomationRecipientEvent[]) =>
+    request<void>(`/admin/automation/recipients/${id}/events`, { method: 'PUT', body: JSON.stringify({ events }) }),
+  deleteRecipient: (id: number) => request<void>(`/admin/automation/recipients/${id}`, { method: 'DELETE' }),
+  getBackups: () => request<BackupJob[]>('/admin/automation/backups'),
+  runBackupNow: () => request<any>('/admin/automation/backup-now', { method: 'POST' }),
+};
+
 export const LabelService = {
   getAll: () => request<LabelTemplate[]>('/labels'),
   getDefault: (category: string) => request<LabelTemplate>(`/labels/default?category=${category}`),

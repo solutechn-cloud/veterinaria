@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const BCRYPT_ROUNDS = 12;
 const { pool, generateNextId, handleDbError, updateArqueoBalance, withTenantContext, tenantQuery } = require('../config/db');
 const { authenticateToken, requireAdmin, validatePasswordStrength } = require('../middleware/auth');
-const { invalidateSystemConfigCache } = require('../config/systemConfig');
+const { getSystemConfig, invalidateSystemConfigCache } = require('../config/systemConfig');
+const automationService = require('../services/automationService');
 
 // --- ENDPOINT PARA ESQUEMA DE DATOS (REQUERIDO POR IMPRESIÓN/DISEÑO) ---
 const SCHEMA_TABLES = ['ventas', 'detalleventa', 'clientes', 'medicamentos', 'lotes_medicamento', 'presentaciones_venta', 'configuracion', 'empleado', 'usuarios', 'recetas'];
@@ -166,7 +167,11 @@ const mapConfigRow = (row) => ({
     // Automatizaciones (gestionadas desde el sistema)
     adminEmail:    row.admin_email     || process.env.ADMIN_EMAIL             || '',
     emailFrom:     row.email_from      || process.env.EMAIL_FROM              || '',
-    driveFolderId: row.drive_folder_id || process.env.GOOGLE_DRIVE_FOLDER_ID  || '',
+    automationSenderName: row.automation_sender_name || process.env.AUTOMATION_SENDER_NAME || 'VetCare ERP',
+    backupR2Prefix: row.backup_r2_prefix || process.env.BACKUP_R2_PREFIX || 'backups',
+    backupRetentionDays: Number(row.backup_retention_days ?? process.env.BACKUP_RETENTION_DAYS ?? 30),
+    backupEnabled: row.backup_enabled !== false,
+    backupTime: row.backup_time ? String(row.backup_time).slice(0, 5) : '02:30',
 });
 
 router.get('/config', authenticateToken, async (req, res) => {
@@ -184,15 +189,17 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
         const {
             nombreEmpresa, rtn, direccion, telefono, correo, cai,
             rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal, logoBase64,
-            adminEmail, emailFrom, driveFolderId,
+            adminEmail, emailFrom, automationSenderName, backupR2Prefix,
+            backupRetentionDays, backupEnabled, backupTime,
         } = req.body;
         await pool.query(`
             INSERT INTO configuracion (
                 tenant_id, nombreempresa, rtn, direccion, telefono, correo, cai,
                 rangoinicial, rangofinal, fechalimite, isv, mensajefinal, logo_base64,
-                admin_email, email_from, drive_folder_id
+                admin_email, email_from, automation_sender_name, backup_r2_prefix,
+                backup_retention_days, backup_enabled, backup_time
             )
-            VALUES ($16, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            VALUES ($19, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NULLIF($18, '')::time)
             ON CONFLICT (tenant_id) DO UPDATE SET
                 nombreempresa = EXCLUDED.nombreempresa,
                 rtn           = EXCLUDED.rtn,
@@ -208,16 +215,90 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
                 logo_base64   = EXCLUDED.logo_base64,
                 admin_email   = EXCLUDED.admin_email,
                 email_from    = EXCLUDED.email_from,
-                drive_folder_id = EXCLUDED.drive_folder_id
+                automation_sender_name = EXCLUDED.automation_sender_name,
+                backup_r2_prefix = EXCLUDED.backup_r2_prefix,
+                backup_retention_days = EXCLUDED.backup_retention_days,
+                backup_enabled = EXCLUDED.backup_enabled,
+                backup_time = EXCLUDED.backup_time
         `, [
             nombreEmpresa, rtn, direccion, telefono, correo, cai,
             rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal, logoBase64 || null,
-            adminEmail || null, emailFrom || null, driveFolderId || null,
+            adminEmail || null, emailFrom || null, automationSenderName || null,
+            backupR2Prefix || 'backups', Number(backupRetentionDays || 30),
+            backupEnabled !== false, backupTime || '02:30',
             req.tenantId,
         ]);
+        if (adminEmail) await automationService.ensureAdminRecipient(req.tenantId, adminEmail);
         invalidateSystemConfigCache();
         res.json({ message: 'Configuración actualizada' });
     } catch(e) { handleDbError(res, e); }
+});
+
+router.get('/admin/automation/events', authenticateToken, requireAdmin, async (req, res) => {
+    res.json(automationService.getEventCatalog());
+});
+
+router.get('/admin/automation/recipients', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { adminEmail } = await getSystemConfig(req.tenantId);
+        if (adminEmail) await automationService.ensureAdminRecipient(req.tenantId, adminEmail);
+        res.json(await automationService.listRecipients(req.tenantId));
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.post('/admin/automation/recipients', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const recipient = await automationService.upsertRecipient(req.tenantId, req.body || {});
+        res.status(201).json(recipient);
+    } catch (e) {
+        if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+        handleDbError(res, e);
+    }
+});
+
+router.put('/admin/automation/recipients/:id/events', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await automationService.setRecipientEvents(req.tenantId, Number(req.params.id), req.body?.events || []);
+        res.json({ message: 'Preferencias actualizadas' });
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.delete('/admin/automation/recipients/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await automationService.deleteRecipient(req.tenantId, Number(req.params.id));
+        res.json({ message: 'Destinatario eliminado' });
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.get('/admin/automation/backups', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        res.json(await automationService.listBackupJobs(req.tenantId));
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.post('/admin/automation/backup-now', authenticateToken, requireAdmin, async (req, res) => {
+    let jobId = null;
+    try {
+        const started = await pool.query(`
+            INSERT INTO backup_jobs (tenant_id, scope, provider, estado, started_at)
+            VALUES ($1, 'all_tenants', 'cloudflare_r2', 'Ejecutando', NOW())
+            RETURNING id
+        `, [req.tenantId]);
+        jobId = started.rows[0].id;
+        const { backupDatabaseToR2 } = require('../services/r2BackupService');
+        const result = await backupDatabaseToR2({ tenantId: req.tenantId, tenantSlug: 'all-tenants', scope: 'all_tenants' });
+        await pool.query(`
+            UPDATE backup_jobs
+            SET estado = 'Completado', object_key = $1, size_bytes = $2, finished_at = NOW()
+            WHERE id = $3
+        `, [result.objectKey, result.size, jobId]);
+        res.json({ message: 'Backup completado en Cloudflare R2', data: result });
+    } catch (e) {
+        if (jobId) {
+            await pool.query(`UPDATE backup_jobs SET estado = 'Error', error = $1, finished_at = NOW() WHERE id = $2`, [e.message, jobId]).catch(() => {});
+        }
+        handleDbError(res, e);
+    }
 });
 
 // --- PANEL DE CONTROL DE CAJAS ---

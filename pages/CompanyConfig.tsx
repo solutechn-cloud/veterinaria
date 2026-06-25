@@ -1,8 +1,8 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { ConfigService, AIService, AIQuotaStatus } from '../services/api';
+import { ConfigService, AIService, AIQuotaStatus, AutomationService, AutomationEvent, AutomationRecipient, BackupJob } from '../services/api';
 import { EmpresaConfig } from '../types';
-import { Settings, Save, Building2, FileText, AlertCircle, ImageIcon, X, Camera, CheckCircle2, ShieldAlert, Bell, Cloud, Palette, Sparkles, RefreshCw } from 'lucide-react';
+import { Settings, Save, Building2, FileText, AlertCircle, ImageIcon, X, Camera, CheckCircle2, ShieldAlert, Bell, Cloud, Palette, Sparkles, RefreshCw, Mail, Users, Clock, DatabaseBackup, Plus, Trash2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useCameraPermission } from '../hooks/useCameraPermission';
 import Swal from 'sweetalert2';
@@ -17,16 +17,10 @@ const CompanyConfig: React.FC = () => {
     setCamRequesting(true);
     const ok = await requestPermission();
     setCamRequesting(false);
-    if (ok) Swal.fire({ title: 'Cámara autorizada', text: 'El escáner ya no volverá a pedir permiso.', icon: 'success', timer: 2000, showConfirmButton: false });
-    else    Swal.fire({ title: 'Permiso denegado', text: 'Ve a configuración del navegador y permite el acceso a la cámara para este sitio.', icon: 'warning' });
+    if (ok) Swal.fire({ title: 'CÃ¡mara autorizada', text: 'El escÃ¡ner ya no volverÃ¡ a pedir permiso.', icon: 'success', timer: 2000, showConfirmButton: false });
+    else    Swal.fire({ title: 'Permiso denegado', text: 'Ve a configuraciÃ³n del navegador y permite el acceso a la cÃ¡mara para este sitio.', icon: 'warning' });
   };
-  const [config, setConfig] = useState<EmpresaConfig & {
-    adminEmail?: string;
-    emailFrom?: string;
-    saldoTigoUmbral?: number;
-    saldoClaroUmbral?: number;
-    driveFolderId?: string;
-  }>({
+  const [config, setConfig] = useState<EmpresaConfig>({
     nombreEmpresa: '',
     rtn: '',
     direccion: '',
@@ -40,18 +34,95 @@ const CompanyConfig: React.FC = () => {
     mensajeFinal: 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
     adminEmail: '',
     emailFrom: '',
-    saldoTigoUmbral: 500,
-    saldoClaroUmbral: 500,
-    driveFolderId: '',
+    automationSenderName: 'VetCare ERP',
+    backupR2Prefix: 'backups',
+    backupRetentionDays: 30,
+    backupEnabled: true,
+    backupTime: '02:30',
   });
   const [loading, setLoading] = useState(false);
   const [quota, setQuota] = useState<AIQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
+  const [automationEvents, setAutomationEvents] = useState<AutomationEvent[]>([]);
+  const [recipients, setRecipients] = useState<AutomationRecipient[]>([]);
+  const [backupJobs, setBackupJobs] = useState<BackupJob[]>([]);
+  const [newRecipient, setNewRecipient] = useState({ nombre: '', email: '', tipo: 'persona' as 'persona' | 'grupo' });
+  const [automationLoading, setAutomationLoading] = useState(false);
 
   useEffect(() => {
     loadConfig();
     loadQuota();
+    loadAutomation();
   }, []);
+
+  const loadAutomation = async () => {
+    setAutomationLoading(true);
+    try {
+      const [events, people, backups] = await Promise.all([
+        AutomationService.getEvents(),
+        AutomationService.getRecipients(),
+        AutomationService.getBackups(),
+      ]);
+      setAutomationEvents(events);
+      setRecipients(people);
+      setBackupJobs(backups);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  const addRecipient = async () => {
+    if (!newRecipient.nombre.trim() || !newRecipient.email.trim()) {
+      Swal.fire('Datos incompletos', 'Agrega nombre y correo del destinatario.', 'warning');
+      return;
+    }
+    try {
+      await AutomationService.createRecipient({
+        ...newRecipient,
+        activo: true,
+        events: automationEvents.map(e => ({ eventKey: e.key, enabled: ['backup_error', 'daily_report'].includes(e.key), scheduledTime: e.recommendedTime })),
+      } as any);
+      setNewRecipient({ nombre: '', email: '', tipo: 'persona' });
+      await loadAutomation();
+    } catch (error: any) {
+      Swal.fire('Error', error.message, 'error');
+    }
+  };
+
+  const toggleRecipientEvent = async (recipient: AutomationRecipient, eventKey: string, enabled: boolean) => {
+    const events = automationEvents.map(event => {
+      const current = recipient.events.find(e => e.eventKey === event.key);
+      return {
+        eventKey: event.key,
+        enabled: event.key === eventKey ? enabled : current?.enabled ?? false,
+        scheduledTime: current?.scheduledTime || event.recommendedTime,
+      };
+    });
+    await AutomationService.updateRecipientEvents(recipient.id, events);
+    await loadAutomation();
+  };
+
+  const deleteRecipient = async (id: number) => {
+    const ok = await Swal.fire({ title: 'Eliminar destinatario', text: 'Dejara de recibir notificaciones automaticas.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar' });
+    if (!ok.isConfirmed) return;
+    await AutomationService.deleteRecipient(id);
+    await loadAutomation();
+  };
+
+  const runBackupNow = async () => {
+    try {
+      setAutomationLoading(true);
+      await AutomationService.runBackupNow();
+      await loadAutomation();
+      Swal.fire('Backup completado', 'El respaldo fue enviado a Cloudflare R2.', 'success');
+    } catch (error: any) {
+      Swal.fire('Error en backup', error.message, 'error');
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
 
   const loadQuota = async () => {
     setQuotaLoading(true);
@@ -59,7 +130,7 @@ const CompanyConfig: React.FC = () => {
       const data = await AIService.getQuotaStatus();
       setQuota(data);
     } catch {
-      // Quota not available (plan sin IA, o tabla aún no migrada)
+      // Quota not available (plan sin IA, o tabla aÃºn no migrada)
     } finally {
       setQuotaLoading(false);
     }
@@ -93,7 +164,7 @@ const CompanyConfig: React.FC = () => {
       const isWEBP = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
                   && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
       if (!isPNG && !isJPEG && !isWEBP) {
-        Swal.fire('Formato no permitido', 'Solo se aceptan imágenes PNG, JPEG o WebP.', 'warning');
+        Swal.fire('Formato no permitido', 'Solo se aceptan imÃ¡genes PNG, JPEG o WebP.', 'warning');
         e.target.value = '';
         return;
       }
@@ -110,7 +181,7 @@ const CompanyConfig: React.FC = () => {
       await ConfigService.update(config);
       Swal.fire({
         icon: 'success',
-        title: 'Configuración Guardada',
+        title: 'ConfiguraciÃ³n Guardada',
         text: 'Los datos de la empresa han sido actualizados.',
         timer: 1500,
         showConfirmButton: false
@@ -120,7 +191,7 @@ const CompanyConfig: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Cargando configuración...</div>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Cargando configuraciÃ³n...</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -129,8 +200,8 @@ const CompanyConfig: React.FC = () => {
             <Settings className="text-white" size={24}/>
         </div>
         <div>
-            <h2 className="text-2xl font-bold text-slate-800">Configuración de Empresa</h2>
-            <p className="text-slate-500 text-sm">Gestiona la información legal y parámetros del SAR.</p>
+            <h2 className="text-2xl font-bold text-slate-800">ConfiguraciÃ³n de Empresa</h2>
+            <p className="text-slate-500 text-sm">Gestiona la informaciÃ³n legal y parÃ¡metros del SAR.</p>
         </div>
       </div>
 
@@ -152,17 +223,17 @@ const CompanyConfig: React.FC = () => {
                         value={config.rtn} onChange={e => setConfig({...config, rtn: e.target.value})} placeholder="00000000000000" />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Teléfono</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">TelÃ©fono</label>
                     <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.telefono} onChange={e => setConfig({...config, telefono: e.target.value})} />
                 </div>
                 <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Dirección</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">DirecciÃ³n</label>
                     <textarea required rows={2} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.direccion} onChange={e => setConfig({...config, direccion: e.target.value})} />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo Electrónico</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo ElectrÃ³nico</label>
                     <input type="email" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.correo} onChange={e => setConfig({...config, correo: e.target.value})} />
                 </div>
@@ -174,7 +245,7 @@ const CompanyConfig: React.FC = () => {
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
                 <ImageIcon className="text-indigo-600"/> Logo de la Empresa
             </h3>
-            <p className="text-xs text-slate-500 mb-4">El logo se usará automáticamente en las facturas y documentos del diseñador. Tamaño máximo: 500 KB. Formatos: PNG, JPG, WebP.</p>
+            <p className="text-xs text-slate-500 mb-4">El logo se usarÃ¡ automÃ¡ticamente en las facturas y documentos del diseÃ±ador. TamaÃ±o mÃ¡ximo: 500 KB. Formatos: PNG, JPG, WebP.</p>
             <div className="flex items-start gap-6">
                 {/* Preview */}
                 <div className="w-40 h-24 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center bg-slate-50 shrink-0 overflow-hidden">
@@ -206,17 +277,17 @@ const CompanyConfig: React.FC = () => {
         {/* SECCION 2: DATOS SAR */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <FileText className="text-indigo-600"/> Normativa de Facturación (SAR)
+                <FileText className="text-indigo-600"/> Normativa de FacturaciÃ³n (SAR)
             </h3>
             
             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-800 text-sm mb-4 flex gap-2">
                 <AlertCircle size={18} className="shrink-0"/>
-                Estos datos aparecerán impresos en la factura. Asegúrate que coincidan con tu resolución vigente.
+                Estos datos aparecerÃ¡n impresos en la factura. AsegÃºrate que coincidan con tu resoluciÃ³n vigente.
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de Autorización)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de AutorizaciÃ³n)</label>
                     <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
                         value={config.cai} onChange={e => setConfig({...config, cai: e.target.value})} placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX" />
                 </div>
@@ -231,7 +302,7 @@ const CompanyConfig: React.FC = () => {
                         value={config.rangoFinal} onChange={e => setConfig({...config, rangoFinal: e.target.value})} placeholder="000-001-01-00002000" />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha Límite de Emisión</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha LÃ­mite de EmisiÃ³n</label>
                     <input type="date" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.fechaLimite} onChange={e => setConfig({...config, fechaLimite: e.target.value})} />
                 </div>
@@ -248,18 +319,18 @@ const CompanyConfig: React.FC = () => {
             </div>
         </div>
 
-        {/* PERMISOS DE CÁMARA */}
+        {/* PERMISOS DE CÃMARA */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <Camera className="text-indigo-600"/> Escáner de Cámara
+                <Camera className="text-indigo-600"/> EscÃ¡ner de CÃ¡mara
             </h3>
             <div className="flex items-center gap-4">
                 {camState === 'granted' ? (
                     <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex-1">
                         <CheckCircle2 size={24} className="text-emerald-600 shrink-0"/>
                         <div>
-                            <p className="font-bold text-emerald-700 text-sm">Cámara autorizada</p>
-                            <p className="text-xs text-emerald-600 mt-0.5">El escáner funciona sin pedir permiso cada vez.</p>
+                            <p className="font-bold text-emerald-700 text-sm">CÃ¡mara autorizada</p>
+                            <p className="text-xs text-emerald-600 mt-0.5">El escÃ¡ner funciona sin pedir permiso cada vez.</p>
                         </div>
                     </div>
                 ) : camState === 'denied' ? (
@@ -267,7 +338,7 @@ const CompanyConfig: React.FC = () => {
                         <ShieldAlert size={24} className="text-red-500 shrink-0"/>
                         <div>
                             <p className="font-bold text-red-700 text-sm">Acceso bloqueado</p>
-                            <p className="text-xs text-red-600 mt-0.5">Ve a Configuración del navegador → Permisos del sitio → Cámara y permite este sitio manualmente.</p>
+                            <p className="text-xs text-red-600 mt-0.5">Ve a ConfiguraciÃ³n del navegador â†’ Permisos del sitio â†’ CÃ¡mara y permite este sitio manualmente.</p>
                         </div>
                     </div>
                 ) : (
@@ -276,7 +347,7 @@ const CompanyConfig: React.FC = () => {
                             <Camera size={20} className="text-amber-600 shrink-0"/>
                             <div className="min-w-0">
                                 <p className="font-bold text-amber-700 text-sm">Permiso no configurado</p>
-                                <p className="text-xs text-amber-600 mt-0.5">Actívalo una vez y el escáner funcionará siempre.</p>
+                                <p className="text-xs text-amber-600 mt-0.5">ActÃ­valo una vez y el escÃ¡ner funcionarÃ¡ siempre.</p>
                             </div>
                         </div>
                         <button
@@ -285,7 +356,7 @@ const CompanyConfig: React.FC = () => {
                             disabled={camRequesting}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-60 shrink-0"
                         >
-                            <Camera size={16}/> {camRequesting ? 'Solicitando...' : 'Activar Cámara'}
+                            <Camera size={16}/> {camRequesting ? 'Solicitando...' : 'Activar CÃ¡mara'}
                         </button>
                     </div>
                 )}
@@ -294,7 +365,7 @@ const CompanyConfig: React.FC = () => {
                 <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex gap-2 items-start">
                     <AlertCircle size={15} className="text-slate-400 shrink-0 mt-0.5"/>
                     <p className="text-[11px] text-slate-500">
-                        <strong>Nota:</strong> La app está en <strong>HTTP</strong>. Para que el permiso sea permanente, accede por <strong>HTTPS</strong> o instala la app (PWA). En HTTP, algunos navegadores piden permiso en cada sesión.
+                        <strong>Nota:</strong> La app estÃ¡ en <strong>HTTP</strong>. Para que el permiso sea permanente, accede por <strong>HTTPS</strong> o instala la app (PWA). En HTTP, algunos navegadores piden permiso en cada sesiÃ³n.
                     </p>
                 </div>
             )}
@@ -302,62 +373,150 @@ const CompanyConfig: React.FC = () => {
 
         {/* SECCION AUTOMATIZACIONES */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-            <h3 className="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <Bell className="text-purple-600"/> Automatizaciones y Notificaciones
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">Configura las alertas automáticas, reportes por correo y backup a Google Drive sin necesidad de ir al servidor.</p>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3 mb-4">
+                <div>
+                    <h3 className="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2">
+                        <Bell className="text-purple-600"/> Centro de Automatizaciones
+                    </h3>
+                    <p className="text-xs text-slate-500">Correos profesionales por Resend, destinatarios por evento y backups multitenant en Cloudflare R2.</p>
+                </div>
+                <button type="button" onClick={loadAutomation} disabled={automationLoading} className="p-2 rounded-xl bg-slate-100 text-slate-500 hover:text-purple-600">
+                    <RefreshCw size={16} className={automationLoading ? 'animate-spin' : ''}/>
+                </button>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo de Administrador <span className="text-purple-500">(recibe reportes y alertas)</span></label>
-                    <input type="email" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
-                        placeholder="admin@tuempresa.com"
-                        value={config.adminEmail ?? ''}
-                        onChange={e => setConfig({...config, adminEmail: e.target.value})} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo principal</label>
+                            <input type="email" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                                placeholder="admin@clinica.com"
+                                value={config.adminEmail ?? ''}
+                                onChange={e => setConfig({...config, adminEmail: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre del remitente</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                                placeholder="VetCare Tegucigalpa"
+                                value={config.automationSenderName ?? ''}
+                                onChange={e => setConfig({...config, automationSenderName: e.target.value})} />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">From verificado en Resend</label>
+                            <input type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                                placeholder='VetCare ERP <noreply@tudominio.com>'
+                                value={config.emailFrom ?? ''}
+                                onChange={e => setConfig({...config, emailFrom: e.target.value})} />
+                            <p className="text-xs text-slate-400 mt-1">Los correos muestran el nombre del tenant, pero salen desde el dominio verificado del sistema.</p>
+                        </div>
+                    </div>
+
+                    <div className="border border-teal-100 bg-teal-50/50 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <h4 className="font-bold text-sm text-slate-700 flex items-center gap-2"><DatabaseBackup size={16} className="text-teal-600"/> Backups Cloudflare R2</h4>
+                            <button type="button" onClick={runBackupNow} disabled={automationLoading} className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+                                Ejecutar ahora
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <label className="flex items-center gap-2 bg-white border border-teal-100 rounded-xl px-3 py-3 text-sm font-semibold text-slate-700">
+                                <input type="checkbox" checked={config.backupEnabled !== false} onChange={e => setConfig({...config, backupEnabled: e.target.checked})}/>
+                                Activo
+                            </label>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Hora</label>
+                                <input type="time" className="w-full p-3 border border-teal-100 rounded-xl outline-none" value={config.backupTime ?? '02:30'} onChange={e => setConfig({...config, backupTime: e.target.value})}/>
+                            </div>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Retencion dias</label>
+                                <input type="number" min={1} className="w-full p-3 border border-teal-100 rounded-xl outline-none" value={config.backupRetentionDays ?? 30} onChange={e => setConfig({...config, backupRetentionDays: Number(e.target.value)})}/>
+                            </div>
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Prefijo R2</label>
+                                <input className="w-full p-3 border border-teal-100 rounded-xl outline-none font-mono text-sm" value={config.backupR2Prefix ?? 'backups'} onChange={e => setConfig({...config, backupR2Prefix: e.target.value})}/>
+                            </div>
+                        </div>
+                        <p className="text-xs text-teal-700 mt-3">Credenciales R2: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME se configuran solo en Render.</p>
+                    </div>
                 </div>
-                <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Remitente de correos <span className="text-slate-400">(from)</span></label>
-                    <input type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
-                        placeholder='SmartCloud <noreply@erpsmartcloud.com>'
-                        value={config.emailFrom ?? ''}
-                        onChange={e => setConfig({...config, emailFrom: e.target.value})} />
-                    <p className="text-xs text-slate-400 mt-1">Formato: <code>Nombre Empresa &lt;correo@dominio.com&gt;</code></p>
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Umbral saldo TIGO (L.)</label>
-                    <input type="number" min={0} className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none"
-                        placeholder="500"
-                        value={config.saldoTigoUmbral ?? 500}
-                        onChange={e => setConfig({...config, saldoTigoUmbral: Number(e.target.value)})} />
-                    <p className="text-xs text-slate-400 mt-1">Alerta cuando el saldo cae por debajo de este valor</p>
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Umbral saldo CLARO (L.)</label>
-                    <input type="number" min={0} className="w-full p-3 border border-amber-200 bg-amber-50 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none"
-                        placeholder="500"
-                        value={config.saldoClaroUmbral ?? 500}
-                        onChange={e => setConfig({...config, saldoClaroUmbral: Number(e.target.value)})} />
-                    <p className="text-xs text-slate-400 mt-1">Alerta cuando el saldo cae por debajo de este valor</p>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2 mb-3"><Clock size={15}/> Ultimos backups</h4>
+                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                        {backupJobs.length === 0 ? <p className="text-xs text-slate-400">Sin respaldos registrados.</p> : backupJobs.slice(0, 5).map(job => (
+                            <div key={job.id} className="bg-white border border-slate-100 rounded-xl p-3">
+                                <div className="flex justify-between gap-2 text-xs">
+                                    <span className={`font-bold ${job.estado === 'Completado' ? 'text-emerald-600' : job.estado === 'Error' ? 'text-red-600' : 'text-amber-600'}`}>{job.estado}</span>
+                                    <span className="text-slate-400">{job.created_at?.slice(0, 10)}</span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1 truncate">{job.object_key || job.error || 'Procesando...'}</p>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-100">
-                <h4 className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2">
-                    <Cloud size={16} className="text-teal-600"/> Google Drive Backup
-                </h4>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ID de carpeta en Google Drive</label>
-                    <input type="text" className="w-full p-3 border border-teal-200 bg-teal-50 rounded-xl focus:ring-2 focus:ring-teal-400 outline-none font-mono text-sm"
-                        placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs"
-                        value={config.driveFolderId ?? ''}
-                        onChange={e => setConfig({...config, driveFolderId: e.target.value})} />
-                    <p className="text-xs text-slate-400 mt-1">Copia el ID de la URL de tu carpeta en Google Drive: drive.google.com/drive/folders/<strong>ID_AQUI</strong></p>
+            <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-2xl p-4">
+                    <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2 mb-3"><Users size={16}/> Directorio de notificaciones</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mb-3">
+                        <input className="md:col-span-2 p-3 border border-slate-200 rounded-xl text-sm outline-none" placeholder="Nombre o grupo" value={newRecipient.nombre} onChange={e => setNewRecipient({...newRecipient, nombre: e.target.value})}/>
+                        <input className="md:col-span-3 p-3 border border-slate-200 rounded-xl text-sm outline-none" placeholder="correo@clinica.com" value={newRecipient.email} onChange={e => setNewRecipient({...newRecipient, email: e.target.value})}/>
+                        <select className="p-3 border border-slate-200 rounded-xl text-sm outline-none" value={newRecipient.tipo} onChange={e => setNewRecipient({...newRecipient, tipo: e.target.value as any})}>
+                            <option value="persona">Persona</option>
+                            <option value="grupo">Grupo</option>
+                        </select>
+                        <button type="button" onClick={addRecipient} className="bg-purple-600 text-white rounded-xl flex items-center justify-center gap-1 text-sm font-bold"><Plus size={15}/> Agregar</button>
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                        {recipients.map(recipient => (
+                            <div key={recipient.id} className="border border-slate-100 rounded-xl p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-sm text-slate-800 truncate">{recipient.nombre}</p>
+                                        <p className="text-xs text-slate-500 truncate">{recipient.email}</p>
+                                    </div>
+                                    <button type="button" onClick={() => deleteRecipient(recipient.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={15}/></button>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-3">
+                                    {automationEvents.map(event => {
+                                        const active = recipient.events.some(e => e.eventKey === event.key && e.enabled);
+                                        return (
+                                            <button key={event.key} type="button" onClick={() => toggleRecipientEvent(recipient, event.key, !active)}
+                                                className={`px-2 py-1 rounded-full text-[11px] font-bold border ${active ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                                {event.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl p-4">
+                    <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2 mb-3"><Mail size={16}/> Catalogo profesional de alertas</h4>
+                    <div className="grid grid-cols-1 gap-2 max-h-96 overflow-auto pr-1">
+                        {automationEvents.map(event => (
+                            <div key={event.key} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                <div className="flex justify-between gap-3">
+                                    <div>
+                                        <p className="font-bold text-sm text-slate-800">{event.label}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">{event.description}</p>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-purple-700 bg-purple-100 rounded-full px-2 py-1 h-fit">{event.category}</span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mt-2">Hora sugerida: {event.recommendedTime}</p>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 
             <div className="mt-4 bg-purple-50 border border-purple-100 rounded-xl p-3 text-xs text-purple-700 flex gap-2">
                 <AlertCircle size={15} className="shrink-0 mt-0.5"/>
-                <span>Las claves de API (Resend, Anthropic, Google Service Account) deben configurarse en el servidor por seguridad. Solo los ajustes operativos se gestionan aquí.</span>
+                <span>Las claves de API (Resend, Anthropic y Cloudflare R2) se mantienen en Render. Aqui solo se gestionan destinatarios, horarios y reglas operativas.</span>
             </div>
         </div>
 
@@ -452,15 +611,15 @@ const CompanyConfig: React.FC = () => {
                   <AlertCircle size={15} className="shrink-0 mt-0.5"/>
                   <span>
                     {quota.estado === 'agotado'
-                      ? 'Has agotado tu cuota de IA para este mes. Las funciones de IA no estarán disponibles hasta el próximo período. Contacta a soporte para ampliar tu plan.'
-                      : 'Estás cerca del límite mensual de IA. Considera optimizar el uso o contactar a soporte para ampliar tu plan.'}
+                      ? 'Has agotado tu cuota de IA para este mes. Las funciones de IA no estarÃ¡n disponibles hasta el prÃ³ximo perÃ­odo. Contacta a soporte para ampliar tu plan.'
+                      : 'EstÃ¡s cerca del lÃ­mite mensual de IA. Considera optimizar el uso o contactar a soporte para ampliar tu plan.'}
                   </span>
                 </div>
               )}
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              {quotaLoading ? 'Cargando estado de cuota...' : 'Información de cuota no disponible.'}
+              {quotaLoading ? 'Cargando estado de cuota...' : 'InformaciÃ³n de cuota no disponible.'}
             </p>
           )}
         </div>
@@ -482,7 +641,7 @@ const CompanyConfig: React.FC = () => {
         <div className="space-y-6">
           {/* Nombre de la app */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre que aparece en el menú lateral</label>
+            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre que aparece en el menÃº lateral</label>
             <input
               className="w-full max-w-xs p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
               value={theme.appName}
@@ -538,7 +697,7 @@ const CompanyConfig: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Color Sidebar (fondo del menú)</label>
+              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Color Sidebar (fondo del menÃº)</label>
               <div className="flex items-center gap-3">
                 <input
                   type="color"

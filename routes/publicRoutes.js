@@ -95,7 +95,7 @@ const PLANS = [
             'Usuarios ilimitados',
             'Medicamentos ilimitados',
             'API de integración',
-            'Respaldo automático en Drive',
+            'Respaldo automatico en Cloudflare R2',
             'Soporte 24/7 con SLA garantizado',
             'Onboarding personalizado',
         ],
