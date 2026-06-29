@@ -13,6 +13,22 @@ function httpError(statusCode, message, code) {
 }
 
 // --- CLIENTES ---
+function normalizePhone(value) {
+    return String(value || '').replace(/\D/g, '');
+}
+
+function buildTutorIdentity({ identidad, telefono, tipo_identificacion, tenantId }) {
+    const doc = String(identidad || '').trim();
+    if (tipo_identificacion !== 'telefono' && doc) return doc;
+    const phone = normalizePhone(telefono);
+    if (!phone) {
+        const err = httpError(400, 'Debe ingresar numero de identidad o telefono movil.', 'CLIENT_ID_REQUIRED');
+        throw err;
+    }
+    const tenantPrefix = String(tenantId || '0000').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4) || '0000';
+    return `TEL_${tenantPrefix}_${phone}`.slice(0, 20);
+}
+
 router.get('/clientes', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM clientes WHERE tenant_id = $1 ORDER BY nombre ASC', [req.tenantId]);
@@ -22,10 +38,29 @@ router.get('/clientes', authenticateToken, async (req, res) => {
 
 router.post('/clientes', authenticateToken, async (req, res) => {
     try {
-        const { identidad, nombre, apellido, direccion, telefono, correo } = req.body;
+        const {
+            nombre, apellido, direccion, telefono,
+            tipo_identificacion = 'identidad',
+            sin_correo = false,
+            ciudad_municipio, departamento,
+            contacto_autorizado_nombre, contacto_autorizado_telefono,
+            telefono_alternativo,
+        } = req.body;
+        const identidad = buildTutorIdentity({ ...req.body, tenantId: req.tenantId });
+        const correo = sin_correo ? null : (req.body.correo || null);
+        if (!nombre) return res.status(400).json({ error: 'nombre es requerido' });
         await pool.query(
-            'INSERT INTO clientes (identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion, tenant_id) VALUES ($1,$2,$3,$4,$5,$6, NOW(), $7)',
-            [identidad, nombre, apellido, direccion, telefono, correo, req.tenantId]
+            `INSERT INTO clientes (
+                identidad, nombre, apellido, direccion, telefono, correo, fechaCreacion, tenant_id,
+                tipo_identificacion, sin_correo, ciudad_municipio, departamento,
+                contacto_autorizado_nombre, contacto_autorizado_telefono, telefono_alternativo
+             ) VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [
+                identidad, nombre, apellido || '', direccion || null, telefono || null, correo, req.tenantId,
+                tipo_identificacion === 'telefono' ? 'telefono' : 'identidad',
+                Boolean(sin_correo), ciudad_municipio || null, departamento || null,
+                contacto_autorizado_nombre || null, contacto_autorizado_telefono || null, telefono_alternativo || null,
+            ]
         );
         if (correo) {
             emailService.sendWelcomeEmail(correo, nombre, apellido).catch(err =>
@@ -33,15 +68,35 @@ router.post('/clientes', authenticateToken, async (req, res) => {
             );
         }
         res.status(201).json({ message: 'OK' });
-    } catch(e) { handleDbError(res, e); }
+    } catch(e) {
+        if (e.statusCode) return res.status(e.statusCode).json({ error: e.message, code: e.code });
+        handleDbError(res, e);
+    }
 });
 
 router.put('/clientes/:id', authenticateToken, async (req, res) => {
     try {
-        const { nombre, apellido, direccion, telefono, correo } = req.body;
+        const {
+            nombre, apellido, direccion, telefono,
+            sin_correo = false,
+            ciudad_municipio, departamento,
+            contacto_autorizado_nombre, contacto_autorizado_telefono,
+            telefono_alternativo,
+        } = req.body;
+        const correo = sin_correo ? null : (req.body.correo || null);
         await pool.query(
-            'UPDATE clientes SET nombre=$1, apellido=$2, direccion=$3, telefono=$4, correo=$5 WHERE identidad=$6 AND tenant_id=$7',
-            [nombre, apellido, direccion, telefono, correo, req.params.id, req.tenantId]
+            `UPDATE clientes SET
+                nombre=$1, apellido=$2, direccion=$3, telefono=$4, correo=$5,
+                sin_correo=$6, ciudad_municipio=$7, departamento=$8,
+                contacto_autorizado_nombre=$9, contacto_autorizado_telefono=$10,
+                telefono_alternativo=$11
+             WHERE identidad=$12 AND tenant_id=$13`,
+            [
+                nombre, apellido || '', direccion || null, telefono || null, correo,
+                Boolean(sin_correo), ciudad_municipio || null, departamento || null,
+                contacto_autorizado_nombre || null, contacto_autorizado_telefono || null,
+                telefono_alternativo || null, req.params.id, req.tenantId,
+            ]
         );
         res.json({ message: 'OK' });
     } catch(e) { handleDbError(res, e); }

@@ -105,6 +105,13 @@ export interface Cliente {
   direccion: string;
   telefono: string;
   correo?: string;
+  tipo_identificacion?: 'identidad' | 'telefono';
+  sin_correo?: boolean;
+  ciudad_municipio?: string;
+  departamento?: string;
+  contacto_autorizado_nombre?: string;
+  contacto_autorizado_telefono?: string;
+  telefono_alternativo?: string;
   fechaCreacion?: string;
 }
 
