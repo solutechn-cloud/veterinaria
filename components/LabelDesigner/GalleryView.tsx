@@ -45,7 +45,7 @@ export default function GalleryView({
                         <p className="text-slate-500">Etiquetas y Documentos</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={onImportTemplate}/>
+                        <input ref={importInputRef} type="file" accept=".json,.html,text/html,application/json" className="hidden" onChange={onImportTemplate}/>
                         <button onClick={() => importInputRef.current?.click()} className="border border-slate-300 hover:border-indigo-400 bg-white text-slate-600 hover:text-indigo-600 px-4 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all">
                             <Upload size={16}/> Importar
                         </button>

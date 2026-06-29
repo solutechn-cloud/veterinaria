@@ -3,6 +3,7 @@ import { PrintDataContext, resolveContent } from './templateRendererUtils';
 import { MediaCache, preRenderMedia } from './templateRendererMedia';
 import { GrowthInfo, computeInvoiceTableGrowth, computeReceiptItemsGrowth, computeSummaryBoxGrowth, computeTextGrowth } from './templateRendererGrowth';
 import { elementToHTML } from './templateElementRenderer';
+import { embedTemplatePackage } from './labelTemplatePackage';
 
 export type { PrintDataContext };
 export { resolveContent };
@@ -399,7 +400,7 @@ export async function downloadAsPDF(
 
 export async function downloadHTML(template: LabelTemplate, ctx: PrintDataContext = {}): Promise<void> {
   const media = await preRenderMedia(template, ctx);
-  const html  = buildHTML(template, ctx, media);
+  const html  = embedTemplatePackage(buildHTML(template, ctx, media), template);
   const blob  = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url   = URL.createObjectURL(blob);
   const a     = document.createElement('a');

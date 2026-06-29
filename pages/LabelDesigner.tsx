@@ -19,6 +19,7 @@ import VarModal          from '../components/LabelDesigner/VarModal';
 import ShapeModal        from '../components/LabelDesigner/ShapeModal';
 import ShortcutsModal    from '../components/LabelDesigner/ShortcutsModal';
 import ContextMenu       from '../components/LabelDesigner/ContextMenu';
+import { importTemplateFromText } from '../services/labelTemplatePackage';
 
 const LabelDesigner: React.FC = () => {
   const navigate = useNavigate();
@@ -171,17 +172,25 @@ const LabelDesigner: React.FC = () => {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(reader.result as string) as LabelTemplate;
-        if (!parsed.elements || !parsed.width || !parsed.height) { Swal.fire('Error', 'El archivo no es una plantilla válida', 'error'); return; }
-        loadTemplate({ ...parsed, id: '', name: `Importado: ${parsed.name}` });
+        const imported = importTemplateFromText(String(reader.result || ''), file.name);
+        loadTemplate(imported);
         setView('DESIGNER');
-        Swal.fire({ icon: 'success', title: 'Plantilla importada', toast: true, position: 'bottom-end', timer: 2000, showConfirmButton: false });
-      } catch { Swal.fire('Error', 'No se pudo leer el archivo JSON', 'error'); }
+        Swal.fire({
+          icon: 'success',
+          title: 'Plantilla importada',
+          text: file.name.toLowerCase().endsWith('.html') ? 'El HTML incluia el diseno editable.' : undefined,
+          toast: true,
+          position: 'bottom-end',
+          timer: 2200,
+          showConfirmButton: false,
+        });
+      } catch (err) {
+        Swal.fire('No se pudo importar', err instanceof Error ? err.message : 'El archivo no es una plantilla valida.', 'error');
+      }
       e.target.value = '';
     };
     reader.readAsText(file);
   };
-
   const handleSave = async () => { const ok = await saveTemplate(); if (ok) loadSavedList(); };
 
   const handleSaveAs = async () => {
