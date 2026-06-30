@@ -90,13 +90,13 @@ router.post('/login', authLimiter, resolveTenantBySlug, async (req, res) => {
             const tenant = await getTenantBySlug(tenantSlug);
             if (tenant) {
                 if (tenant.estado === 'suspendido') {
-                    return res.status(403).json({ error: 'La cuenta de la farmacia está suspendida. Contacte al administrador.' });
+                    return res.status(403).json({ error: 'La cuenta de la clinica está suspendida. Contacte al administrador.' });
                 }
                 if (tenant.estado === 'cancelado') {
-                    return res.status(403).json({ error: 'La cuenta de la farmacia fue cancelada.' });
+                    return res.status(403).json({ error: 'La cuenta de la clinica fue cancelada.' });
                 }
                 if (tenant.fecha_vencimiento && new Date(tenant.fecha_vencimiento) < new Date()) {
-                    return res.status(403).json({ error: 'La suscripción de la farmacia ha vencido. Contacte al administrador.' });
+                    return res.status(403).json({ error: 'La suscripción de la clinica ha vencido. Contacte al administrador.' });
                 }
                 resolvedTenantId   = tenant.id;
                 resolvedTenantSlug = tenant.slug;

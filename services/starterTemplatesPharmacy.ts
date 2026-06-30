@@ -69,7 +69,7 @@ export const ETIQUETA_DISPENSACION: Omit<LabelTemplate, 'id'> = {
 };
 
 export const DESPACHO_TERMICO: Omit<LabelTemplate, 'id'> = {
-  name: 'Recibo Despacho Farmacia',
+  name: 'Recibo Despacho Veterinaria',
   type: 'DOCUMENT',
   category: 'INVOICE',
   dataSource: 'DISPENSACION',
@@ -81,7 +81,7 @@ export const DESPACHO_TERMICO: Omit<LabelTemplate, 'id'> = {
     el('dt_hbg',   'SHAPE',          0,    0,   8,   2.8, { shapeType: 'RECTANGLE',   fill: '#0f766e', stroke: 'transparent', strokeWidth: 0 }),
     el('dt_htri',  'SHAPE',          0,    0,   3.5, 2.8, { shapeType: 'TRIANGLE_TL', fill: '#14b8a6', stroke: 'transparent', strokeWidth: 0 }),
     el('dt_ch',    'COMPANY_HEADER', 3.3,  0,   4.7, 2.8, { fontSize: 8, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
-    el('dt_title', 'TEXT',           0.2,  1.0, 2.8, 1.0, { content: 'FARMACIA', fontSize: 11, fontWeight: '900', color: '#ffffff', textAlign: 'left', letterSpacing: 1 }),
+    el('dt_title', 'TEXT',           0.2,  1.0, 2.8, 1.0, { content: 'VETERINARIA', fontSize: 11, fontWeight: '900', color: '#ffffff', textAlign: 'left', letterSpacing: 1 }),
     el('dt_t1', 'TEXT', 0.2, 3.0,  7.6, 0.55, { content: 'Recibo: {{venta.codVenta}}', fontSize: 9 }),
     el('dt_t2', 'TEXT', 0.2, 3.6,  7.6, 0.55, { content: 'Fecha: {{venta.fecha}}', fontSize: 9 }),
     el('dt_t3', 'TEXT', 0.2, 4.2,  7.6, 0.55, { content: 'Paciente: {{paciente.nombre}}', fontSize: 8, fontWeight: 'bold' }),

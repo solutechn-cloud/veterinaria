@@ -23,7 +23,7 @@ import LabelDesigner from './pages/LabelDesigner';
 import CompanyConfig from './pages/CompanyConfig';
 import Accounting from './pages/Accounting';
 
-// Páginas nuevas de farmacia
+// Páginas nuevas de veterinaria
 import Medicamentos from './pages/Medicamentos';
 import Recetas from './pages/Recetas';
 import Sucursales from './pages/Sucursales';
@@ -119,7 +119,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
 
-          {/* Inventario Farmacéutico */}
+          {/* Inventario Clínico */}
           <Route path="/medicamentos" element={
             <ProtectedRoute requiredPermission="VER_INVENTARIO">
               <Layout><Medicamentos /></Layout>

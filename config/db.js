@@ -260,7 +260,7 @@ const ALLOWED_ID_COMBOS = new Set([
     'proveedores:codproveedor',
     // Ventas
     'ventas:codventa', 'detalleventa:coddetalleventa',
-    // Farmacia
+    // Veterinaria
     'medicamentos:codigo', 'recetas:codigo',
     'ordenes_compra:codigo', 'recepciones_compra:codigo',
     'transferencias_sucursal:codigo',

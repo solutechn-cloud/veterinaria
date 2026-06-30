@@ -97,7 +97,7 @@ const Providers: React.FC = () => {
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Truck className="text-indigo-600" /> Registro Proveedores
           </h2>
-          <p className="text-slate-500 text-sm">Gestiona tus proveedores de medicamentos y productos farmacéuticos</p>
+          <p className="text-slate-500 text-sm">Gestiona tus proveedores de medicamentos, insumos y productos veterinarios</p>
         </div>
         <button 
            onClick={openNewModal}

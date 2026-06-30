@@ -156,16 +156,16 @@ router.post('/verificar-interacciones', authenticateToken, withKey(PROCESS_INTER
         }
 
         if (medicamentosActuales.length === 0 && alergias.length === 0) {
-            return res.json({ interacciones: [], nivel_riesgo_global: 'bajo', mensaje_farmaceutico: 'Sin medicamentos actuales registrados para verificar.' });
+            return res.json({ interacciones: [], nivel_riesgo_global: 'bajo', mensaje_veterinario: 'Sin medicamentos actuales registrados para verificar.' });
         }
 
         const settings = await getProcessSettings(PROCESS_INTERACTIONS, req.tenantId);
-        const systemPrompt = `Eres un farmaceutico clinico experto en interacciones medicamentosas. Analiza si el medicamento nuevo puede interactuar con los actuales del paciente. Responde solo con el JSON especificado, en espanol.`;
-        const userPrompt = `Medicamento NUEVO: ${medicamento_nuevo}\nMedicamentos ACTUALES: ${medicamentosActuales.join(', ') || 'ninguno'}\nAlergias: ${alergias.join(', ') || 'ninguna'}\n\nDevuelve exactamente:\n{"interacciones":[{"medicamento_involucrado":"","descripcion":"","nivel_severidad":"leve|moderada|grave","recomendacion":""}],"nivel_riesgo_global":"bajo|moderado|alto","alerta_alergia":false,"descripcion_alergia":null,"mensaje_farmaceutico":""}`;
+        const systemPrompt = `Eres un veterinario clinico experto en interacciones medicamentosas. Analiza si el medicamento nuevo puede interactuar con los actuales del paciente. Responde solo con el JSON especificado, en espanol.`;
+        const userPrompt = `Medicamento NUEVO: ${medicamento_nuevo}\nMedicamentos ACTUALES: ${medicamentosActuales.join(', ') || 'ninguno'}\nAlergias: ${alergias.join(', ') || 'ninguna'}\n\nDevuelve exactamente:\n{"interacciones":[{"medicamento_involucrado":"","descripcion":"","nivel_severidad":"leve|moderada|grave","recomendacion":""}],"nivel_riesgo_global":"bajo|moderado|alto","alerta_alergia":false,"descripcion_alergia":null,"mensaje_veterinario":""}`;
         const { text } = await callProvider({ settings, systemPrompt, userPrompt, tenantId: req.tenantId });
         let parsed;
         try { parsed = JSON.parse(text); } catch { const m = text.match(/\{[\s\S]*\}/); parsed = m ? JSON.parse(m[0]) : null; }
-        res.json(parsed || { interacciones: [], nivel_riesgo_global: 'desconocido', mensaje_farmaceutico: text });
+        res.json(parsed || { interacciones: [], nivel_riesgo_global: 'desconocido', mensaje_veterinario: text });
     } catch (err) {
         console.error('AI verificar-interacciones error:', err.message);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Error interno' });
@@ -195,7 +195,7 @@ router.post('/analizar-cliente', authenticateToken, withKey(PROCESS_CLIENT_ANALY
         const categoriasCompra = comprasR.rows.slice(0, 20).map(c => c.medicamento || 'producto').reduce((acc, m) => { acc[m] = (acc[m] || 0) + 1; return acc; }, {});
 
         const settings = await getProcessSettings(PROCESS_CLIENT_ANALYSIS, req.tenantId);
-        const systemPrompt = `Eres un analista CRM para una farmacia en Honduras. Analiza el historial del cliente y sugiere acciones de fidelizacion. Responde solo con el JSON especificado, en espanol.`;
+        const systemPrompt = `Eres un analista CRM para una clinica veterinaria en Honduras. Analiza el historial del cliente y sugiere acciones de fidelizacion. Responde solo con el JSON especificado, en espanol.`;
         const userPrompt = `Total gastado: L ${totalR.rows[0].totalGastado}\nPromedio: L ${totalR.rows[0].promedioCompra}\nFrecuencia: ${totalR.rows[0].frecuencia}\nProductos frecuentes: ${JSON.stringify(categoriasCompra)}\nCondiciones cronicas: ${cliente.condiciones_cronicas ? 'Si' : 'No'}\nAdulto mayor: ${cliente.es_adulto_mayor ? 'Si' : 'No'}\n\nDevuelve exactamente:\n{"resumen":"","perfil_cliente":"","medicamentos_frecuentes":[],"sugerencia_accion":"","valor_estimado_futuro":"","recordatorio_descuento":""}`;
         const { text } = await callProvider({ settings, systemPrompt, userPrompt, tenantId: req.tenantId });
         let parsed;
@@ -227,7 +227,7 @@ router.get('/anomaly-check/:idArqueo', authenticateToken, withKey(PROCESS_CASH_A
         );
 
         const settings = await getProcessSettings(PROCESS_CASH_ANOMALY, req.tenantId);
-        const systemPrompt = `Eres un auditor financiero para farmacias en Honduras. Detecta anomalias en el cierre de caja comparando con el historico. Responde solo con el JSON especificado.`;
+        const systemPrompt = `Eres un auditor financiero para clinicas veterinarias en Honduras. Detecta anomalias en el cierre de caja comparando con el historico. Responde solo con el JSON especificado.`;
         const userPrompt = `Arqueo actual: Inicial L${arqueo.montoInicial} Ventas L${arqueo.totalVentas} Egresos L${arqueo.totalEgresos} Ganancia L${arqueo.ganancia}\nHistorico (${historialR.rows.length} cierres):\n${historialR.rows.slice(0,5).map(a => `- Ventas L${a.totalventas||0} Ganancia L${a.ganancia||0}`).join('\n')}\n\nDevuelve exactamente:\n{"es_anomal":false,"nivel_riesgo":"bajo","observaciones":"","recomendacion":""}`;
         const { text } = await callProvider({ settings, systemPrompt, userPrompt, tenantId: req.tenantId });
         let parsed;
@@ -340,7 +340,7 @@ router.get('/predecir-reabastecimiento/:codMedicamento', authenticateToken, with
         const med = medR.rows[0];
 
         const settings = await getProcessSettings(PROCESS_RESTOCK_PREDICTION, req.tenantId);
-        const systemPrompt = `Eres un experto en gestion de inventario farmaceutico en Honduras. Predice cuanto stock pedir basandote en el historial de ventas. Responde solo con el JSON especificado.`;
+        const systemPrompt = `Eres un experto en gestion de inventario veterinario en Honduras. Predice cuanto stock pedir basandote en el historial de ventas. Responde solo con el JSON especificado.`;
         const userPrompt = `Medicamento: ${med.nombre_generico} (${med.concentracion||''})\nStock actual: ${med.stockActual||0}\nStock minimo: ${med.stock_minimo||0}\nPunto reorden: ${med.punto_reorden||0}\nHistorial (${historialR.rows.length} dias):\n${historialR.rows.map(v=>`- ${v.fecha}: ${v.cantidad}`).join('\n')||'Sin historial'}\n\nDevuelve exactamente:\n{"cantidad_sugerida":0,"dias_stock_actual":0,"frecuencia_pedido_sugerida":"mensual","justificacion":"","alertas":[]}`;
         const { text } = await callProvider({ settings, systemPrompt, userPrompt, tenantId: req.tenantId });
         let parsed;

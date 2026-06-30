@@ -29,7 +29,7 @@ const tenantBrandingLimiter = rateLimit({
     max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Demasiadas consultas de farmacia. Intente de nuevo en un minuto.' },
+    message: { error: 'Demasiadas consultas de clinica. Intente de nuevo en un minuto.' },
 });
 
 const isTenantAvailableForLogin = (tenant) => {
@@ -146,7 +146,7 @@ router.get('/tenant-branding/:slug', tenantBrandingLimiter, async (req, res) => 
     try {
         const tenant = await getTenantBySlug(slug);
         if (!tenant) {
-            return res.status(404).json({ error: 'Farmacia no encontrada' });
+            return res.status(404).json({ error: 'Clinica no encontrada' });
         }
 
         const configResult = await pool.query(
@@ -166,7 +166,7 @@ router.get('/tenant-branding/:slug', tenantBrandingLimiter, async (req, res) => 
                 logoBase64: config.logo_base64 || '',
                 activo,
             },
-            message: activo ? 'Branding de farmacia disponible' : 'Farmacia no disponible',
+            message: activo ? 'Branding de clinica disponible' : 'Clinica no disponible',
         });
     } catch (err) {
         handleDbError(res, err);
@@ -280,7 +280,7 @@ router.post('/register', registerLimiter, async (req, res) => {
                 trial_days: trialDays,
                 trial_ends: fechaVencimiento.toISOString(),
             },
-            message: `Farmacia '${nombre_empresa}' registrada correctamente. Su período de prueba de ${trialDays} días comienza ahora.`
+            message: `Clinica '${nombre_empresa}' registrada correctamente. Su período de prueba de ${trialDays} días comienza ahora.`
         });
     } catch (err) {
         await client.query('ROLLBACK');

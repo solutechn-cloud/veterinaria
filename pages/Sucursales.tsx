@@ -285,7 +285,7 @@ export default function Sucursales() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Regente de Farmacia</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Responsable Sanitario</label>
                   <input
                     value={form.regente_farmacia}
                     onChange={e => setField('regente_farmacia', e.target.value)}

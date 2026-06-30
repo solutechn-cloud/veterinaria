@@ -241,7 +241,7 @@ function sanitizeContext(raw) {
 }
 
 function buildPrompts({ context, catalog }) {
-    const systemPrompt = `Eres un asistente de inventario farmaceutico para Honduras.
+    const systemPrompt = `Eres un asistente de inventario veterinario para Honduras.
 Extrae TODOS los datos visibles de fotos de cajas, blisters, frascos o etiquetas de medicamentos.
 Responde solo JSON valido. No inventes datos: si no se ve claramente, usa value "" o null y confidence menor a 0.45.
 No des consejo medico. Tu tarea es captura de datos de inventario.

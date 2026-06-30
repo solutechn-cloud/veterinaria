@@ -13,7 +13,7 @@ const PAQUETES = [
   { id: '+1M tokens',        label: '+1,000,000 tokens',  desc: 'Ampliación grande',                price: 'Consultar precio' },
   { id: 'Plan Profesional',  label: 'Subir a Profesional', desc: '500K tokens · 1000 req/mes',     price: '$79/mes' },
   { id: 'Plan Enterprise',   label: 'Subir a Enterprise',  desc: '5M tokens · ilimitado',          price: '$199/mes' },
-  { id: 'Personalizado',     label: 'Personalizado',       desc: 'Cuota a medida para tu farmacia', price: 'Contactar' },
+  { id: 'Personalizado',     label: 'Personalizado',       desc: 'Cuota a medida para tu veterinaria', price: 'Contactar' },
 ];
 
 const ESTADO_BADGE: Record<string, string> = {

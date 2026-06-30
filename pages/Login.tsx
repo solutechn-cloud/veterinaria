@@ -62,7 +62,7 @@ const Login: React.FC = () => {
 
     if (!hasTenantRoute) return;
     if (!isValidTenantSlug(routeTenantSlug)) {
-      setError('El codigo de farmacia no es valido.');
+      setError('El codigo de clinica no es valido.');
       return;
     }
 
@@ -71,16 +71,16 @@ const Login: React.FC = () => {
       try {
         const response = await fetch(`/api/public/tenant-branding/${routeTenantSlug}`);
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'No se pudo cargar la farmacia.');
+        if (!response.ok) throw new Error(payload.error || 'No se pudo cargar la clinica.');
 
         const nextBranding = payload.data as TenantBranding;
         if (cancelled) return;
         setBranding(nextBranding);
         if (!nextBranding.activo) {
-          setError('Esta farmacia no esta disponible para iniciar sesion. Contacte al administrador.');
+          setError('Esta clinica no esta disponible para iniciar sesion. Contacte al administrador.');
         }
       } catch (err: any) {
-        if (!cancelled) setError(err.message || 'No se pudo cargar la farmacia.');
+        if (!cancelled) setError(err.message || 'No se pudo cargar la clinica.');
       } finally {
         if (!cancelled) setBrandingLoading(false);
       }
@@ -95,7 +95,7 @@ const Login: React.FC = () => {
     setError('');
     const normalized = normalizeTenantSlug(finderSlug);
     if (!isValidTenantSlug(normalized)) {
-      setError('Ingresa un codigo de farmacia valido.');
+      setError('Ingresa un codigo de clinica valido.');
       return;
     }
     navigate(`/login/${normalized}`);
@@ -114,15 +114,15 @@ const Login: React.FC = () => {
     setError('');
 
     if (!isValidTenantSlug(routeTenantSlug)) {
-      setError('Abre el login desde la URL de tu farmacia.');
+      setError('Abre el login desde la URL de tu clinica.');
       return;
     }
     if (!branding) {
-      setError('Espera a que se valide la farmacia antes de iniciar sesion.');
+      setError('Espera a que se valide la clinica antes de iniciar sesion.');
       return;
     }
     if (branding && !branding.activo) {
-      setError('Esta farmacia no esta disponible para iniciar sesion.');
+      setError('Esta clinica no esta disponible para iniciar sesion.');
       return;
     }
 
@@ -169,8 +169,8 @@ const Login: React.FC = () => {
             )}
             <h2 className="text-2xl font-bold text-slate-800 mt-5 text-center">
               {hasTenantRoute
-                ? branding?.nombreEmpresa || (brandingLoading ? 'Cargando farmacia...' : 'ERP Farmacia')
-                : 'Selecciona tu farmacia'}
+                ? branding?.nombreEmpresa || (brandingLoading ? 'Cargando clinica...' : 'ERP Veterinaria')
+                : 'Selecciona tu clinica'}
             </h2>
             <p className="text-slate-500 text-sm mt-1 text-center">
               {hasTenantRoute ? 'Ingresa con tu usuario y contrasena' : 'Despues solo necesitaras usuario y contrasena'}
@@ -187,7 +187,7 @@ const Login: React.FC = () => {
           {!hasTenantRoute ? (
             <form onSubmit={handleFindTenant} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Codigo de farmacia</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Codigo de clinica</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                   <input
@@ -195,7 +195,7 @@ const Login: React.FC = () => {
                     value={finderSlug}
                     onChange={(e) => setFinderSlug(normalizeTenantSlug(e.target.value))}
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                    placeholder="farmacia-central"
+                    placeholder="vetcare-central"
                     autoComplete="organization"
                     required
                   />
@@ -259,7 +259,7 @@ const Login: React.FC = () => {
                 className="w-full text-slate-500 hover:text-indigo-600 text-sm font-medium flex items-center justify-center gap-2 pt-1"
               >
                 <RotateCcw size={15} />
-                Cambiar farmacia
+                Cambiar clinica
               </button>
             </form>
           )}
@@ -267,7 +267,7 @@ const Login: React.FC = () => {
           <div className="mt-6 text-center text-sm text-slate-500">
             <span>No tienes cuenta? </span>
             <a href="#/registro" className="text-indigo-600 hover:text-indigo-700 font-medium">
-              Registrar farmacia
+              Registrar clinica
             </a>
           </div>
         </div>

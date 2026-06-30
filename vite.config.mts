@@ -21,7 +21,7 @@ export default defineConfig({
       manifest: {
         name: 'SmartCloud ERP',
         short_name: 'SmartCloud',
-        description: 'Sistema ERP multi-tenant para gestion de farmacias',
+        description: 'Sistema ERP multi-tenant para gestion de clinicas veterinarias',
         theme_color: '#4f46e5',
         background_color: '#4f46e5',
         display: 'standalone',

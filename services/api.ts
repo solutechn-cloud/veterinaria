@@ -665,7 +665,7 @@ export const AIService = {
     request<any[]>('/ai/quota/upgrade-requests'),
 };
 
-// ─── SERVICIOS FARMACIA ──────────────────────────────────────────────────────
+// ─── SERVICIOS VETERINARIA ──────────────────────────────────────────────────────
 import type {
   Medicamento, PresentacionVenta, LoteMedicamento, ImagenMedicamento,
   AlertaVencimiento, StockCritico, Receta, Sucursal,

@@ -341,7 +341,7 @@ export interface LabelTemplate {
   showGrid?: boolean;
 }
 
-// ─── FARMACIA ────────────────────────────────────────────────────────────────
+// ─── INVENTARIO CLINICO ──────────────────────────────────────────────────────
 
 export interface CategoriaTerapeutica {
   id_categoria: number;

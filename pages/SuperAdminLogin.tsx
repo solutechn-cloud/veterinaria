@@ -35,7 +35,7 @@ const SuperAdminLogin: React.FC = () => {
           <div className="w-16 h-16 bg-red-600/20 border border-red-600/40 rounded-2xl flex items-center justify-center mb-4">
             <Shield className="text-red-400" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-white">ERP Farmacia</h1>
+          <h1 className="text-2xl font-bold text-white">ERP Veterinaria</h1>
           <p className="text-slate-400 text-sm mt-1">Acceso Super Administrador</p>
         </div>
 
@@ -87,7 +87,7 @@ const SuperAdminLogin: React.FC = () => {
 
         <p className="text-center text-slate-600 text-xs mt-6">
           <a href="#/login" className="text-slate-500 hover:text-slate-400 transition-colors">
-            Volver al login de farmacia
+            Volver al login de clinica
           </a>
         </p>
       </div>

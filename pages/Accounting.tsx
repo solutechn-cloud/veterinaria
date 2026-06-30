@@ -85,7 +85,7 @@ const Accounting: React.FC = () => {
     const m = report.metrics;
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text('REPORTE DE RENTABILIDAD FARMACIA', 14, 20);
+    doc.text('REPORTE DE RENTABILIDAD VETERINARIA', 14, 20);
     doc.setFontSize(10);
     doc.text(`Periodo: ${label}`, 14, 28);
     // @ts-ignore
@@ -185,7 +185,7 @@ const Accounting: React.FC = () => {
               {/* Estado de Resultados */}
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                 <h3 className="text-xs font-black text-slate-500 uppercase mb-4 flex items-center gap-2">
-                  <TrendingUp size={14} className="text-indigo-500" /> Estado de Resultados — Farmacia
+                  <TrendingUp size={14} className="text-indigo-500" /> Estado de Resultados — Veterinaria
                 </h3>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center py-3 border-b border-slate-100">

@@ -66,7 +66,7 @@ const requireTenantFromJWT = async (req, res, next) => {
     try {
         const tenant = await getTenantById(req.user.tenantId);
         if (!tenant) {
-            return res.status(403).json({ error: 'Farmacia no encontrada' });
+            return res.status(403).json({ error: 'Clinica no encontrada' });
         }
         if (tenant.estado === 'suspendido') {
             return res.status(403).json({ error: 'Cuenta suspendida. Contacte al administrador.' });
@@ -110,10 +110,10 @@ const resolveTenantBySlug = async (req, res, next) => {
         const tenant = await getTenantBySlug(slug);
 
         if (!tenant) {
-            return res.status(404).json({ error: 'Farmacia no encontrada' });
+            return res.status(404).json({ error: 'Clinica no encontrada' });
         }
         if (tenant.estado === 'suspendido') {
-            return res.status(403).json({ error: 'Cuenta suspendida. Contacte a soporte en soporte@erpfarmacia.com' });
+            return res.status(403).json({ error: 'Cuenta suspendida. Contacte a soporte.' });
         }
         if (tenant.estado === 'cancelado') {
             return res.status(403).json({ error: 'Cuenta cancelada.' });
@@ -127,7 +127,7 @@ const resolveTenantBySlug = async (req, res, next) => {
         next();
     } catch (err) {
         console.error('Tenant resolution error:', err.message);
-        res.status(500).json({ error: 'Error interno resolviendo farmacia' });
+        res.status(500).json({ error: 'Error interno resolviendo clinica' });
     }
 };
 

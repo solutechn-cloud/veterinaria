@@ -51,7 +51,7 @@ async function getRoleProfile(client, tenantId, idrol) {
 
 async function validateUserAssignment(client, tenantId, { idrol, idCaja, id_sucursal, codUsuario = null }) {
     const role = await getRoleProfile(client, tenantId, idrol);
-    if (!role) return { error: 'Rol no encontrado para esta farmacia' };
+    if (!role) return { error: 'Rol no encontrado para esta clinica' };
 
     const cajaId = normalizeOptional(idCaja);
     const sucursalId = normalizeOptional(id_sucursal);
@@ -65,7 +65,7 @@ async function validateUserAssignment(client, tenantId, { idrol, idCaja, id_sucu
             'SELECT id_sucursal FROM sucursales WHERE id_sucursal = $1 AND tenant_id = $2',
             [sucursalId, tenantId]
         );
-        if (!sucRes.rows.length) return { error: 'La sucursal seleccionada no existe para esta farmacia' };
+        if (!sucRes.rows.length) return { error: 'La sucursal seleccionada no existe para esta clinica' };
     }
 
     if (cajaId) {

@@ -35,7 +35,7 @@ function slugify(text: string): string {
   return text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
-const APP_URL = 'https://app.erpfarmacia.com';
+const APP_URL = 'https://erpveterinaria.onrender.com';
 
 // ─── CreateTenantModal ────────────────────────────────────────────────────────
 
@@ -102,12 +102,12 @@ const CreateTenantModal: React.FC<CreateModalProps> = ({ onClose, onCreated }) =
             <div className="col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Empresa *</label>
               <input className={inputCls} required value={form.nombreEmpresa}
-                onChange={e => handleEmpresaChange(e.target.value)} placeholder="Farmacia Central" />
+                onChange={e => handleEmpresaChange(e.target.value)} placeholder="Clinica Veterinaria Central" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Slug (URL) *</label>
               <input className={inputCls} required value={form.slug}
-                onChange={e => set('slug', slugify(e.target.value))} placeholder="farmacia-central" />
+                onChange={e => set('slug', slugify(e.target.value))} placeholder="vet-central" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plan *</label>
@@ -121,7 +121,7 @@ const CreateTenantModal: React.FC<CreateModalProps> = ({ onClose, onCreated }) =
             <div className="col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email de Contacto *</label>
               <input type="email" className={inputCls} required value={form.emailContacto}
-                onChange={e => set('emailContacto', e.target.value)} placeholder="admin@farmacia.com" />
+                onChange={e => set('emailContacto', e.target.value)} placeholder="admin@veterinaria.com" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefono</label>

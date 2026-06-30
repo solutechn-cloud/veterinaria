@@ -172,7 +172,7 @@ const AdminCashDashboard: React.FC = () => {
     doc.setTextColor(255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('AUDITORÍA DE CAJA — FARMACIA', 105, 13, { align: 'center' });
+    doc.text('AUDITORÍA DE CAJA — VETERINARIA', 105, 13, { align: 'center' });
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Sesión: ${arqueo.idArqueo}  |  Caja: ${selectedBox.idCaja}  |  Cajero: ${selectedBox.nombreEmpleado}`, 105, 22, { align: 'center' });

@@ -31,7 +31,7 @@ export const THEME_PRESETS: ThemePreset[] = [
 ];
 
 const DEFAULT_THEME: AppTheme = {
-  appName: 'ERP Farmacia',
+  appName: 'ERP Veterinaria',
   primaryHex: '#4f46e5',
   sidebarHex: '#0f172a',
   presetId: 'indigo',
@@ -100,7 +100,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setTheme] = useState<AppTheme>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? { ...DEFAULT_THEME, ...JSON.parse(saved) } : DEFAULT_THEME;
+      if (!saved) return DEFAULT_THEME;
+      const parsed = { ...DEFAULT_THEME, ...JSON.parse(saved) };
+      const legacyAppName = ['ERP', 'Farmacia'].join(' ');
+      if (parsed.appName === legacyAppName) parsed.appName = DEFAULT_THEME.appName;
+      return parsed;
     } catch {
       return DEFAULT_THEME;
     }

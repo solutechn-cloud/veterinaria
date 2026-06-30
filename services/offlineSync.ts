@@ -27,7 +27,7 @@ const API_ORIGIN = (() => {
 
 // Lista completa de endpoints de lectura que necesitan estar disponibles offline
 export const WARM_ENDPOINTS: WarmEndpoint[] = [
-  // Farmacia — catálogo y ventas
+  // Veterinaria — catálogo y ventas
   { key: 'cache:/medicamentos',                url: '/api/medicamentos',                  ttl: CACHE_TTL_TRANSAC, permission: 'VER_INVENTARIO' },
   { key: 'cache:/productos/unificados',        url: '/api/productos/unificados',          ttl: CACHE_TTL_TRANSAC, permission: 'VER_POS' },
   // Clientes y proveedores

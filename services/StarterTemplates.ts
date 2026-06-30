@@ -49,7 +49,7 @@ export const STARTER_TEMPLATES: StarterTemplateEntry[] = [
   },
   {
     id: 'despacho_termico',
-    name: 'Recibo Despacho Farmacia',
+    name: 'Recibo Despacho Veterinaria',
     description: 'Ticket térmico 80mm para despacho de medicamentos con paciente, tabla y totales.',
     icon: '🏥',
     type: 'DOCUMENT',

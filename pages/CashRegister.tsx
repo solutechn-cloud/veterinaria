@@ -208,7 +208,7 @@ const CashRegister: React.FC = () => {
       if (!sale) return;
       const LOGO_BASE64 = getLogoSync();
       const doc = new jsPDF();
-      const nombreEmpresa = (cfg.nombreEmpresa || 'FARMACIA').toUpperCase();
+      const nombreEmpresa = (cfg.nombreEmpresa || 'VETERINARIA').toUpperCase();
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
       const primaryColor = '#1e3a8a';

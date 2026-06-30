@@ -54,7 +54,7 @@ async function recommendBySintomas(sintomasData, inventarioDisponible = []) {
             ? inventarioDisponible.map(m => `- ${m.nombre_generico}${m.nombre_comercial ? ` / ${m.nombre_comercial}` : ''} (${m.concentracion || ''}) [Stock: ${m.stock}]`).join('\n')
             : 'Sin inventario disponible';
 
-        const systemPrompt = `Eres un asistente farmacéutico de Honduras.
+        const systemPrompt = `Eres un asistente veterinario de Honduras.
 Tu función es sugerir medicamentos OTC (de venta libre, sin receta) para síntomas comunes.
 REGLAS ESTRICTAS:
 - SOLO recomienda medicamentos que NO requieran receta médica
@@ -79,7 +79,7 @@ Alergias conocidas: ${alergias.join(', ') || 'ninguna conocida'}.
 Medicamentos actuales: ${medicActuales.join(', ') || 'ninguno'}.
 Condiciones crónicas: ${condiciones || 'ninguna conocida'}.
 
-Inventario disponible en la farmacia:
+Inventario disponible en la veterinaria:
 ${inventarioText}
 
 Responde con este JSON exacto:
@@ -93,7 +93,7 @@ Responde con este JSON exacto:
       "prioridad": 1
     }
   ],
-  "advertencia_general": "mensaje al farmacéutico",
+  "advertencia_general": "mensaje al veterinario",
   "requiere_medico": false,
   "motivo_medico": "si requiere médico, explicar por qué"
 }`;
@@ -119,7 +119,7 @@ async function analyzeInteractions(medicamentoNuevo, medicamentosActuales = [], 
             return { interacciones: [], nivel_riesgo: 'bajo', mensaje: 'Sin medicamentos actuales registrados para verificar.' };
         }
 
-        const systemPrompt = `Eres un farmacéutico clínico experto en interacciones medicamentosas.
+        const systemPrompt = `Eres un veterinario clinico experto en interacciones medicamentosas.
 Analiza si el medicamento nuevo puede interactuar con los actuales del paciente.
 Responde solo con el JSON especificado, en español.`;
 
@@ -140,13 +140,13 @@ Responde con este JSON exacto:
   "nivel_riesgo_global": "bajo|moderado|alto",
   "alerta_alergia": false,
   "descripcion_alergia": null,
-  "mensaje_farmaceutico": "resumen para el farmacéutico"
+  "mensaje_veterinario": "resumen para el veterinario"
 }`;
 
         const text = await callAI(systemPrompt, userPrompt);
         const result = parseJson(text, null);
         if (!result) {
-            return { interacciones: [], nivel_riesgo_global: 'desconocido', mensaje_farmaceutico: text };
+            return { interacciones: [], nivel_riesgo_global: 'desconocido', mensaje_veterinario: text };
         }
         return result;
     } catch (err) {
@@ -156,11 +156,11 @@ Responde con este JSON exacto:
 }
 
 /**
- * Analizar cliente farmacéutico: historial de compras, medicamentos frecuentes, oportunidades.
+ * Analizar cliente veterinario: historial de compras, medicamentos frecuentes, oportunidades.
  */
 async function analyzeClient(clientData) {
     try {
-        const systemPrompt = `Eres un analista CRM para una farmacia en Honduras.
+        const systemPrompt = `Eres un analista CRM para una clinica veterinaria en Honduras.
 Analiza el historial del cliente y sugiere acciones de fidelización.
 Responde solo con el JSON especificado, en español.`;
 
@@ -204,7 +204,7 @@ Responde con este JSON exacto:
  */
 async function detectCashAnomaly(arqueoData, historicalArqueos = []) {
     try {
-        const systemPrompt = `Eres un auditor financiero para farmacias en Honduras.
+        const systemPrompt = `Eres un auditor financiero para clinicas veterinarias en Honduras.
 Detecta anomalías en el cierre de caja comparando con el histórico.
 Responde solo con el JSON especificado.`;
 
@@ -244,7 +244,7 @@ Responde con este JSON exacto:
  */
 async function predictRestock(medicamento, historialVentas = []) {
     try {
-        const systemPrompt = `Eres un experto en gestión de inventario farmacéutico en Honduras.
+        const systemPrompt = `Eres un experto en gestión de inventario veterinario en Honduras.
 Predice cuánto stock pedir basándote en el historial de ventas.
 Responde solo con el JSON especificado.`;
 

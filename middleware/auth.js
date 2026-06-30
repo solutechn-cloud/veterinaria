@@ -62,7 +62,7 @@ const authenticateToken = (req, res, next) => {
  */
 const requireTenant = (req, res, next) => {
     if (!req.tenantId) {
-        return res.status(400).json({ error: 'Contexto de farmacia no disponible. Vuelva a iniciar sesión.' });
+        return res.status(400).json({ error: 'Contexto de clinica no disponible. Vuelva a iniciar sesión.' });
     }
     next();
 };

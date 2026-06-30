@@ -47,11 +47,11 @@ export const CONTEXT_GROUPS: CtxGroup[] = [
     {
         icon: '🏢', label: 'Empresa / CAI', color: 'indigo',
         vars: [
-            { key: 'empresa.nombreEmpresa', label: 'Nombre Empresa',   example: 'Farmacia San José' },
+            { key: 'empresa.nombreEmpresa', label: 'Nombre Empresa',   example: 'Clinica Veterinaria San Jose' },
             { key: 'empresa.rtn',           label: 'RTN',              example: '0801-1990-01234' },
             { key: 'empresa.direccion',     label: 'Dirección',        example: 'Col. Palmira, Teg.' },
             { key: 'empresa.telefono',      label: 'Teléfono',         example: '2222-3333' },
-            { key: 'empresa.correo',        label: 'Correo',           example: 'info@farmacia.hn' },
+            { key: 'empresa.correo',        label: 'Correo',           example: 'info@veterinaria.hn' },
             { key: 'empresa.cai',           label: 'CAI',              example: 'A1B2C3-D4E5F6-...' },
             { key: 'empresa.rangoInicial',  label: 'Rango Inicial',    example: '001-001-01-00000001' },
             { key: 'empresa.rangoFinal',    label: 'Rango Final',      example: '001-001-01-00099999' },

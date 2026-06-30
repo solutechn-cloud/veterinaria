@@ -646,7 +646,7 @@ const CompanyConfig: React.FC = () => {
               className="w-full max-w-xs p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
               value={theme.appName}
               onChange={e => updateTheme({ appName: e.target.value })}
-              placeholder="ERP Farmacia"
+              placeholder="ERP Veterinaria"
             />
           </div>
 
@@ -737,7 +737,7 @@ const CompanyConfig: React.FC = () => {
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => updateTheme({ primaryHex: '#4f46e5', sidebarHex: '#0f172a', appName: 'ERP Farmacia', presetId: 'indigo' })}
+              onClick={() => updateTheme({ primaryHex: '#4f46e5', sidebarHex: '#0f172a', appName: 'ERP Veterinaria', presetId: 'indigo' })}
               className="text-slate-500 hover:text-slate-700 text-sm font-medium flex items-center gap-1 border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors"
             >
               Restaurar predeterminado
