@@ -261,7 +261,7 @@ const ALLOWED_ID_COMBOS = new Set([
     // Ventas
     'ventas:codventa', 'detalleventa:coddetalleventa',
     // Veterinaria
-    'medicamentos:codigo', 'recetas:codigo',
+    'medicamentos:codigo',
     'ordenes_compra:codigo', 'recepciones_compra:codigo',
     'transferencias_sucursal:codigo',
 ]);

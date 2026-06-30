@@ -27,7 +27,6 @@ INSERT INTO plan_features (plan, feature_key, descripcion) VALUES
 ('profesional','modulo_caja',         'Caja y Movimientos'),
 ('profesional','modulo_config',       'Configuración de Empresa'),
 ('profesional','ia_basica',           'IA básica: síntomas e interacciones'),
-('profesional','modulo_recetas',      'Recetas Médicas y Psicofarmacos'),
 ('profesional','modulo_lealtad',      'Programa de Lealtad de Clientes'),
 ('profesional','modulo_ordenes_compra','Órdenes de Compra a Proveedores'),
 ('profesional','modulo_vencimientos', 'Control de Vencimientos de Medicamentos'),
@@ -53,10 +52,8 @@ ON CONFLICT DO NOTHING;
 
 -- ── Nuevos permisos ────────────────────────────────────────────────────────
 INSERT INTO permisos (idPermiso, nombre, modulo) VALUES
-('VER_RECETAS',             'Ver Recetas Médicas',              'Ventas'),
 ('VER_LEALTAD',             'Ver Programa de Lealtad',          'Ventas'),
 ('ANULAR_VENTA',            'Anular Ventas',                    'Ventas'),
-('AUTORIZAR_PSICOFARMACOS', 'Autorizar Psicofarmacos',          'Ventas'),
 ('GESTIONAR_CAJA',          'Abrir/Cerrar Caja y Arqueos',      'Finanzas'),
 ('EXPORTAR_REPORTES',       'Exportar Reportes a PDF/Excel',    'Administración'),
 ('ELIMINAR_MEDICAMENTO',    'Eliminar/Desactivar Medicamentos', 'Inventario'),
@@ -65,13 +62,7 @@ INSERT INTO permisos (idPermiso, nombre, modulo) VALUES
 ON CONFLICT DO NOTHING;
 
 -- ── Retrocompatibilidad: dar nuevos permisos a roles con equivalente antiguo ─
--- Roles con VER_CAJA → reciben también VER_RECETAS, VER_LEALTAD, GESTIONAR_CAJA
-INSERT INTO rol_permisos (idRol, idPermiso)
-SELECT rp.idRol, 'VER_RECETAS'
-FROM rol_permisos rp
-WHERE rp.idPermiso = 'VER_CAJA'
-ON CONFLICT DO NOTHING;
-
+-- Roles con VER_CAJA → reciben también VER_LEALTAD, GESTIONAR_CAJA
 INSERT INTO rol_permisos (idRol, idPermiso)
 SELECT rp.idRol, 'VER_LEALTAD'
 FROM rol_permisos rp

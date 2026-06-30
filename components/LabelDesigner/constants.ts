@@ -6,8 +6,6 @@ export const TABLE_CONTEXT_MAP: Record<string, string> = {
     medicamentos:         'medicamento',
     lotes_medicamento:    'lote',
     presentaciones_venta: 'presentacion',
-    recetas:              'receta',
-    detalle_receta:       'item',
     detalleventa:         'item',
     empleado:             'empleado',
     usuarios:             'usuario',
@@ -89,17 +87,6 @@ export const CONTEXT_GROUPS: CtxGroup[] = [
             { key: 'lote.fechaFabricacion',   label: 'Fecha Fabricación',   example: '01/01/2024' },
             { key: 'lote.cantidadDisponible', label: 'Cantidad Disponible', example: '90' },
             { key: 'lote.estado',             label: 'Estado Lote',         example: 'Activo' },
-        ],
-    },
-    {
-        icon: '📋', label: 'Receta Médica', color: 'rose',
-        vars: [
-            { key: 'receta.codigoReceta',     label: 'Código Receta', example: 'RX-0001' },
-            { key: 'receta.medico',           label: 'Médico',        example: 'Dr. Juan Pérez' },
-            { key: 'receta.fechaEmision',     label: 'Fecha Emisión', example: '01/05/2026' },
-            { key: 'receta.fechaVencimiento', label: 'Fecha Venc.',   example: '01/07/2026' },
-            { key: 'receta.observaciones',    label: 'Observaciones', example: 'Tomar con agua' },
-            { key: 'receta.estado',           label: 'Estado',        example: 'Pendiente' },
         ],
     },
     {

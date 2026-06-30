@@ -10,7 +10,7 @@ import {
   LayoutDashboard, ShoppingCart, Users, DollarSign, FileText, LogOut, Menu, X, Bell,
   Pill, ShieldCheck, Truck, ChevronDown, ChevronRight, ChevronLeft, Package,
   Briefcase, Box, UserCog, Calculator, Activity, Tag, Settings, PieChart,
-  ClipboardList, AlertTriangle, Building2, ArrowLeftRight, ShoppingBag,
+  AlertTriangle, Building2, ArrowLeftRight, ShoppingBag,
   KeyRound, Eye, EyeOff, BookOpen, Sparkles, Info, CheckCheck, Trash2, Zap, Star,
   PawPrint, CalendarDays, CalendarClock, FileHeart, Syringe, Stethoscope, HeartPulse,
 } from 'lucide-react';
@@ -180,7 +180,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
         { name: 'Tutores', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
         { name: 'Servicios', path: '/servicios-veterinarios', icon: <Stethoscope size={18} />, permission: 'VER_SERVICIOS_VET' },
-        { name: 'Recetas Veterinarias', path: '/recetas', icon: <ClipboardList size={18} />, permission: 'VER_RECETAS', planFeature: 'modulo_recetas', minimumPlan: 'profesional' },
       ]
     },
     {

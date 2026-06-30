@@ -38,7 +38,6 @@ const planFeaturesCache = require('./services/planFeaturesCache');
 const adminRoutes        = require('./routes/adminRoutes');
 const inventoryRoutes    = require('./routes/inventoryRoutes');
 const medicamentosRoutes = require('./routes/medicamentosRoutes');
-const recetasRoutes      = require('./routes/recetasRoutes');
 const sucursalesRoutes   = require('./routes/sucursalesRoutes');
 const salesRoutes        = require('./routes/salesRoutes');
 const financeRoutes      = require('./routes/financeRoutes');
@@ -176,7 +175,6 @@ function mountRoutes() {
     apiRouter.use(authenticateToken, requireTenantFromJWT, requireTenant, tenantRateLimiter, withTenant, planFeatureGuard, endpointPermissionGuard);
     apiRouter.use(adminRoutes);
     apiRouter.use(medicamentosRoutes);
-    apiRouter.use(recetasRoutes);
     apiRouter.use(sucursalesRoutes);
     apiRouter.use(inventoryRoutes);
     apiRouter.use(salesRoutes);

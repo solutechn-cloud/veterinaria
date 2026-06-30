@@ -77,7 +77,6 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                             <option disabled>--- DOCUMENTOS ---</option>
                             <option value="SALES">Ventas / Facturación</option>
                             <option value="DISPENSACION">Dispensación de Medicamentos</option>
-                            <option value="RECETAS">Recetas Médicas</option>
                             <option value="CLIENTS">Clientes / Pacientes</option>
                             <option value="FULL_DB">Base de Datos Completa</option>
                         </select>
@@ -97,7 +96,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                                 ) : (
                                     <>
                                         <option value="INVOICE">Factura / Recibo</option>
-                                        <option value="RECETA">Receta / Despacho</option>
+                                        <option value="DISPENSACION">Despacho / Formula</option>
                                         <option value="REPORT">Reporte</option>
                                     </>
                                 )}

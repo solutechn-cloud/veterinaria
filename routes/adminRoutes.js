@@ -10,7 +10,7 @@ const { getSystemConfig, invalidateSystemConfigCache } = require('../config/syst
 const automationService = require('../services/automationService');
 
 // --- ENDPOINT PARA ESQUEMA DE DATOS (REQUERIDO POR IMPRESIÓN/DISEÑO) ---
-const SCHEMA_TABLES = ['ventas', 'detalleventa', 'clientes', 'medicamentos', 'lotes_medicamento', 'presentaciones_venta', 'configuracion', 'empleado', 'usuarios', 'recetas'];
+const SCHEMA_TABLES = ['ventas', 'detalleventa', 'clientes', 'pacientes', 'medicamentos', 'lotes_medicamento', 'presentaciones_venta', 'configuracion', 'empleado', 'usuarios'];
 
 const ADMIN_ROLE_NAMES = new Set(['administrador', 'admin', 'superadmin', 'super admin']);
 const CASH_PERMISSIONS = new Set(['VER_POS', 'VER_CAJA', 'perm_ventas_crear', 'perm_caja_abrir', 'perm_caja_cerrar']);

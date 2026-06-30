@@ -25,7 +25,6 @@ import Accounting from './pages/Accounting';
 
 // Páginas nuevas de veterinaria
 import Medicamentos from './pages/Medicamentos';
-import Recetas from './pages/Recetas';
 import Sucursales from './pages/Sucursales';
 import Vencimientos from './pages/Vencimientos';
 import Transferencias from './pages/Transferencias';
@@ -123,12 +122,6 @@ const App: React.FC = () => {
               <Layout><Flowboard /></Layout>
             </ProtectedRoute>
           } />
-          <Route path="/recetas" element={
-            <ProtectedRoute requiredPermission="VER_RECETAS" requiredFeature="modulo_recetas">
-              <Layout><Recetas /></Layout>
-            </ProtectedRoute>
-          } />
-
           {/* Inventario Clínico */}
           <Route path="/medicamentos" element={
             <ProtectedRoute requiredPermission="VER_INVENTARIO">

@@ -3,9 +3,6 @@ const { planHasFeature } = require('../services/planFeaturesCache');
 // Mapa de rutas → feature key requerida
 const ROUTE_PLAN_FEATURES = [
     { pattern: /^\/api\/loyalty\b/,              feature: 'modulo_lealtad' },
-    { pattern: /^\/api\/recetas\b/,              feature: 'modulo_recetas' },
-    { pattern: /^\/api\/recetas-retenidas\b/,    feature: 'modulo_recetas' },
-    { pattern: /^\/api\/libro-psicofarmacos\b/,  feature: 'modulo_recetas' },
     { pattern: /^\/api\/transferencias\b/,       feature: 'modulo_transferencias' },
     { pattern: /^\/api\/entregas\b/,             feature: 'modulo_entregas' },
     { pattern: /^\/api\/sucursales\b/,           feature: 'modulo_sucursales' },

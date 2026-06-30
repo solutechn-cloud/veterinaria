@@ -73,7 +73,7 @@ const PLANS = [
             'Hasta 5 sucursales',
             'Hasta 20 usuarios',
             'Hasta 5,000 medicamentos',
-            'Recetas y libro de psicotrópicos',
+            'Expediente clinico y formulas medicas',
             'Reportes avanzados',
             'Órdenes de compra',
             'Transferencias entre sucursales',

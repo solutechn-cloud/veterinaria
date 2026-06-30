@@ -56,7 +56,7 @@ export const ETIQUETA_DISPENSACION: Omit<LabelTemplate, 'id'> = {
     el('ed_hn',  'TEXT',   2,   1,   86,  7,  { content: '{{empresa.nombreEmpresa}}', fontWeight: 'bold', fontSize: 9, textAlign: 'center', color: '#ffffff' }),
     el('ed_pl',  'TEXT',   2,   10.5, 16,  5,  { content: 'Paciente:', fontSize: 7, fontWeight: 'bold', color: '#64748b' }),
     el('ed_pn',  'TEXT',   18,  10.5, 70,  5,  { content: '{{paciente.nombre}}', fontSize: 8, fontWeight: 'bold', color: '#1e293b' }),
-    el('ed_rx',  'TEXT',   2,   16,  44,  5,  { content: 'Receta: {{receta.codigoReceta}}', fontSize: 7, color: '#64748b' }),
+    el('ed_rx',  'TEXT',   2,   16,  44,  5,  { content: 'Formula: {{item.dosis}}', fontSize: 7, color: '#64748b' }),
     el('ed_fe',  'TEXT',   46,  16,  42,  5,  { content: 'Fecha: {{venta.fecha}}', fontSize: 7, color: '#64748b' }),
     el('ed_div', 'SHAPE',  2,   22,  86,  0.05, { shapeType: 'LINE', stroke: '#0f766e', strokeWidth: 1.5 }),
     el('ed_mn',  'TEXT',   2,   23.5, 86,  7,  { content: '{{medicamento.nombre}}', fontWeight: 'bold', fontSize: 10, color: '#0f766e' }),

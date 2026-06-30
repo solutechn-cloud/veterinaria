@@ -7,8 +7,6 @@ INSERT INTO permisos (idPermiso, nombre, modulo) VALUES
     ('VER_CLIENTES',               'Ver Tutores',                        'Comercial'),
     ('VER_SERVICIOS_VET',          'Ver Servicios Veterinarios',         'Comercial'),
     ('GESTIONAR_SERVICIOS_VET',    'Gestionar Servicios Veterinarios',   'Comercial'),
-    ('VER_RECETAS',                'Ver Recetas Veterinarias',           'Comercial'),
-    ('AUTORIZAR_PSICOFARMACOS',    'Autorizar Psicofarmacos',            'Comercial'),
 
     ('VER_PACIENTES',              'Ver Pacientes',                      'Clinica'),
     ('GESTIONAR_PACIENTES',        'Gestionar Pacientes',                'Clinica'),

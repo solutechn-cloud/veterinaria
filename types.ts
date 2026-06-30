@@ -28,7 +28,7 @@ export interface UserSession extends Usuario {
 
 export type PlanFeatureKey =
     | 'modulo_pos' | 'modulo_medicamentos' | 'modulo_clientes' | 'modulo_caja'
-    | 'modulo_config' | 'ia_basica' | 'modulo_recetas' | 'modulo_lealtad'
+    | 'modulo_config' | 'ia_basica' | 'modulo_lealtad'
     | 'modulo_ordenes_compra' | 'modulo_vencimientos' | 'modulo_proveedores'
     | 'modulo_contabilidad' | 'modulo_etiquetas' | 'reportes_exportar' | 'ia_avanzada'
     | 'modulo_sucursales' | 'modulo_transferencias' | 'modulo_entregas' | 'modulo_panel_cajas'
@@ -37,7 +37,7 @@ export type PlanFeatureKey =
 
 export const PERMISSIONS = {
     VER_POS: 'VER_POS', VER_CLIENTES: 'VER_CLIENTES', VER_INVENTARIO: 'VER_INVENTARIO',
-    VER_RECETAS: 'VER_RECETAS', VER_LEALTAD: 'VER_LEALTAD', VER_CAJA: 'VER_CAJA',
+    VER_LEALTAD: 'VER_LEALTAD', VER_CAJA: 'VER_CAJA',
     VER_CONTABILIDAD: 'VER_CONTABILIDAD', VER_REPORTES: 'VER_REPORTES',
     VER_PROVEEDORES: 'VER_PROVEEDORES', VER_ADMIN: 'VER_ADMIN',
     GESTIONAR_USUARIOS: 'GESTIONAR_USUARIOS', GESTIONAR_ROLES: 'GESTIONAR_ROLES',
@@ -46,7 +46,7 @@ export const PERMISSIONS = {
     ANULAR_VENTA: 'ANULAR_VENTA', GESTIONAR_CAJA: 'GESTIONAR_CAJA',
     ELIMINAR_MEDICAMENTO: 'ELIMINAR_MEDICAMENTO', CONFIGURAR_LEALTAD: 'CONFIGURAR_LEALTAD',
     AJUSTAR_PUNTOS_LEALTAD: 'AJUSTAR_PUNTOS_LEALTAD',
-    AUTORIZAR_PSICOFARMACOS: 'AUTORIZAR_PSICOFARMACOS', EXPORTAR_REPORTES: 'EXPORTAR_REPORTES',
+    EXPORTAR_REPORTES: 'EXPORTAR_REPORTES',
     VER_PACIENTES: 'VER_PACIENTES', GESTIONAR_PACIENTES: 'GESTIONAR_PACIENTES',
     VER_CITAS: 'VER_CITAS', GESTIONAR_CITAS: 'GESTIONAR_CITAS',
     VER_FLOWBOARD: 'VER_FLOWBOARD',
@@ -547,50 +547,6 @@ export interface StockCritico {
   puntoReorden: number;
   stockActual: number;
   categoria?: string;
-}
-
-export interface DetalleReceta {
-  id: number;
-  id_receta: string;
-  id_medicamento?: string;
-  nombre_prescrito?: string;
-  dosis_prescrita?: string;
-  cantidad_prescrita: number;
-  unidad_prescrita?: string;
-  cantidad_dispensada: number;
-  fecha_ultima_dispensacion?: string;
-  estado: 'Pendiente' | 'Dispensado' | 'Parcial';
-  nombreGenerico?: string;
-  nombreComercial?: string;
-  concentracion?: string;
-  tipoIsv?: string;
-}
-
-export interface Receta {
-  codigo: string;
-  id_cliente?: string;
-  nombre_medico?: string;
-  numero_colegiado?: string;
-  especialidad?: string;
-  telefono_medico?: string;
-  clinica_hospital?: string;
-  fecha_emision: string;
-  fecha_vencimiento: string;
-  tipo_receta: 'Normal' | 'Cronica' | 'Controlada';
-  diagnostico?: string;
-  imagen_url?: string;
-  imagen_base64?: string;
-  estado: 'Pendiente' | 'Dispensada' | 'Parcial' | 'Vencida' | 'Anulada';
-  id_sucursal?: number;
-  registrado_por?: string;
-  fecha_registro: string;
-  notas?: string;
-  nombreCliente?: string;
-  telefonoCliente?: string;
-  fechaNacimientoCliente?: string;
-  totalItems?: number;
-  totalDispensado?: number;
-  detalle?: DetalleReceta[];
 }
 
 export interface Sucursal {

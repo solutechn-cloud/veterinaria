@@ -14,7 +14,6 @@ const PLAN_INFO: Record<string, { label: string; price: string; color: string }>
 
 const FEATURE_LABELS: Record<string, string> = {
   modulo_lealtad:       'Programa de Lealtad',
-  modulo_recetas:       'Recetas Médicas',
   modulo_ordenes_compra:'Órdenes de Compra',
   modulo_vencimientos:  'Control de Vencimientos',
   modulo_proveedores:   'Gestión de Proveedores',

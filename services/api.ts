@@ -66,7 +66,6 @@ const ENTITY_MAP: { prefix: string; idField: string; cacheKey?: string }[] = [
   { prefix: '/cajas',                        idField: 'id' },
   { prefix: '/labels',                       idField: 'id' },
   { prefix: '/medicamentos',                 idField: 'codigo' },
-  { prefix: '/recetas',                      idField: 'codigo' },
   { prefix: '/ordenes-compra',               idField: 'codigo' },
   { prefix: '/transferencias',               idField: 'codigo' },
   { prefix: '/sucursales',                   idField: 'id_sucursal' },
@@ -692,7 +691,7 @@ export const AIService = {
 // ─── SERVICIOS VETERINARIA ──────────────────────────────────────────────────────
 import type {
   Medicamento, PresentacionVenta, LoteMedicamento, ImagenMedicamento,
-  AlertaVencimiento, StockCritico, Receta, Sucursal,
+  AlertaVencimiento, StockCritico, Sucursal,
   CategoriaTerapeutica, FormaFarmaceutica
 } from '../types';
 
@@ -748,23 +747,6 @@ export const CatalogoService = {
   updateCategoria: (id: number, data: any) => request(`/categorias-terapeuticas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getFormas: () => request<FormaFarmaceutica[]>('/formas-farmaceuticas'),
   getPrincipios: (q?: string) => request<any[]>(`/principios-activos${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-};
-
-export const RecetasService = {
-  getAll: (params?: { estado?: string; id_cliente?: string; id_sucursal?: number }) => {
-    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : '';
-    return request<Receta[]>(`/recetas${qs}`);
-  },
-  getById: (id: string) => request<Receta>(`/recetas/${id}`),
-  create: (data: any) => request<{ codigo: string }>('/recetas', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => request(`/recetas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  dispensar: (id: string, data: { id_detalle: number; cantidad_a_dispensar: number; id_sucursal?: number }) =>
-    request(`/recetas/${id}/dispensar`, { method: 'POST', body: JSON.stringify(data) }),
-  getRetenidas: () => request<any[]>('/recetas-retenidas'),
-  getLibroPsicofarmaco: (params?: { id_medicamento?: string; fecha_desde?: string; fecha_hasta?: string }) => {
-    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString() : '';
-    return request<any[]>(`/libro-psicofarmacos${qs}`);
-  },
 };
 
 export const SucursalesService = {
