@@ -236,12 +236,10 @@ router.get('/search', authenticateToken, async (req, res) => {
     } catch (e) { handleDbError(res, e); }
 });
 
-// POST /reports/send-monthly — envia resumen mensual por email al admin
+// POST /reports/send-monthly - envia resumen mensual usando el directorio de notificaciones
 router.post('/reports/send-monthly', authenticateToken, async (req, res) => {
-    const { getSystemConfig } = require('../config/systemConfig');
+    const automationService = require('../services/automationService');
     const emailService = require('../services/emailService');
-    const { adminEmail } = await getSystemConfig();
-    if (!adminEmail) return res.status(400).json({ error: 'ADMIN_EMAIL no configurado en Configuración de Empresa' });
 
     const now = new Date();
     const year = now.getFullYear();
@@ -253,39 +251,78 @@ router.post('/reports/send-monthly', authenticateToken, async (req, res) => {
     const mesLabel = now.toLocaleString('es-HN', { month: 'long', year: 'numeric', timeZone: 'America/Tegucigalpa' });
 
     try {
-        const [ventasRes, topRes] = await Promise.all([
+        const [ventasRes, topRes, stockRes, citasRes, vacunasRes] = await Promise.all([
             pool.query(
-                `SELECT COALESCE(SUM(total),0) as ventas, COALESCE(SUM(isv_calculado),0) as isv, COUNT(*) as num FROM ventas WHERE fecha BETWEEN $1 AND $2 AND estado='Completada' AND tenant_id=$3`,
+                `SELECT COALESCE(SUM(total),0) AS ventas,
+                        COALESCE(SUM(isv_calculado),0) AS isv,
+                        COUNT(*) AS num
+                 FROM ventas
+                 WHERE fecha BETWEEN $1 AND $2
+                   AND estado = 'Completada'
+                   AND tenant_id = $3`,
                 [start, end, req.tenantId]
             ),
             pool.query(
-                `SELECT COALESCE(m.nombre_comercial, m.nombre_generico, dv.producto, 'Medicamento') as producto, SUM(dv.cantidad) as qty, SUM(dv.cantidad*COALESCE(dv.precioUnitario,dv.precioVenta,0)) as total FROM detalleventa dv LEFT JOIN presentaciones_venta pv ON dv.id_presentacion=pv.id_presentacion AND pv.tenant_id=$3 LEFT JOIN medicamentos m ON pv.id_medicamento=m.codigo AND m.tenant_id=$3 JOIN ventas v ON dv.idVenta=v.codVenta WHERE v.fecha BETWEEN $1 AND $2 AND v.estado='Completada' AND dv.tipoProducto='MEDICAMENTO' AND v.tenant_id=$3 GROUP BY 1 ORDER BY total DESC LIMIT 5`,
+                `SELECT COALESCE(m.nombre_comercial, m.nombre_generico, dv.producto, 'Item') AS producto,
+                        SUM(dv.cantidad) AS qty,
+                        SUM(dv.cantidad * COALESCE(dv.precioUnitario, dv.precioVenta, 0)) AS total
+                 FROM detalleventa dv
+                 LEFT JOIN presentaciones_venta pv ON dv.id_presentacion = pv.id_presentacion AND pv.tenant_id = $3
+                 LEFT JOIN medicamentos m ON pv.id_medicamento = m.codigo AND m.tenant_id = $3
+                 JOIN ventas v ON dv.idVenta = v.codVenta
+                 WHERE v.fecha BETWEEN $1 AND $2
+                   AND v.estado = 'Completada'
+                   AND v.tenant_id = $3
+                 GROUP BY 1
+                 ORDER BY total DESC
+                 LIMIT 8`,
+                [start, end, req.tenantId]
+            ),
+            pool.query(
+                `SELECT m.nombre_generico AS producto, SUM(l.cantidad_actual) AS stock
+                 FROM lotes_medicamento l
+                 JOIN medicamentos m ON l.id_medicamento = m.codigo
+                 WHERE l.estado = 'Activo'
+                   AND l.cantidad_actual <= m.stock_minimo
+                   AND m.tenant_id = $1
+                 GROUP BY m.nombre_generico
+                 ORDER BY stock ASC
+                 LIMIT 8`,
+                [req.tenantId]
+            ),
+            pool.query(
+                `SELECT COUNT(*)::int AS total,
+                        COUNT(*) FILTER (WHERE estado = 'No asistio')::int AS no_shows
+                 FROM citas
+                 WHERE fecha_inicio BETWEEN $1 AND $2
+                   AND tenant_id = $3`,
+                [start, end, req.tenantId]
+            ),
+            pool.query(
+                `SELECT COUNT(*)::int AS total
+                 FROM vacunas_aplicadas
+                 WHERE fecha_aplicacion BETWEEN $1::date AND $2::date
+                   AND tenant_id = $3`,
                 [start, end, req.tenantId]
             ),
         ]);
 
-        const fmt = (n) => `L. ${Number(n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-        const ventas = Number(ventasRes.rows[0].ventas);
-        const isv = Number(ventasRes.rows[0].isv);
-        const numFacturas = Number(ventasRes.rows[0].num) || 0;
-        const topRows = topRes.rows.map(r=>`<tr><td>${r.producto}</td><td style="text-align:right">${r.qty}</td><td style="text-align:right;font-weight:600">${fmt(r.total)}</td></tr>`).join('');
+        const payload = {
+            mes: mesLabel,
+            ventas: Number(ventasRes.rows[0]?.ventas || 0),
+            isv: Number(ventasRes.rows[0]?.isv || 0),
+            numFacturas: Number(ventasRes.rows[0]?.num || 0),
+            citas: Number(citasRes.rows[0]?.total || 0),
+            noShows: Number(citasRes.rows[0]?.no_shows || 0),
+            vacunas: Number(vacunasRes.rows[0]?.total || 0),
+            topItems: topRes.rows.map(r => ({ producto: r.producto, qty: Number(r.qty), total: Number(r.total) })),
+            stockCritico: stockRes.rows.map(r => ({ producto: r.producto, stock: Number(r.stock) })),
+        };
 
-        const htmlBody = `<div class="header" style="background:#1b5e20;"><h1>Reporte Mensual</h1><p>${mesLabel}</p></div>
-        <div class="body">
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-            <div class="card" style="flex:1;min-width:150px;"><div class="label">Ventas del Mes</div><div class="highlight" style="color:#1b5e20;">${fmt(ventas)}</div></div>
-            <div class="card" style="flex:1;min-width:150px;"><div class="label">ISV Recaudado</div><div class="highlight">${fmt(isv)}</div></div>
-          </div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-            <div class="card" style="flex:1;min-width:150px;"><div class="label">Facturas Emitidas</div><div class="highlight">${numFacturas}</div></div>
-          </div>
-          ${topRes.rows.length>0?`<h3 style="font-size:15px;margin-bottom:10px;">Top Productos del Mes</h3>
-          <table class="data"><thead><tr><th>Producto</th><th style="text-align:right">Cant.</th><th style="text-align:right">Total</th></tr></thead>
-          <tbody>${topRows}</tbody></table>`:''}
-        </div>`;
-
-        await emailService.sendMonthlyReportEmail(adminEmail, mesLabel, htmlBody);
-        res.json({ message: `Reporte de ${mesLabel} enviado a ${adminEmail}` });
+        const result = await automationService.sendEventEmail(req.tenantId, 'monthly_report', (to) =>
+            emailService.sendMonthlyManagementReportEmail(to, payload)
+        );
+        res.json({ message: `Reporte de ${mesLabel} enviado a ${result.sent || 0} destinatario(s)` });
     } catch(e) { handleDbError(res, e); }
 });
 

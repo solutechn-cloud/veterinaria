@@ -7,11 +7,13 @@ const emailService = require('./emailService');
 const EVENT_CATALOG = [
     { key: 'daily_report', label: 'Resumen diario operativo', category: 'Reportes', recommendedTime: '22:30', description: 'Ventas, citas, stock critico y actividad clinica del dia.' },
     { key: 'weekly_report', label: 'Resumen semanal gerencial', category: 'Reportes', recommendedTime: '08:00', description: 'Ingresos, tutores frecuentes, inventario critico y desempeno semanal.' },
+    { key: 'monthly_report', label: 'Resumen mensual gerencial', category: 'Reportes', recommendedTime: '08:30', description: 'Ventas, citas, vacunas, no-shows e inventario critico del mes.' },
     { key: 'backup_ok', label: 'Backup completado', category: 'Seguridad', recommendedTime: '02:45', description: 'Confirmacion de respaldo exitoso en Cloudflare R2.' },
     { key: 'backup_error', label: 'Backup con error', category: 'Seguridad', recommendedTime: '02:45', description: 'Alerta inmediata si el respaldo nocturno falla.' },
     { key: 'stock_critico', label: 'Inventario critico', category: 'Inventario', recommendedTime: '07:30', description: 'Medicamentos, vacunas e insumos por debajo del minimo.' },
     { key: 'vacunas_proximas', label: 'Vacunas proximas o vencidas', category: 'Clinica', recommendedTime: '08:00', description: 'Pacientes que requieren vacunacion o refuerzo.' },
     { key: 'citas_manana', label: 'Agenda de manana', category: 'Recepcion', recommendedTime: '17:00', description: 'Citas programadas para preparar recepcion y medicos.' },
+    { key: 'appointment_created', label: 'Confirmacion de cita al tutor', category: 'Recepcion', recommendedTime: null, description: 'Correo inmediato cuando se programa una cita con tutor y paciente.' },
     { key: 'no_shows', label: 'Citas no asistidas', category: 'Recepcion', recommendedTime: '18:00', description: 'Seguimiento comercial de pacientes que no llegaron.' },
     { key: 'facturacion_pendiente', label: 'Facturacion pendiente', category: 'Finanzas', recommendedTime: '16:30', description: 'Consultas o servicios clinicos pendientes de cobro.' },
 ];

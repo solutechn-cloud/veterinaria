@@ -39,8 +39,7 @@ async function getActiveTenants() {
 async function runDailyReport(tenantId = null) {
     const { adminEmail } = await getSystemConfig(tenantId);
     if (!adminEmail) {
-        console.warn(`[cronJobs] adminEmail not set for tenant ${tenantId ? tenantId.substring(0, 8) : 'env'}, skipping daily report.`);
-        return;
+        console.warn(`[cronJobs] adminEmail not set for tenant ${tenantId ? tenantId.substring(0, 8) : 'env'}, using automation recipients only.`);
     }
 
     try {
@@ -50,7 +49,7 @@ async function runDailyReport(tenantId = null) {
         const tenantFilter = tenantId ? 'AND tenant_id = $2' : '';
         const baseParams   = tenantId ? [hoy, tenantId] : [hoy];
 
-        const [ventasRow, topRow, stockRow] = await Promise.all([
+        const [ventasRow, topRow, stockRow, citasRow, vacunasRow] = await Promise.all([
             pool.query(`
                 SELECT
                     COUNT(codVenta)         AS num_facturas,
@@ -89,12 +88,32 @@ async function runDailyReport(tenantId = null) {
                 ORDER BY stock ASC
                 LIMIT 5
             `, tenantId ? [tenantId] : []),
+
+            pool.query(`
+                SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE estado = 'Confirmada')::int AS confirmadas,
+                    COUNT(*) FILTER (WHERE estado = 'No asistio')::int AS no_shows
+                FROM citas
+                WHERE TO_CHAR(fecha_inicio AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $1
+                  ${tenantId ? 'AND tenant_id = $2' : ''}
+            `, baseParams),
+
+            pool.query(`
+                SELECT COUNT(*)::int AS total
+                FROM vacunas_aplicadas
+                WHERE fecha_aplicacion = $1::date
+                  ${tenantId ? 'AND tenant_id = $2' : ''}
+            `, baseParams),
         ]);
 
         const totalVentas  = Number(ventasRow.rows[0].total_ventas);
         const numFacturas  = Number(ventasRow.rows[0].num_facturas);
         const topProductos = topRow.rows.map(r => ({ producto: r.producto, cantidad: Number(r.cantidad), total: Number(r.total) }));
         const stockCritico = stockRow.rows.map(r => ({ producto: r.producto, stock: Number(r.stock) }));
+        const citasHoy = Number(citasRow.rows[0]?.total || 0);
+        const vacunasAplicadas = Number(vacunasRow.rows[0]?.total || 0);
+        const noShows = Number(citasRow.rows[0]?.no_shows || 0);
 
         const reportPayload = {
             fecha: hoy,
@@ -102,8 +121,9 @@ async function runDailyReport(tenantId = null) {
             numFacturas,
             gananciaEstimada: 0,
             totalEgresos: 0,
-            citasHoy: 0,
-            vacunasAplicadas: 0,
+            citasHoy,
+            vacunasAplicadas,
+            noShows,
             topProductos,
             stockCritico,
         };
@@ -123,8 +143,7 @@ async function runDailyReport(tenantId = null) {
 async function runWeeklyReport(tenantId = null) {
     const { adminEmail } = await getSystemConfig(tenantId);
     if (!adminEmail) {
-        console.warn(`[cronJobs] adminEmail not set for tenant ${tenantId ? tenantId.substring(0, 8) : 'env'}, skipping weekly report.`);
-        return;
+        console.warn(`[cronJobs] adminEmail not set for tenant ${tenantId ? tenantId.substring(0, 8) : 'env'}, using automation recipients only.`);
     }
 
     try {
@@ -182,18 +201,146 @@ async function runWeeklyReport(tenantId = null) {
             `, tp),
         ]);
 
-        await emailService.sendWeeklyReportEmail(adminEmail, {
+        const weeklyPayload = {
             semana:          getWeekLabel(0),
             ventas:          Number(thisWeekRes.rows[0].ventas),
             ventasAntSemana: Number(lastWeekRes.rows[0].ventas),
             gananciaSemana:  0,
             topClientes:     clientesRes.rows.map(r => ({ nombre: r.nombre, total: Number(r.total) })),
             stockCritico:    stockRes.rows.map(r => ({ producto: r.producto, stock: Number(r.stock) })),
-        });
+        };
+        await automationService.sendEventEmail(tenantId, 'weekly_report', (to) =>
+            emailService.sendWeeklyReportEmail(to, weeklyPayload)
+        );
 
         console.log(`[cronJobs] Weekly report sent (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'})`);
     } catch (err) {
         console.error(`[cronJobs] Error in weekly report (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'}):`, err.message);
+    }
+}
+
+async function runTomorrowAgenda(tenantId = null) {
+    try {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const fecha = tomorrow.toLocaleDateString('sv-SE', { timeZone: 'America/Tegucigalpa' });
+        const params = tenantId ? [fecha, tenantId] : [fecha];
+        const { rows } = await pool.query(`
+            SELECT c.fecha_inicio, c.estado, c.motivo,
+                   p.nombre AS paciente,
+                   COALESCE(cli.nombre || ' ' || cli.apellido, cli.nombre, 'Tutor') AS tutor,
+                   tc.nombre AS tipo,
+                   COALESCE(e.nombre || ' ' || e.apellido, u.usuario, c.id_veterinario, 'Sin asignar') AS veterinario
+            FROM citas c
+            LEFT JOIN pacientes p ON p.id_paciente = c.id_paciente AND p.tenant_id = c.tenant_id
+            LEFT JOIN clientes cli ON cli.identidad = c.id_tutor AND cli.tenant_id = c.tenant_id
+            LEFT JOIN tipos_cita tc ON tc.id_tipo_cita = c.id_tipo_cita AND tc.tenant_id = c.tenant_id
+            LEFT JOIN usuarios u ON u.codUsuario::text = c.id_veterinario::text AND u.tenant_id = c.tenant_id
+            LEFT JOIN empleado e ON e.identidad = u.identidad AND e.tenant_id = c.tenant_id
+            WHERE TO_CHAR(c.fecha_inicio AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM-DD') = $1
+              AND c.estado NOT IN ('Cancelada')
+              ${tenantId ? 'AND c.tenant_id = $2' : ''}
+            ORDER BY c.fecha_inicio ASC
+            LIMIT 120
+        `, params);
+        const citas = rows.map(r => ({
+            hora: new Date(r.fecha_inicio).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Tegucigalpa' }),
+            paciente: r.paciente,
+            tutor: r.tutor,
+            tipo: r.tipo || r.motivo || 'Cita',
+            veterinario: r.veterinario,
+            estado: r.estado,
+        }));
+        await automationService.sendEventEmail(tenantId, 'citas_manana', (to) =>
+            emailService.sendAppointmentAgendaEmail(to, {
+                fecha,
+                citas,
+                resumen: {
+                    total: citas.length,
+                    confirmadas: citas.filter(c => c.estado === 'Confirmada').length,
+                },
+            })
+        );
+        if (citas.length > 0) console.log(`[cronJobs] Tomorrow agenda sent (${citas.length} citas).`);
+    } catch (err) {
+        console.error(`[cronJobs] Error in tomorrow agenda (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'}):`, err.message);
+    }
+}
+
+async function runMonthlyReport(tenantId = null) {
+    try {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 1);
+        const mes = start.toLocaleString('es-HN', { month: 'long', year: 'numeric', timeZone: 'America/Tegucigalpa' });
+        const startStr = start.toISOString();
+        const endStr = end.toISOString();
+        const params = tenantId ? [startStr, endStr, tenantId] : [startStr, endStr];
+
+        const [ventasRes, topRes, stockRes, citasRes, vacunasRes] = await Promise.all([
+            pool.query(`
+                SELECT COALESCE(SUM(total),0) AS ventas, COALESCE(SUM(isv_calculado),0) AS isv, COUNT(*)::int AS facturas
+                FROM ventas
+                WHERE fecha >= $1 AND fecha < $2 AND estado='Completada'
+                ${tenantId ? 'AND tenant_id = $3' : ''}
+            `, params),
+            pool.query(`
+                SELECT COALESCE(m.nombre_comercial, m.nombre_generico, dv.producto, 'Item') AS producto,
+                       SUM(dv.cantidad) AS qty,
+                       SUM(dv.cantidad * COALESCE(dv.precioUnitario, dv.precioVenta, 0)) AS total
+                FROM detalleventa dv
+                JOIN ventas v ON dv.idVenta = v.codVenta
+                LEFT JOIN presentaciones_venta pv ON dv.id_presentacion = pv.id_presentacion
+                LEFT JOIN medicamentos m ON pv.id_medicamento = m.codigo
+                WHERE v.fecha >= $1 AND v.fecha < $2 AND v.estado='Completada'
+                  ${tenantId ? 'AND v.tenant_id = $3' : ''}
+                GROUP BY 1
+                ORDER BY total DESC
+                LIMIT 8
+            `, params),
+            pool.query(`
+                SELECT m.nombre_generico AS producto, SUM(l.cantidad_actual) AS stock
+                FROM lotes_medicamento l
+                JOIN medicamentos m ON l.id_medicamento = m.codigo
+                WHERE l.estado = 'Activo' AND l.cantidad_actual <= m.stock_minimo
+                  ${tenantId ? 'AND m.tenant_id = $1' : ''}
+                GROUP BY m.nombre_generico
+                ORDER BY stock ASC
+                LIMIT 8
+            `, tenantId ? [tenantId] : []),
+            pool.query(`
+                SELECT COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE estado = 'No asistio')::int AS no_shows
+                FROM citas
+                WHERE fecha_inicio >= $1 AND fecha_inicio < $2
+                  ${tenantId ? 'AND tenant_id = $3' : ''}
+            `, params),
+            pool.query(`
+                SELECT COUNT(*)::int AS total
+                FROM vacunas_aplicadas
+                WHERE fecha_aplicacion >= $1::date AND fecha_aplicacion < $2::date
+                  ${tenantId ? 'AND tenant_id = $3' : ''}
+            `, params),
+        ]);
+
+        await automationService.sendEventEmail(tenantId, 'monthly_report', (to) =>
+            emailService.sendMonthlyManagementReportEmail(to, {
+                mes,
+                ventas: Number(ventasRes.rows[0]?.ventas || 0),
+                isv: Number(ventasRes.rows[0]?.isv || 0),
+                numFacturas: Number(ventasRes.rows[0]?.facturas || 0),
+                citas: Number(citasRes.rows[0]?.total || 0),
+                vacunas: Number(vacunasRes.rows[0]?.total || 0),
+                noShows: Number(citasRes.rows[0]?.no_shows || 0),
+                topItems: topRes.rows,
+                stockCritico: stockRes.rows,
+            })
+        );
+        console.log(`[cronJobs] Monthly report sent for ${mes}.`);
+    } catch (err) {
+        console.error(`[cronJobs] Error in monthly report (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'}):`, err.message);
     }
 }
 
@@ -252,6 +399,18 @@ function startCronJobs() {
     cron.schedule('0 14 * * 1', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runWeeklyReport(t.id)));
+    }, { timezone: 'UTC' });
+
+    // Tomorrow agenda - 5:00 PM Honduras = 23:00 UTC
+    cron.schedule('0 23 * * *', async () => {
+        const tenants = await getActiveTenants();
+        await Promise.allSettled(tenants.map(t => runTomorrowAgenda(t.id)));
+    }, { timezone: 'UTC' });
+
+    // Monthly management report - 1st day, 8:30 AM Honduras = 14:30 UTC
+    cron.schedule('30 14 1 * *', async () => {
+        const tenants = await getActiveTenants();
+        await Promise.allSettled(tenants.map(t => runMonthlyReport(t.id)));
     }, { timezone: 'UTC' });
 
     // Daily database backup — 2:30 AM Honduras (UTC-6) = 08:30 UTC.
@@ -338,7 +497,7 @@ function startCronJobs() {
         await Promise.allSettled(tenants.map(t => runVeterinaryReminders(t.id)));
     }, { timezone: 'UTC' });
 
-    console.log('[cronJobs] Cron jobs registered: daily report, weekly report, R2 backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
+    console.log('[cronJobs] Cron jobs registered: daily/weekly/monthly reports, tomorrow agenda, R2 backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
 }
 
-module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runVeterinaryReminders };
+module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runMonthlyReport, runTomorrowAgenda, runVeterinaryReminders };

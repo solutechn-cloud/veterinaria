@@ -66,13 +66,18 @@ async function ensureNoAppointmentOverlap(client, req, { idCita = null, idVeteri
     }
 }
 
-async function createAppointmentReminders(client, req, citaId) {
+async function createAppointmentReminders(client, req, citaId, { sendConfirmation = false } = {}) {
     const { rows } = await client.query(`
-        SELECT c.id_cita, c.fecha_inicio, c.id_tutor, c.id_paciente,
-               p.nombre AS paciente, cli.correo, cli.nombre AS tutor
+        SELECT c.id_cita, c.fecha_inicio, c.id_tutor, c.id_paciente, c.motivo,
+               p.nombre AS paciente, cli.correo, cli.nombre AS tutor,
+               tc.nombre AS "tipoCitaNombre",
+               COALESCE(e.nombre || ' ' || e.apellido, u.usuario, c.id_veterinario) AS "veterinarioNombre"
         FROM citas c
         LEFT JOIN pacientes p ON p.id_paciente = c.id_paciente AND p.tenant_id = c.tenant_id
         LEFT JOIN clientes cli ON cli.identidad = c.id_tutor AND cli.tenant_id = c.tenant_id
+        LEFT JOIN tipos_cita tc ON tc.id_tipo_cita = c.id_tipo_cita AND tc.tenant_id = c.tenant_id
+        LEFT JOIN usuarios u ON u.codUsuario::text = c.id_veterinario::text AND u.tenant_id = c.tenant_id
+        LEFT JOIN empleado e ON e.identidad = u.identidad AND e.tenant_id = c.tenant_id
         WHERE c.id_cita = $1 AND c.tenant_id = $2
     `, [citaId, req.tenantId]);
     const cita = rows[0];
@@ -97,6 +102,12 @@ async function createAppointmentReminders(client, req, citaId) {
             `Recordatorio de cita veterinaria para ${cita.paciente || 'su mascota'}`,
             `Hola ${cita.tutor || ''}, le recordamos la cita de ${cita.paciente || 'su mascota'} programada para ${new Date(cita.fecha_inicio).toLocaleString('es-HN')}.`,
         ]);
+    }
+
+    if (sendConfirmation) {
+        await emailService.sendAppointmentConfirmationEmail(cita.correo, cita).catch(err => {
+            console.error('[veterinaryRoutes] appointment confirmation email error:', err.message);
+        });
     }
 }
 
@@ -512,7 +523,7 @@ router.post('/citas', authenticateToken, async (req, res) => {
                 b.estado || 'Programada', cleanText(b.motivo, 2000), cleanText(b.notas, 2000),
                 req.user?.codUsuario || req.user?.usuario || null,
             ]);
-            await createAppointmentReminders(client, req, result.rows[0].id_cita);
+            await createAppointmentReminders(client, req, result.rows[0].id_cita, { sendConfirmation: true });
             return result.rows[0].id_cita;
         });
         res.status(201).json({ id_cita: id });

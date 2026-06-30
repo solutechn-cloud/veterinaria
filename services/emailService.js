@@ -27,48 +27,100 @@ function getCOMPANY() {
     return raw.match(/^(.+?)\s*</)?.[1] || process.env.COMPANY_NAME || 'ERPSmartCloud';
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function fmtMoney(n) {
+    return `L. ${Number(n || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtDateTime(value) {
+    if (!value) return '';
+    return new Date(value).toLocaleString('es-HN', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone: 'America/Tegucigalpa',
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Helper — shared HTML wrapper
 // ---------------------------------------------------------------------------
-function wrapHtml(title, accentColor, bodyContent) {
+function wrapHtml(title, accentColor, bodyContent, opts = {}) {
+    const company = escapeHtml(opts.company || getCOMPANY());
+    const preheader = escapeHtml(opts.preheader || title);
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
-    body { margin:0; padding:0; background:#f4f4f5; font-family:'Segoe UI',Arial,sans-serif; color:#222; }
-    .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,.1); }
-    .header { background:${accentColor}; padding:28px 32px; color:#fff; }
-    .header h1 { margin:0; font-size:22px; font-weight:700; letter-spacing:.5px; }
-    .header p  { margin:4px 0 0; font-size:13px; opacity:.85; }
-    .body  { padding:28px 32px; }
-    .card  { background:#f8f9fa; border-radius:8px; padding:18px 22px; margin-bottom:18px; }
-    .label { font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:#888; margin-bottom:4px; }
-    .value { font-size:16px; font-weight:600; color:#111; }
-    .highlight { font-size:28px; font-weight:700; color:${accentColor}; }
-    .badge { display:inline-block; background:${accentColor}; color:#fff; border-radius:20px; padding:4px 14px; font-size:13px; font-weight:600; }
-    .footer { background:#f0f0f0; padding:16px 32px; font-size:12px; color:#888; text-align:center; }
-    table.data { width:100%; border-collapse:collapse; font-size:14px; }
-    table.data th { background:#eee; padding:8px 10px; text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:#555; }
-    table.data td { padding:8px 10px; border-bottom:1px solid #eee; }
-    .alert-box { background:#fff3cd; border-left:4px solid #ffc107; padding:12px 16px; border-radius:4px; margin-bottom:16px; font-size:14px; }
-    .danger-box { background:#fdecea; border-left:4px solid #e53935; padding:12px 16px; border-radius:4px; margin-bottom:16px; }
-    .success-box { background:#e8f5e9; border-left:4px solid #43a047; padding:12px 16px; border-radius:4px; margin-bottom:16px; }
+    body { margin:0; padding:0; background:#eef2f7; font-family:Inter,'Segoe UI',Arial,sans-serif; color:#172033; }
+    .preheader { display:none!important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; overflow:hidden; }
+    .shell { width:100%; background:#eef2f7; padding:28px 12px; }
+    .wrapper { max-width:680px; margin:0 auto; background:#ffffff; border-radius:24px; overflow:hidden; box-shadow:0 24px 60px rgba(15,23,42,.12); border:1px solid #e2e8f0; }
+    .brandbar, .header { background:linear-gradient(135deg,${accentColor},#111827); padding:30px 34px; color:#fff; }
+    .brandpill { display:inline-block; padding:7px 12px; border-radius:999px; background:rgba(255,255,255,.16); font-size:12px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+    .brandbar h1, .header h1 { margin:14px 0 4px; font-size:27px; line-height:1.18; font-weight:850; letter-spacing:-.02em; }
+    .brandbar p, .header p  { margin:0; font-size:14px; opacity:.88; }
+    .body  { padding:30px 34px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .card  { background:#f8fafc; border:1px solid #e2e8f0; border-radius:18px; padding:18px 20px; margin-bottom:16px; }
+    .metric { background:#fff; border:1px solid #e2e8f0; border-radius:18px; padding:18px; }
+    .label { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:#64748b; margin-bottom:6px; font-weight:800; }
+    .value { font-size:16px; font-weight:750; color:#0f172a; }
+    .highlight { font-size:28px; font-weight:900; color:${accentColor}; letter-spacing:-.03em; }
+    .muted { color:#64748b; font-size:13px; line-height:1.55; }
+    .badge { display:inline-block; background:${accentColor}; color:#fff; border-radius:999px; padding:6px 13px; font-size:12px; font-weight:800; }
+    .footer { background:#f8fafc; padding:20px 34px; font-size:12px; color:#64748b; text-align:center; border-top:1px solid #e2e8f0; }
+    table.data { width:100%; border-collapse:separate; border-spacing:0; font-size:14px; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden; }
+    table.data th { background:#f8fafc; padding:11px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#64748b; }
+    table.data td { padding:11px 12px; border-top:1px solid #e2e8f0; color:#172033; }
+    .alert-box { background:#fffbeb; border:1px solid #fde68a; border-left:5px solid #f59e0b; padding:14px 16px; border-radius:16px; margin-bottom:16px; font-size:14px; }
+    .danger-box { background:#fef2f2; border:1px solid #fecaca; border-left:5px solid #ef4444; padding:14px 16px; border-radius:16px; margin-bottom:16px; }
+    .success-box { background:#ecfdf5; border:1px solid #bbf7d0; border-left:5px solid #10b981; padding:14px 16px; border-radius:16px; margin-bottom:16px; }
+    .button { display:inline-block; background:${accentColor}; color:#fff!important; text-decoration:none; padding:13px 18px; border-radius:14px; font-weight:800; }
     @media (max-width:620px) {
-      .wrapper { margin:0; border-radius:0; }
-      .header, .body, .footer { padding:20px 18px; }
+      .shell { padding:0; }
+      .wrapper { border-radius:0; }
+      .brandbar, .header, .body, .footer { padding:22px 18px; }
+      .grid { display:block; }
     }
   </style>
 </head>
 <body>
+  <div class="preheader">${preheader}</div>
+  <div class="shell">
   <div class="wrapper">
     ${bodyContent}
-    <div class="footer">${getCOMPANY()} &mdash; Sistema ERP &bull; Honduras</div>
+    <div class="footer">${company} &mdash; Plataforma veterinaria &bull; Correos enviados por Resend</div>
+  </div>
   </div>
 </body>
 </html>`;
+}
+
+function hero(title, subtitle, accentColor) {
+    return `<div class="brandbar" style="background:linear-gradient(135deg,${accentColor},#111827);">
+        <span class="brandpill">${escapeHtml(getCOMPANY())}</span>
+        <h1>${escapeHtml(title)}</h1>
+        <p>${escapeHtml(subtitle || '')}</p>
+    </div>`;
+}
+
+function metricCard(label, value, color = '#0f766e', sub = '') {
+    return `<div class="metric">
+        <div class="label">${escapeHtml(label)}</div>
+        <div class="highlight" style="color:${color};">${escapeHtml(value)}</div>
+        ${sub ? `<div class="muted">${escapeHtml(sub)}</div>` : ''}
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +226,7 @@ async function sendDailyReportEmail(to, reportData) {
         totalVentas = 0,
         numFacturas = 0,
         citasHoy = 0,
+        noShows = 0,
         vacunasAplicadas = 0,
         gananciaEstimada = 0,
         totalEgresos = 0,
@@ -182,73 +235,47 @@ async function sendDailyReportEmail(to, reportData) {
     } = reportData;
 
     await warmEmailConfig();
-    const fmt = (n) => `L. ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const gananciaColor = gananciaEstimada >= 0 ? '#2e7d32' : '#c62828';
 
     const topProductosRows = topProductos.length > 0
-        ? topProductos.map(p => `<tr><td>${p.producto ?? p.nombre ?? ''}</td><td style="text-align:right;font-weight:600;">${p.cantidad}</td></tr>`).join('')
-        : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin datos</td></tr>';
+        ? topProductos.map(p => `<tr><td>${escapeHtml(p.producto ?? p.nombre ?? '')}</td><td style="text-align:right;font-weight:800;">${escapeHtml(p.cantidad ?? 0)}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#64748b;text-align:center;">Sin datos</td></tr>';
     const stockRows = stockCritico.length > 0
-        ? stockCritico.map(s => `<tr><td>${s.producto}</td><td style="text-align:right;color:#c62828;font-weight:600;">${s.stock}</td></tr>`).join('')
-        : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin productos criticos</td></tr>';
+        ? stockCritico.map(s => `<tr><td>${escapeHtml(s.producto)}</td><td style="text-align:right;color:#dc2626;font-weight:800;">${escapeHtml(s.stock ?? 0)}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#64748b;text-align:center;">Sin inventario critico</td></tr>';
 
     try {
         const html = wrapHtml(
-            `Reporte Diario ${fecha}`,
+            `Reporte diario - ${fecha}`,
             '#1565c0',
-            `<div class="header">
-               <h1>Reporte Diario</h1>
-               <p>${getCOMPANY()} &mdash; ${fecha}</p>
-             </div>
+            `${hero('Reporte diario operativo', `${getCOMPANY()} - ${fecha}`, '#1565c0')}
              <div class="body">
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Total Ventas</div>
-                   <div class="highlight">${fmt(totalVentas)}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Facturas Completadas</div>
-                   <div class="highlight">${numFacturas}</div>
-                 </div>
+               <div class="grid" style="margin-bottom:16px;">
+                 ${metricCard('Ventas del dia', fmtMoney(totalVentas), '#1565c0', `${numFacturas} facturas completadas`)}
+                 ${metricCard('Citas del dia', String(citasHoy), '#4f46e5', `${noShows} no-shows`)}
+                 ${metricCard('Vacunas aplicadas', String(vacunasAplicadas), '#0f766e', 'Medicina preventiva')}
+                 ${metricCard('Margen estimado', fmtMoney(gananciaEstimada), gananciaColor, `Egresos: ${fmtMoney(totalEgresos)}`)}
                </div>
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Citas del Dia</div>
-                   <div class="highlight" style="color:#1565c0;">${citasHoy}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Vacunas Aplicadas</div>
-                   <div class="highlight" style="color:#2e7d32;">${vacunasAplicadas}</div>
-                 </div>
-               </div>
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Total Egresos</div>
-                   <div class="highlight" style="color:#c62828;">${fmt(totalEgresos)}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Margen Estimado</div>
-                   <div class="highlight" style="color:${gananciaColor};">${fmt(gananciaEstimada)}</div>
-                 </div>
-               </div>
-               ${topProductos.length > 0 ? `
-               <h3 style="font-size:15px;margin-bottom:10px;">Top Productos y Servicios</h3>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Top productos y servicios</h3>
                <table class="data" style="margin-bottom:20px;">
                  <thead><tr><th>Producto</th><th style="text-align:right;">Cantidad</th></tr></thead>
                  <tbody>${topProductosRows}</tbody>
-               </table>` : ''}
-               <h3 style="font-size:15px;margin-bottom:10px;">Inventario Critico</h3>
+               </table>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Inventario critico</h3>
                <table class="data">
                  <thead><tr><th>Item</th><th style="text-align:right;">Stock</th></tr></thead>
                  <tbody>${stockRows}</tbody>
                </table>
+               <div class="success-box" style="margin-top:18px;">
+                 Acciones sugeridas: confirmar citas pendientes, revisar inventario critico y dar seguimiento a vacunas proximas.
+               </div>
              </div>`
         );
 
         await getResend().emails.send({
             from: getFROM(),
             to,
-            subject: `Reporte Diario - ${fecha}`,
+            subject: `Reporte diario operativo - ${fecha}`,
             html
         });
         return { success: true };
@@ -272,61 +299,54 @@ async function sendWeeklyReportEmail(to, reportData) {
         stockCritico = []
     } = reportData;
 
-    const fmt = (n) => `L. ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const diff = ventas - ventasAntSemana;
     const diffPct = ventasAntSemana > 0 ? ((diff / ventasAntSemana) * 100).toFixed(1) : '0.0';
     const diffColor = diff >= 0 ? '#2e7d32' : '#c62828';
     const diffSymbol = diff >= 0 ? '+' : '';
 
     const clientesRows = topClientes.length > 0
-        ? topClientes.map(c => `<tr><td>${c.nombre}</td><td style="text-align:right;font-weight:600;">${fmt(c.total)}</td></tr>`).join('')
-        : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin datos</td></tr>';
+        ? topClientes.map(c => `<tr><td>${escapeHtml(c.nombre)}</td><td style="text-align:right;font-weight:800;">${fmtMoney(c.total)}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#64748b;text-align:center;">Sin datos</td></tr>';
 
     const stockRows = stockCritico.length > 0
-        ? stockCritico.map(s => `<tr><td>${s.producto}</td><td style="text-align:right;color:#c62828;font-weight:600;">${s.stock}</td></tr>`).join('')
-        : '<tr><td colspan="2" style="color:#888;text-align:center;">Sin productos criticos</td></tr>';
+        ? stockCritico.map(s => `<tr><td>${escapeHtml(s.producto)}</td><td style="text-align:right;color:#dc2626;font-weight:800;">${escapeHtml(s.stock ?? 0)}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#64748b;text-align:center;">Sin inventario critico</td></tr>';
 
     try {
         const html = wrapHtml(
-            `Resumen Semanal ${semana}`,
+            `Resumen semanal - ${semana}`,
             '#6a1b9a',
-            `<div class="header" style="background:#6a1b9a;">
-               <h1>Resumen Semanal</h1>
-               <p>${getCOMPANY()} &mdash; ${semana}</p>
-             </div>
+            `${hero('Resumen semanal gerencial', `${getCOMPANY()} - ${semana}`, '#6a1b9a')}
              <div class="body">
-               <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Ventas Semana</div>
-                   <div class="highlight" style="color:#6a1b9a;">${fmt(ventas)}</div>
-                 </div>
-                 <div class="card" style="flex:1;min-width:160px;">
-                   <div class="label">Ganancia Semanal</div>
-                   <div class="highlight" style="color:#2e7d32;">${fmt(gananciaSemana)}</div>
-                 </div>
+               <div class="grid" style="margin-bottom:16px;">
+                 ${metricCard('Ventas de la semana', fmtMoney(ventas), '#6a1b9a', 'Ingresos completados')}
+                 ${metricCard('Ganancia estimada', fmtMoney(gananciaSemana), '#0f766e', 'Segun datos disponibles')}
                </div>
                <div class="card" style="margin-bottom:20px;">
                  <div class="label">Variacion vs semana anterior</div>
-                 <div style="font-size:20px;font-weight:700;color:${diffColor};">${diffSymbol}${fmt(diff)} (${diffSymbol}${diffPct}%)</div>
-                 <div style="font-size:12px;color:#888;margin-top:4px;">Semana anterior: ${fmt(ventasAntSemana)}</div>
+                 <div style="font-size:22px;font-weight:900;color:${diffColor};">${diffSymbol}${fmtMoney(diff)} (${diffSymbol}${diffPct}%)</div>
+                 <div class="muted">Semana anterior: ${fmtMoney(ventasAntSemana)}</div>
                </div>
-               <h3 style="font-size:15px;margin-bottom:10px;">Top Clientes</h3>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Top tutores por consumo</h3>
                <table class="data" style="margin-bottom:20px;">
-                 <thead><tr><th>Cliente</th><th style="text-align:right;">Total</th></tr></thead>
+                 <thead><tr><th>Tutor</th><th style="text-align:right;">Total</th></tr></thead>
                  <tbody>${clientesRows}</tbody>
                </table>
-               <h3 style="font-size:15px;margin-bottom:10px;">Stock Critico</h3>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Inventario critico</h3>
                <table class="data">
-                 <thead><tr><th>Producto</th><th style="text-align:right;">Stock</th></tr></thead>
+                 <thead><tr><th>Item</th><th style="text-align:right;">Stock</th></tr></thead>
                  <tbody>${stockRows}</tbody>
                </table>
+               <div class="alert-box" style="margin-top:18px;">
+                 Revise no-shows, reabastecimiento de vacunas/medicamentos y oportunidades de planes preventivos para la siguiente semana.
+               </div>
              </div>`
         );
 
         await getResend().emails.send({
             from: getFROM(),
             to,
-            subject: `Resumen Semanal - ${semana}`,
+            subject: `Resumen semanal gerencial - ${semana}`,
             html
         });
         return { success: true };
@@ -503,6 +523,132 @@ async function sendVeterinaryReminderEmail(to, reminder) {
     }
 }
 
+async function sendVeterinaryReminderEmailV2(to, reminder) {
+    await warmEmailConfig();
+    try {
+        const company = getCOMPANY();
+        const title = reminder.asunto || 'Recordatorio veterinario';
+        const scheduled = fmtDateTime(reminder.fecha_programada);
+        const isVaccine = String(reminder.tipo || '').includes('vacuna');
+        const accent = isVaccine ? '#7c3aed' : '#0f766e';
+        const html = wrapHtml(
+            title,
+            accent,
+            `${hero(title, isVaccine ? 'Medicina preventiva y seguimiento' : 'Agenda medica programada', accent)}
+             <div class="body">
+               <p>Hola,</p>
+               <p style="font-size:15px;line-height:1.65;color:#334155;">${escapeHtml(reminder.cuerpo || 'Le recordamos una actividad pendiente para el cuidado de su mascota.')}</p>
+               <div class="grid" style="margin:20px 0;">
+                 ${metricCard('Fecha programada', scheduled || 'Pendiente', accent, 'Hora local Honduras')}
+                 ${metricCard('Tipo de aviso', isVaccine ? 'Vacuna / refuerzo' : 'Cita medica', '#0f172a', company)}
+               </div>
+               <div class="success-box">
+                 Si necesita reprogramar, responda este correo o comuniquese con la clinica. Llegue 10 minutos antes para actualizar los datos de su mascota.
+               </div>
+               <p class="muted"><strong>${escapeHtml(company)}</strong> cuida la agenda clinica para reducir esperas y mejorar el seguimiento.</p>
+             </div>`,
+            { preheader: `${title} - ${scheduled}` }
+        );
+        await getResend().emails.send({
+            from: getFROM(),
+            to,
+            subject: reminder.asunto || `Recordatorio - ${company}`,
+            html,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('[emailService] sendVeterinaryReminderEmailV2 error:', err.message);
+        throw err;
+    }
+}
+
+async function sendAppointmentConfirmationEmail(to, appointment) {
+    await warmEmailConfig();
+    try {
+        const company = getCOMPANY();
+        const patient = appointment.paciente || appointment.pacienteNombre || 'su mascota';
+        const tutor = appointment.tutor || appointment.tutorNombre || '';
+        const type = appointment.tipoCitaNombre || appointment.tipo || 'Cita veterinaria';
+        const vet = appointment.veterinarioNombre || appointment.veterinario || 'Equipo clinico';
+        const when = fmtDateTime(appointment.fecha_inicio);
+        const html = wrapHtml(
+            `Cita programada para ${patient}`,
+            '#2563eb',
+            `${hero('Cita programada', `Confirmacion de agenda para ${patient}`, '#2563eb')}
+             <div class="body">
+               <p style="font-size:15px;color:#334155;line-height:1.65;">Hola ${escapeHtml(tutor || '')}, hemos programado la cita de <strong>${escapeHtml(patient)}</strong>.</p>
+               <div class="grid" style="margin:20px 0;">
+                 ${metricCard('Fecha y hora', when, '#2563eb', 'Hora local Honduras')}
+                 ${metricCard('Tipo de cita', type, '#0f766e', vet)}
+               </div>
+               <div class="card">
+                 <div class="label">Motivo</div>
+                 <div class="value" style="font-size:14px;font-weight:500;">${escapeHtml(appointment.motivo || 'Consulta programada')}</div>
+               </div>
+               <div class="alert-box">
+                 Recomendacion: traiga carnet de vacunas, examenes previos o medicamentos actuales si aplica.
+               </div>
+               <p class="muted">Recibira recordatorios automaticos antes de la cita. Para reprogramar, responda este correo.</p>
+             </div>`,
+            { preheader: `Cita de ${patient} confirmada para ${when}` }
+        );
+        await getResend().emails.send({
+            from: getFROM(),
+            to,
+            subject: `Cita programada para ${patient} - ${company}`,
+            html,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('[emailService] sendAppointmentConfirmationEmail error:', err.message);
+        throw err;
+    }
+}
+
+async function sendAppointmentAgendaEmail(to, { fecha, citas = [], resumen = {} }) {
+    await warmEmailConfig();
+    try {
+        const company = getCOMPANY();
+        const rows = citas.length ? citas.map(c => `
+            <tr>
+              <td><strong>${escapeHtml(c.hora || '')}</strong></td>
+              <td>${escapeHtml(c.paciente || 'Sin paciente')}<br><span class="muted">${escapeHtml(c.tutor || '')}</span></td>
+              <td>${escapeHtml(c.tipo || 'Cita')}</td>
+              <td>${escapeHtml(c.veterinario || 'Sin asignar')}</td>
+              <td><span class="badge" style="background:${c.estado === 'Confirmada' ? '#10b981' : '#2563eb'};">${escapeHtml(c.estado || 'Programada')}</span></td>
+            </tr>
+        `).join('') : '<tr><td colspan="5" style="text-align:center;color:#64748b;">No hay citas programadas.</td></tr>';
+        const html = wrapHtml(
+            `Agenda de citas - ${fecha}`,
+            '#4f46e5',
+            `${hero('Agenda de citas', `${company} - ${fecha}`, '#4f46e5')}
+             <div class="body">
+               <div class="grid" style="margin-bottom:20px;">
+                 ${metricCard('Citas programadas', String(resumen.total || citas.length), '#4f46e5', 'Total del dia')}
+                 ${metricCard('Confirmadas', String(resumen.confirmadas || 0), '#10b981', 'Llegadas esperadas')}
+               </div>
+               <table class="data">
+                 <thead><tr><th>Hora</th><th>Paciente / Tutor</th><th>Tipo</th><th>Veterinario</th><th>Estado</th></tr></thead>
+                 <tbody>${rows}</tbody>
+               </table>
+               <div class="alert-box" style="margin-top:18px;">
+                 Preparar expedientes, vacunas pendientes y disponibilidad de salas antes del inicio de jornada.
+               </div>
+             </div>`
+        );
+        await getResend().emails.send({
+            from: getFROM(),
+            to,
+            subject: `Agenda de citas - ${fecha}`,
+            html,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('[emailService] sendAppointmentAgendaEmail error:', err.message);
+        throw err;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // h) Monthly report email - receives pre-built HTML content
 // ---------------------------------------------------------------------------
@@ -519,6 +665,72 @@ async function sendMonthlyReportEmail(to, mes, htmlBody) {
         return { success: true };
     } catch (err) {
         console.error('[emailService] sendMonthlyReportEmail error:', err.message);
+        throw err;
+    }
+}
+
+async function sendMonthlyManagementReportEmail(to, reportData) {
+    await warmEmailConfig();
+    try {
+        const {
+            mes,
+            ventas = 0,
+            isv = 0,
+            numFacturas = 0,
+            citas = 0,
+            vacunas = 0,
+            noShows = 0,
+            topItems = [],
+            stockCritico = [],
+        } = reportData;
+        const topRows = topItems.length ? topItems.map(i => `
+            <tr>
+              <td>${escapeHtml(i.producto || i.nombre || 'Item')}</td>
+              <td style="text-align:right;">${escapeHtml(i.qty ?? i.cantidad ?? 0)}</td>
+              <td style="text-align:right;font-weight:800;">${fmtMoney(i.total || 0)}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="3" style="text-align:center;color:#64748b;">Sin datos del periodo.</td></tr>';
+        const stockRows = stockCritico.length ? stockCritico.map(i => `
+            <tr>
+              <td>${escapeHtml(i.producto || i.nombre || 'Item')}</td>
+              <td style="text-align:right;color:#dc2626;font-weight:800;">${escapeHtml(i.stock ?? 0)}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="2" style="text-align:center;color:#64748b;">Sin inventario critico.</td></tr>';
+        const html = wrapHtml(
+            `Reporte mensual - ${mes}`,
+            '#0f766e',
+            `${hero('Reporte mensual gerencial', mes, '#0f766e')}
+             <div class="body">
+               <div class="grid" style="margin-bottom:16px;">
+                 ${metricCard('Ventas del mes', fmtMoney(ventas), '#0f766e', `${numFacturas} facturas`)}
+                 ${metricCard('ISV recaudado', fmtMoney(isv), '#4f46e5', 'Impuesto sobre ventas')}
+                 ${metricCard('Citas atendidas/programadas', String(citas), '#2563eb', 'Actividad clinica')}
+                 ${metricCard('Vacunas aplicadas', String(vacunas), '#7c3aed', `${noShows} no-shows`)}
+               </div>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Top productos y servicios</h3>
+               <table class="data">
+                 <thead><tr><th>Item</th><th style="text-align:right;">Cant.</th><th style="text-align:right;">Total</th></tr></thead>
+                 <tbody>${topRows}</tbody>
+               </table>
+               <h3 style="font-size:16px;margin:22px 0 10px;color:#0f172a;">Inventario critico</h3>
+               <table class="data">
+                 <thead><tr><th>Item</th><th style="text-align:right;">Stock</th></tr></thead>
+                 <tbody>${stockRows}</tbody>
+               </table>
+               <div class="success-box" style="margin-top:18px;">
+                 Recomendacion: revise agenda preventiva, inventario de vacunas y seguimiento de tutores con citas no asistidas.
+               </div>
+             </div>`
+        );
+        await getResend().emails.send({
+            from: getFROM(),
+            to,
+            subject: `Reporte mensual gerencial - ${mes}`,
+            html,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('[emailService] sendMonthlyManagementReportEmail error:', err.message);
         throw err;
     }
 }
@@ -630,8 +842,11 @@ module.exports = {
     sendLowBalanceAlertEmail,
     sendBackupConfirmationEmail,
     sendWelcomeEmail,
-    sendVeterinaryReminderEmail,
+    sendVeterinaryReminderEmail: sendVeterinaryReminderEmailV2,
+    sendAppointmentConfirmationEmail,
+    sendAppointmentAgendaEmail,
     sendMonthlyReportEmail,
+    sendMonthlyManagementReportEmail,
     sendFollowUpEmail,
     sendTokenUpgradeRequestEmail,
 };
