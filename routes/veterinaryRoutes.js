@@ -100,6 +100,23 @@ async function createAppointmentReminders(client, req, citaId) {
     }
 }
 
+function minutesFromTime(value) {
+    const [h, m] = String(value || '00:00').split(':').map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+function dateTimeFromMinutes(dateStr, minutes) {
+    const h = String(Math.floor(minutes / 60)).padStart(2, '0');
+    const m = String(minutes % 60).padStart(2, '0');
+    return `${dateStr}T${h}:${m}:00`;
+}
+
+function appointmentOverlapsSlot(cita, slotStart, slotEnd) {
+    const start = new Date(cita.fecha_inicio).getTime();
+    const end = new Date(cita.fecha_fin).getTime();
+    return start < slotEnd.getTime() && end > slotStart.getTime();
+}
+
 // Patients
 router.get('/pacientes', authenticateToken, async (req, res) => {
     try {
@@ -275,6 +292,182 @@ router.post('/tipos-cita', authenticateToken, async (req, res) => {
             RETURNING *
         `, [req.tenantId, cleanText(b.nombre, 100), Number(b.duracion_minutos || 30), b.color || '#4f46e5', b.requiere_veterinario !== false]);
         res.status(201).json(rows[0]);
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.get('/agenda/veterinarios', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT u.codUsuario::text AS id_veterinario,
+                   COALESCE(NULLIF(TRIM(e.nombre || ' ' || COALESCE(e.apellido, '')), ''), u.usuario) AS nombre,
+                   u.usuario,
+                   u.id_sucursal,
+                   s.nombre AS "sucursalNombre"
+            FROM usuarios u
+            LEFT JOIN empleado e ON e.identidad = u.identidad AND e.tenant_id = u.tenant_id
+            LEFT JOIN sucursales s ON s.id_sucursal = u.id_sucursal AND s.tenant_id = u.tenant_id
+            LEFT JOIN roles r ON r.idrol = u.idrol AND r.tenant_id = u.tenant_id
+            WHERE u.tenant_id = $1
+              AND u.estado = 'Activo'
+              AND (
+                LOWER(COALESCE(r.nombre, '')) LIKE '%veterinario%'
+                OR LOWER(COALESCE(r.nombre, '')) LIKE '%medico%'
+                OR LOWER(COALESCE(r.nombre, '')) LIKE '%doctor%'
+                OR EXISTS (
+                    SELECT 1 FROM citas c
+                    WHERE c.tenant_id = u.tenant_id
+                      AND c.id_veterinario::text = u.codUsuario::text
+                    LIMIT 1
+                )
+              )
+            ORDER BY nombre
+        `, [req.tenantId]);
+        res.json(rows);
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.get('/agenda/disponibilidad/slots', authenticateToken, async (req, res) => {
+    try {
+        const { fecha, id_veterinario, id_sucursal, duracion = 30 } = req.query;
+        if (!fecha || !id_veterinario) return res.status(400).json({ error: 'fecha e id_veterinario son requeridos' });
+        const duration = Math.min(Math.max(asInt(duracion) || 30, 10), 240);
+        const day = new Date(`${fecha}T12:00:00`).getDay();
+        const params = [req.tenantId, String(id_veterinario), day];
+        let sucursalFilter = '';
+        if (id_sucursal) {
+            params.push(asInt(id_sucursal));
+            sucursalFilter = ` AND (id_sucursal IS NULL OR id_sucursal = $${params.length})`;
+        }
+        const [availability, appointments] = await Promise.all([
+            pool.query(`
+                SELECT *
+                FROM agenda_disponibilidad
+                WHERE tenant_id = $1
+                  AND id_veterinario::text = $2
+                  AND dia_semana = $3
+                  AND activo = TRUE
+                  ${sucursalFilter}
+                ORDER BY hora_inicio
+            `, params),
+            pool.query(`
+                SELECT id_cita, fecha_inicio, fecha_fin, estado
+                FROM citas
+                WHERE tenant_id = $1
+                  AND id_veterinario::text = $2
+                  AND fecha_inicio >= $3::date
+                  AND fecha_inicio < ($3::date + INTERVAL '1 day')
+                  AND estado NOT IN ('Cancelada','No asistio')
+            `, [req.tenantId, String(id_veterinario), fecha]),
+        ]);
+        const rows = availability.rows.length > 0
+            ? availability.rows
+            : [{ hora_inicio: '08:00:00', hora_fin: '17:00:00', intervalo_minutos: duration, tipo: 'Disponible' }];
+        const blocked = rows.filter(r => r.tipo === 'Bloqueado');
+        const slots = [];
+        for (const block of rows.filter(r => r.tipo === 'Disponible')) {
+            const interval = Math.max(asInt(block.intervalo_minutos) || duration, 10);
+            const startMin = minutesFromTime(block.hora_inicio);
+            const endMin = minutesFromTime(block.hora_fin);
+            for (let cursor = startMin; cursor + duration <= endMin; cursor += interval) {
+                const inicio = dateTimeFromMinutes(fecha, cursor);
+                const fin = dateTimeFromMinutes(fecha, cursor + duration);
+                const slotStart = new Date(inicio);
+                const slotEnd = new Date(fin);
+                const blockConflict = blocked.some(b => {
+                    const bStart = minutesFromTime(b.hora_inicio);
+                    const bEnd = minutesFromTime(b.hora_fin);
+                    return cursor < bEnd && cursor + duration > bStart;
+                });
+                const citaConflict = appointments.rows.some(c => appointmentOverlapsSlot(c, slotStart, slotEnd));
+                slots.push({
+                    inicio,
+                    fin,
+                    disponible: !blockConflict && !citaConflict,
+                    motivo: blockConflict ? 'Bloqueado' : citaConflict ? 'Ocupado' : undefined,
+                });
+            }
+        }
+        res.json({ modo: availability.rows.length > 0 ? 'configurado' : 'predeterminado', slots });
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.get('/agenda/disponibilidad', authenticateToken, async (req, res) => {
+    try {
+        const { id_veterinario, id_sucursal, dia_semana, activo = 'true' } = req.query;
+        const params = [req.tenantId];
+        let where = 'WHERE ad.tenant_id = $1';
+        if (id_veterinario) { params.push(String(id_veterinario)); where += ` AND ad.id_veterinario::text = $${params.length}`; }
+        if (id_sucursal) { params.push(asInt(id_sucursal)); where += ` AND ad.id_sucursal = $${params.length}`; }
+        if (dia_semana !== undefined && dia_semana !== '') { params.push(asInt(dia_semana)); where += ` AND ad.dia_semana = $${params.length}`; }
+        if (activo !== 'all') { params.push(activo !== 'false'); where += ` AND ad.activo = $${params.length}`; }
+        const { rows } = await pool.query(`
+            SELECT ad.*,
+                   COALESCE(NULLIF(TRIM(e.nombre || ' ' || COALESCE(e.apellido, '')), ''), u.usuario, ad.id_veterinario) AS "veterinarioNombre",
+                   s.nombre AS "sucursalNombre"
+            FROM agenda_disponibilidad ad
+            LEFT JOIN usuarios u ON u.codUsuario::text = ad.id_veterinario::text AND u.tenant_id = ad.tenant_id
+            LEFT JOIN empleado e ON e.identidad = u.identidad AND e.tenant_id = ad.tenant_id
+            LEFT JOIN sucursales s ON s.id_sucursal = ad.id_sucursal AND s.tenant_id = ad.tenant_id
+            ${where}
+            ORDER BY ad.dia_semana, ad.hora_inicio
+        `, params);
+        res.json(rows);
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.post('/agenda/disponibilidad', authenticateToken, async (req, res) => {
+    try {
+        const b = req.body || {};
+        if (!b.id_veterinario || b.dia_semana === undefined || !b.hora_inicio || !b.hora_fin) {
+            return res.status(400).json({ error: 'Veterinario, dia, hora_inicio y hora_fin son requeridos' });
+        }
+        const { rows } = await pool.query(`
+            INSERT INTO agenda_disponibilidad (
+                tenant_id, id_veterinario, id_sucursal, dia_semana, hora_inicio,
+                hora_fin, intervalo_minutos, tipo, notas
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            ON CONFLICT (tenant_id, id_veterinario, dia_semana, hora_inicio, hora_fin, tipo)
+            DO UPDATE SET
+                id_sucursal = EXCLUDED.id_sucursal,
+                intervalo_minutos = EXCLUDED.intervalo_minutos,
+                notas = EXCLUDED.notas,
+                activo = TRUE,
+                updated_at = NOW()
+            RETURNING *
+        `, [
+            req.tenantId, String(b.id_veterinario), b.id_sucursal || req.user?.id_sucursal || null,
+            asInt(b.dia_semana), b.hora_inicio, b.hora_fin, asInt(b.intervalo_minutos) || 30,
+            b.tipo === 'Bloqueado' ? 'Bloqueado' : 'Disponible', cleanText(b.notas, 500),
+        ]);
+        res.status(201).json(rows[0]);
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.put('/agenda/disponibilidad/:id', authenticateToken, async (req, res) => {
+    try {
+        const id = asInt(req.params.id);
+        const b = req.body || {};
+        if (!id) return res.status(400).json({ error: 'id_disponibilidad invalido' });
+        await pool.query(`
+            UPDATE agenda_disponibilidad SET
+                id_veterinario=$1, id_sucursal=$2, dia_semana=$3, hora_inicio=$4, hora_fin=$5,
+                intervalo_minutos=$6, tipo=$7, notas=$8, activo=$9, updated_at=NOW()
+            WHERE id_disponibilidad=$10 AND tenant_id=$11
+        `, [
+            String(b.id_veterinario), b.id_sucursal || null, asInt(b.dia_semana), b.hora_inicio, b.hora_fin,
+            asInt(b.intervalo_minutos) || 30, b.tipo === 'Bloqueado' ? 'Bloqueado' : 'Disponible',
+            cleanText(b.notas, 500), b.activo !== false, id, req.tenantId,
+        ]);
+        res.json({ ok: true });
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.delete('/agenda/disponibilidad/:id', authenticateToken, async (req, res) => {
+    try {
+        const id = asInt(req.params.id);
+        await pool.query('UPDATE agenda_disponibilidad SET activo=FALSE, updated_at=NOW() WHERE id_disponibilidad=$1 AND tenant_id=$2', [id, req.tenantId]);
+        res.json({ ok: true });
     } catch (e) { handleDbError(res, e); }
 });
 

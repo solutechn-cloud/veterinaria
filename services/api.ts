@@ -25,6 +25,9 @@ import {
   Paciente,
   Cita,
   TipoCita,
+  AgendaDisponibilidad,
+  AgendaSlot,
+  AgendaVeterinario,
   Consulta,
   VacunaProtocolo,
   VacunaAplicada,
@@ -263,6 +266,18 @@ export const CitasService = {
   updateEstado: (id: number, estado: Cita['estado']) => request(`/citas/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
   checkIn: (id: number) => request(`/citas/${id}/check-in`, { method: 'POST' }),
   getFlowboard: (fecha?: string) => request<Cita[]>(`/clinica/flowboard${fecha ? `?fecha=${fecha}` : ''}`),
+  getVeterinarios: () => request<AgendaVeterinario[]>('/agenda/veterinarios'),
+  getDisponibilidad: (params?: { id_veterinario?: string; id_sucursal?: number; dia_semana?: number; activo?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
+    return request<AgendaDisponibilidad[]>(`/agenda/disponibilidad${qs}`);
+  },
+  createDisponibilidad: (data: Partial<AgendaDisponibilidad>) => request<AgendaDisponibilidad>('/agenda/disponibilidad', { method: 'POST', body: JSON.stringify(data) }),
+  updateDisponibilidad: (id: number, data: Partial<AgendaDisponibilidad>) => request(`/agenda/disponibilidad/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDisponibilidad: (id: number) => request(`/agenda/disponibilidad/${id}`, { method: 'DELETE' }),
+  getSlots: (params: { fecha: string; id_veterinario: string; id_sucursal?: number; duracion?: number }) => {
+    const qs = '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString();
+    return request<{ modo: string; slots: AgendaSlot[] }>(`/agenda/disponibilidad/slots${qs}`);
+  },
 };
 
 export const ConsultasService = {

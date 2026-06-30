@@ -34,6 +34,8 @@ import Lealtad from './pages/Lealtad';
 import OrdenesCompra from './pages/OrdenesCompra';
 import Pacientes from './pages/Pacientes';
 import Agenda from './pages/Agenda';
+import AgendaPersonal from './pages/AgendaPersonal';
+import DisponibilidadAgenda from './pages/DisponibilidadAgenda';
 import Expediente from './pages/Expediente';
 import Vacunas from './pages/Vacunas';
 import ServiciosVeterinarios from './pages/ServiciosVeterinarios';
@@ -79,6 +81,16 @@ const App: React.FC = () => {
           <Route path="/agenda" element={
             <ProtectedRoute requiredPermission="VER_CITAS" requiredFeature="modulo_citas">
               <Layout><Agenda /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/agenda-personal" element={
+            <ProtectedRoute requiredPermission="VER_AGENDA_PERSONAL" requiredFeature="modulo_citas">
+              <Layout><AgendaPersonal /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/agenda/disponibilidad" element={
+            <ProtectedRoute requiredPermission="VER_DISPONIBILIDAD_AGENDA" requiredFeature="modulo_citas">
+              <Layout><DisponibilidadAgenda /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/expediente" element={

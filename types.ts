@@ -52,6 +52,9 @@ export const PERMISSIONS = {
     VER_FLOWBOARD: 'VER_FLOWBOARD',
     VER_EXPEDIENTE: 'VER_EXPEDIENTE', EDITAR_EXPEDIENTE: 'EDITAR_EXPEDIENTE',
     VER_VACUNAS: 'VER_VACUNAS', GESTIONAR_VACUNAS: 'GESTIONAR_VACUNAS',
+    VER_AGENDA_PERSONAL: 'VER_AGENDA_PERSONAL',
+    VER_DISPONIBILIDAD_AGENDA: 'VER_DISPONIBILIDAD_AGENDA',
+    GESTIONAR_DISPONIBILIDAD: 'GESTIONAR_DISPONIBILIDAD',
     VER_SERVICIOS_VET: 'VER_SERVICIOS_VET', GESTIONAR_SERVICIOS_VET: 'GESTIONAR_SERVICIOS_VET',
     VER_RECORDATORIOS: 'VER_RECORDATORIOS', GESTIONAR_RECORDATORIOS: 'GESTIONAR_RECORDATORIOS',
     GESTIONAR_INVENTARIO: 'GESTIONAR_INVENTARIO',
@@ -682,6 +685,36 @@ export interface Cita {
   tipoCitaColor?: string;
   sucursalNombre?: string;
   veterinarioNombre?: string;
+}
+
+export interface AgendaVeterinario {
+  id_veterinario: string;
+  nombre: string;
+  usuario?: string;
+  id_sucursal?: number;
+  sucursalNombre?: string;
+}
+
+export interface AgendaDisponibilidad {
+  id_disponibilidad: number;
+  id_veterinario: string;
+  veterinarioNombre?: string;
+  id_sucursal?: number;
+  sucursalNombre?: string;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fin: string;
+  intervalo_minutos: number;
+  tipo: 'Disponible' | 'Bloqueado';
+  notas?: string;
+  activo: boolean;
+}
+
+export interface AgendaSlot {
+  inicio: string;
+  fin: string;
+  disponible: boolean;
+  motivo?: string;
 }
 
 export interface Consulta {

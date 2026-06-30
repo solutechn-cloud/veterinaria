@@ -12,7 +12,7 @@ import {
   Briefcase, Box, UserCog, Calculator, Activity, Tag, Settings, PieChart,
   ClipboardList, AlertTriangle, Building2, ArrowLeftRight, ShoppingBag,
   KeyRound, Eye, EyeOff, BookOpen, Sparkles, Info, CheckCheck, Trash2, Zap, Star,
-  PawPrint, CalendarDays, FileHeart, Syringe, Stethoscope, HeartPulse,
+  PawPrint, CalendarDays, CalendarClock, FileHeart, Syringe, Stethoscope, HeartPulse,
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -188,7 +188,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       subItems: [
         { name: 'Tutores', path: '/clients', icon: <Users size={18} />, permission: 'VER_PACIENTES' },
         { name: 'Pacientes', path: '/pacientes', icon: <PawPrint size={18} />, permission: 'VER_PACIENTES', planFeature: 'modulo_pacientes', minimumPlan: 'basico' },
-        { name: 'Agenda', path: '/agenda', icon: <CalendarDays size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_citas', minimumPlan: 'basico' },
+        { name: 'Agenda General', path: '/agenda', icon: <CalendarDays size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_citas', minimumPlan: 'basico' },
+        { name: 'Agenda Personal', path: '/agenda-personal', icon: <Stethoscope size={18} />, permission: 'VER_AGENDA_PERSONAL', planFeature: 'modulo_citas', minimumPlan: 'basico' },
+        { name: 'Disponibilidad', path: '/agenda/disponibilidad', icon: <CalendarClock size={18} />, permission: 'VER_DISPONIBILIDAD_AGENDA', planFeature: 'modulo_citas', minimumPlan: 'basico' },
         { name: 'Expediente', path: '/expediente', icon: <FileHeart size={18} />, permission: 'VER_EXPEDIENTE', planFeature: 'modulo_expediente', minimumPlan: 'profesional' },
         { name: 'Vacunas', path: '/vacunas', icon: <Syringe size={18} />, permission: 'VER_VACUNAS', planFeature: 'modulo_vacunas', minimumPlan: 'profesional' },
         { name: 'Flowboard', path: '/flowboard', icon: <Activity size={18} />, permission: 'VER_FLOWBOARD', planFeature: 'modulo_hospitalizacion', minimumPlan: 'enterprise' },
