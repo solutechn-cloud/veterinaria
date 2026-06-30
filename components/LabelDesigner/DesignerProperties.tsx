@@ -58,7 +58,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
             <div className="p-6 space-y-6 overflow-y-auto h-full">
                 <div className="flex items-center gap-2 text-slate-800 border-b pb-2">
                     <FileCog size={18} className="text-indigo-600"/>
-                    <h3 className="font-bold text-sm uppercase">ConfiguraciÃ³n {template.type === 'DOCUMENT' ? 'Documento' : 'Etiqueta'}</h3>
+                    <h3 className="font-bold text-sm uppercase">Configuración {template.type === 'DOCUMENT' ? 'Documento' : 'Etiqueta'}</h3>
                 </div>
 
                 <div className="space-y-4">
@@ -70,14 +70,14 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                     <div>
                         <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Contexto de Datos</label>
                         <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={template.dataSource} onChange={e => setTpl({dataSource:e.target.value as any})}>
-                            <option value="NONE">Sin ConexiÃ³n</option>
+                            <option value="NONE">Sin Conexión</option>
                             <option disabled>--- ETIQUETAS ---</option>
                             <option value="MEDICAMENTOS">Inventario Medicamentos</option>
                             <option value="LOTES_MED">Lotes / Vencimientos</option>
                             <option disabled>--- DOCUMENTOS ---</option>
-                            <option value="SALES">Ventas / FacturaciÃ³n</option>
-                            <option value="DISPENSACION">DispensaciÃ³n de Medicamentos</option>
-                            <option value="RECETAS">Recetas MÃ©dicas</option>
+                            <option value="SALES">Ventas / Facturación</option>
+                            <option value="DISPENSACION">Dispensación de Medicamentos</option>
+                            <option value="RECETAS">Recetas Médicas</option>
                             <option value="CLIENTS">Clientes / Pacientes</option>
                             <option value="FULL_DB">Base de Datos Completa</option>
                         </select>
@@ -85,14 +85,14 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
 
                     {template.dataSource && template.dataSource !== 'NONE' && (
                         <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">CategorÃ­a Uso</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Categoría Uso</label>
                             <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={template.category} onChange={e => setTpl({category:e.target.value as any})}>
                                 {template.type === 'LABEL' ? (
                                     <>
                                         <option value="GENERAL">General</option>
                                         <option value="MEDICAMENTO">Medicamento</option>
                                         <option value="LOTE">Lote / Vencimiento</option>
-                                        <option value="DISPENSACION">DispensaciÃ³n</option>
+                                        <option value="DISPENSACION">Dispensación</option>
                                     </>
                                 ) : (
                                     <>
@@ -107,7 +107,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
 
                     {/* Margins */}
                     <div className="space-y-3 pt-2 border-t border-slate-100">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">MÃ¡rgenes ({unit})</h4>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Márgenes ({unit})</h4>
                         <div className="grid grid-cols-2 gap-3">
                             <PropertyInput label="Superior" value={template.margins?.top ?? 0} onChange={(v: any) => setTpl({ margins: { ...(template.margins || {top:0,bottom:0,left:0,right:0}), top: v }})} type="number" step={0.1}/>
                             <PropertyInput label="Inferior" value={template.margins?.bottom ?? 0} onChange={(v: any) => setTpl({ margins: { ...(template.margins || {top:0,bottom:0,left:0,right:0}), bottom: v }})} type="number" step={0.1}/>
@@ -118,12 +118,12 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
 
                     {/* Grid / Snap controls */}
                     <div className="space-y-3 pt-2 border-t border-slate-100">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">CuadrÃ­cula y Ajuste</h4>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Cuadrícula y Ajuste</h4>
 
                         <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
                             <div className="flex items-center gap-2">
                                 <Grid size={16} className="text-slate-500"/>
-                                <span className="text-sm font-medium text-slate-600">Mostrar CuadrÃ­cula</span>
+                                <span className="text-sm font-medium text-slate-600">Mostrar Cuadrícula</span>
                             </div>
                             <button onClick={() => setTpl({showGrid: !template.showGrid})} className={`w-10 h-5 rounded-full transition-colors relative ${template.showGrid ? 'bg-indigo-600' : 'bg-slate-300'}`}>
                                 <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${template.showGrid ? 'translate-x-5' : 'translate-x-0.5'}`}/>
@@ -133,7 +133,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                         <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
                             <div className="flex items-center gap-2">
                                 <Magnet size={16} className="text-slate-500"/>
-                                <span className="text-sm font-medium text-slate-600">Ajuste a CuadrÃ­cula</span>
+                                <span className="text-sm font-medium text-slate-600">Ajuste a Cuadrícula</span>
                             </div>
                             <button onClick={() => setTpl({snapEnabled: !template.snapEnabled})} className={`w-10 h-5 rounded-full transition-colors relative ${template.snapEnabled ? 'bg-indigo-600' : 'bg-slate-300'}`}>
                                 <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${template.snapEnabled ? 'translate-x-5' : 'translate-x-0.5'}`}/>
@@ -141,7 +141,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                         </div>
 
                         <PropertyInput
-                            label={`TamaÃ±o CuadrÃ­cula (${unit})`}
+                            label={`Tamaño Cuadrícula (${unit})`}
                             value={template.gridSize || (template.type === 'DOCUMENT' ? 1 : 5)}
                             onChange={(v:any) => setTpl({gridSize: v})}
                             type="number" step={0.5}
@@ -194,7 +194,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 {/* Geometry â€” apply to all */}
                 {hasSizes && (
                     <div className="space-y-3">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">TamaÃ±o (aplica a todos)</h4>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Tamaño (aplica a todos)</h4>
                         <div className="grid grid-cols-2 gap-2">
                             <PropertyInput label={`Ancho (${unit})`} value="" placeholder="Mixto" type="number" step={0.1}
                                 onChange={(v: any) => updateAll({ width: v })}/>
@@ -216,7 +216,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 {/* Text properties */}
                 {allText && (
                     <div className="space-y-3 pt-2 border-t border-slate-100">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">TipografÃ­a (todos los textos)</h4>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase">Tipografía (todos los textos)</h4>
                         <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
                             defaultValue={firstEl.fontFamily}
                             onChange={e => updateAll({ fontFamily: e.target.value })}>
@@ -279,8 +279,8 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 )}
 
                 <p className="text-[10px] text-slate-400 text-center pt-2 border-t border-slate-100">
-                    Shift+click para agregar/quitar de la selecciÃ³n.<br/>
-                    Arrastra sobre el fondo para seleccionar por Ã¡rea.
+                    Shift+click para agregar/quitar de la selección.<br/>
+                    Arrastra sobre el fondo para seleccionar por área.
                 </p>
             </div>
         );
@@ -323,7 +323,7 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
                 <PropertyInput label={`Y (${unit})`} value={sel.y} onChange={(v:any) => updateElement(sel.id, {y:v})} type="number" step={0.1}/>
                 <PropertyInput label="Ancho" value={sel.width} onChange={(v:any) => updateElement(sel.id, {width:v})} type="number" step={0.1}/>
                 <PropertyInput label="Alto" value={sel.height} onChange={(v:any) => updateElement(sel.id, {height:v})} type="number" step={0.1}/>
-                <PropertyInput label="RotaciÃ³n (Â°)" value={Math.round(sel.rotation ?? 0)} onChange={(v:any) => updateElement(sel.id, {rotation: v})} type="number" step={1}/>
+                <PropertyInput label="Rotación (°)" value={Math.round(sel.rotation ?? 0)} onChange={(v:any) => updateElement(sel.id, {rotation: v})} type="number" step={1}/>
             </div>
 
             {/* Opacity for all elements */}
@@ -337,14 +337,14 @@ const DesignerProperties: React.FC<DesignerPropertiesProps> = ({
 
             {/* Visibility Condition */}
             <div className="space-y-1 pt-2 border-t border-slate-100">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">CondiciÃ³n de Visibilidad</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Condición de Visibilidad</label>
                 <input
                     className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-orange-400 font-mono transition-colors"
                     value={sel.visibilityCondition || ''}
                     onChange={e => updateElement(sel.id, { visibilityCondition: e.target.value || undefined })}
                     placeholder='ej. {{venta.tipoCompra}} == "Credito"'
                 />
-                <p className="text-[10px] text-slate-400">Ocultar elemento si la condiciÃ³n no se cumple al imprimir.</p>
+                <p className="text-[10px] text-slate-400">Ocultar elemento si la condición no se cumple al imprimir.</p>
             </div>
 
             <PropertiesDisplay sel={sel} updateElement={updateElement} setShowVarModal={setShowVarModal}/>

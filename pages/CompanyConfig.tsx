@@ -17,8 +17,8 @@ const CompanyConfig: React.FC = () => {
     setCamRequesting(true);
     const ok = await requestPermission();
     setCamRequesting(false);
-    if (ok) Swal.fire({ title: 'CÃ¡mara autorizada', text: 'El escÃ¡ner ya no volverÃ¡ a pedir permiso.', icon: 'success', timer: 2000, showConfirmButton: false });
-    else    Swal.fire({ title: 'Permiso denegado', text: 'Ve a configuraciÃ³n del navegador y permite el acceso a la cÃ¡mara para este sitio.', icon: 'warning' });
+    if (ok) Swal.fire({ title: 'Cámara autorizada', text: 'El escáner ya no volverá a pedir permiso.', icon: 'success', timer: 2000, showConfirmButton: false });
+    else    Swal.fire({ title: 'Permiso denegado', text: 'Ve a configuración del navegador y permite el acceso a la cámara para este sitio.', icon: 'warning' });
   };
   const [config, setConfig] = useState<EmpresaConfig>({
     nombreEmpresa: '',
@@ -130,7 +130,7 @@ const CompanyConfig: React.FC = () => {
       const data = await AIService.getQuotaStatus();
       setQuota(data);
     } catch {
-      // Quota not available (plan sin IA, o tabla aÃºn no migrada)
+      // Quota not available (plan sin IA, o tabla aún no migrada)
     } finally {
       setQuotaLoading(false);
     }
@@ -164,7 +164,7 @@ const CompanyConfig: React.FC = () => {
       const isWEBP = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
                   && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
       if (!isPNG && !isJPEG && !isWEBP) {
-        Swal.fire('Formato no permitido', 'Solo se aceptan imÃ¡genes PNG, JPEG o WebP.', 'warning');
+        Swal.fire('Formato no permitido', 'Solo se aceptan imágenes PNG, JPEG o WebP.', 'warning');
         e.target.value = '';
         return;
       }
@@ -181,7 +181,7 @@ const CompanyConfig: React.FC = () => {
       await ConfigService.update(config);
       Swal.fire({
         icon: 'success',
-        title: 'ConfiguraciÃ³n Guardada',
+        title: 'Configuración Guardada',
         text: 'Los datos de la empresa han sido actualizados.',
         timer: 1500,
         showConfirmButton: false
@@ -191,7 +191,7 @@ const CompanyConfig: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Cargando configuraciÃ³n...</div>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Cargando configuración...</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -200,8 +200,8 @@ const CompanyConfig: React.FC = () => {
             <Settings className="text-white" size={24}/>
         </div>
         <div>
-            <h2 className="text-2xl font-bold text-slate-800">ConfiguraciÃ³n de Empresa</h2>
-            <p className="text-slate-500 text-sm">Gestiona la informaciÃ³n legal y parÃ¡metros del SAR.</p>
+            <h2 className="text-2xl font-bold text-slate-800">Configuración de Empresa</h2>
+            <p className="text-slate-500 text-sm">Gestiona la información legal y parámetros del SAR.</p>
         </div>
       </div>
 
@@ -223,17 +223,17 @@ const CompanyConfig: React.FC = () => {
                         value={config.rtn} onChange={e => setConfig({...config, rtn: e.target.value})} placeholder="00000000000000" />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">TelÃ©fono</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Teléfono</label>
                     <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.telefono} onChange={e => setConfig({...config, telefono: e.target.value})} />
                 </div>
                 <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">DirecciÃ³n</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Dirección</label>
                     <textarea required rows={2} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.direccion} onChange={e => setConfig({...config, direccion: e.target.value})} />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo ElectrÃ³nico</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Correo Electrónico</label>
                     <input type="email" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.correo} onChange={e => setConfig({...config, correo: e.target.value})} />
                 </div>
@@ -245,7 +245,7 @@ const CompanyConfig: React.FC = () => {
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
                 <ImageIcon className="text-indigo-600"/> Logo de la Empresa
             </h3>
-            <p className="text-xs text-slate-500 mb-4">El logo se usarÃ¡ automÃ¡ticamente en las facturas y documentos del diseÃ±ador. TamaÃ±o mÃ¡ximo: 500 KB. Formatos: PNG, JPG, WebP.</p>
+            <p className="text-xs text-slate-500 mb-4">El logo se usará automáticamente en las facturas y documentos del diseñador. Tamaño máximo: 500 KB. Formatos: PNG, JPG, WebP.</p>
             <div className="flex items-start gap-6">
                 {/* Preview */}
                 <div className="w-40 h-24 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center bg-slate-50 shrink-0 overflow-hidden">
@@ -277,17 +277,17 @@ const CompanyConfig: React.FC = () => {
         {/* SECCION 2: DATOS SAR */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <FileText className="text-indigo-600"/> Normativa de FacturaciÃ³n (SAR)
+                <FileText className="text-indigo-600"/> Normativa de Facturación (SAR)
             </h3>
             
             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-800 text-sm mb-4 flex gap-2">
                 <AlertCircle size={18} className="shrink-0"/>
-                Estos datos aparecerÃ¡n impresos en la factura. AsegÃºrate que coincidan con tu resoluciÃ³n vigente.
+                Estos datos aparecerán impresos en la factura. Asegúrate que coincidan con tu resolución vigente.
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de AutorizaciÃ³n)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de Autorización)</label>
                     <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
                         value={config.cai} onChange={e => setConfig({...config, cai: e.target.value})} placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX" />
                 </div>
@@ -302,7 +302,7 @@ const CompanyConfig: React.FC = () => {
                         value={config.rangoFinal} onChange={e => setConfig({...config, rangoFinal: e.target.value})} placeholder="000-001-01-00002000" />
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha LÃ­mite de EmisiÃ³n</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha Límite de Emisión</label>
                     <input type="date" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
                         value={config.fechaLimite} onChange={e => setConfig({...config, fechaLimite: e.target.value})} />
                 </div>
@@ -319,18 +319,18 @@ const CompanyConfig: React.FC = () => {
             </div>
         </div>
 
-        {/* PERMISOS DE CÃMARA */}
+        {/* PERMISOS DE CÁMARA */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <Camera className="text-indigo-600"/> EscÃ¡ner de CÃ¡mara
+                <Camera className="text-indigo-600"/> Escáner de Cámara
             </h3>
             <div className="flex items-center gap-4">
                 {camState === 'granted' ? (
                     <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 flex-1">
                         <CheckCircle2 size={24} className="text-emerald-600 shrink-0"/>
                         <div>
-                            <p className="font-bold text-emerald-700 text-sm">CÃ¡mara autorizada</p>
-                            <p className="text-xs text-emerald-600 mt-0.5">El escÃ¡ner funciona sin pedir permiso cada vez.</p>
+                            <p className="font-bold text-emerald-700 text-sm">Cámara autorizada</p>
+                            <p className="text-xs text-emerald-600 mt-0.5">El escáner funciona sin pedir permiso cada vez.</p>
                         </div>
                     </div>
                 ) : camState === 'denied' ? (
@@ -338,7 +338,7 @@ const CompanyConfig: React.FC = () => {
                         <ShieldAlert size={24} className="text-red-500 shrink-0"/>
                         <div>
                             <p className="font-bold text-red-700 text-sm">Acceso bloqueado</p>
-                            <p className="text-xs text-red-600 mt-0.5">Ve a ConfiguraciÃ³n del navegador â†’ Permisos del sitio â†’ CÃ¡mara y permite este sitio manualmente.</p>
+                            <p className="text-xs text-red-600 mt-0.5">Ve a Configuración del navegador → Permisos del sitio → Cámara y permite este sitio manualmente.</p>
                         </div>
                     </div>
                 ) : (
@@ -347,7 +347,7 @@ const CompanyConfig: React.FC = () => {
                             <Camera size={20} className="text-amber-600 shrink-0"/>
                             <div className="min-w-0">
                                 <p className="font-bold text-amber-700 text-sm">Permiso no configurado</p>
-                                <p className="text-xs text-amber-600 mt-0.5">ActÃ­valo una vez y el escÃ¡ner funcionarÃ¡ siempre.</p>
+                                <p className="text-xs text-amber-600 mt-0.5">Actívalo una vez y el escáner funcionará siempre.</p>
                             </div>
                         </div>
                         <button
@@ -356,7 +356,7 @@ const CompanyConfig: React.FC = () => {
                             disabled={camRequesting}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-60 shrink-0"
                         >
-                            <Camera size={16}/> {camRequesting ? 'Solicitando...' : 'Activar CÃ¡mara'}
+                            <Camera size={16}/> {camRequesting ? 'Solicitando...' : 'Activar Cámara'}
                         </button>
                     </div>
                 )}
@@ -365,7 +365,7 @@ const CompanyConfig: React.FC = () => {
                 <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex gap-2 items-start">
                     <AlertCircle size={15} className="text-slate-400 shrink-0 mt-0.5"/>
                     <p className="text-[11px] text-slate-500">
-                        <strong>Nota:</strong> La app estÃ¡ en <strong>HTTP</strong>. Para que el permiso sea permanente, accede por <strong>HTTPS</strong> o instala la app (PWA). En HTTP, algunos navegadores piden permiso en cada sesiÃ³n.
+                        <strong>Nota:</strong> La app está en <strong>HTTP</strong>. Para que el permiso sea permanente, accede por <strong>HTTPS</strong> o instala la app (PWA). En HTTP, algunos navegadores piden permiso en cada sesión.
                     </p>
                 </div>
             )}
@@ -611,15 +611,15 @@ const CompanyConfig: React.FC = () => {
                   <AlertCircle size={15} className="shrink-0 mt-0.5"/>
                   <span>
                     {quota.estado === 'agotado'
-                      ? 'Has agotado tu cuota de IA para este mes. Las funciones de IA no estarÃ¡n disponibles hasta el prÃ³ximo perÃ­odo. Contacta a soporte para ampliar tu plan.'
-                      : 'EstÃ¡s cerca del lÃ­mite mensual de IA. Considera optimizar el uso o contactar a soporte para ampliar tu plan.'}
+                      ? 'Has agotado tu cuota de IA para este mes. Las funciones de IA no estarán disponibles hasta el próximo período. Contacta a soporte para ampliar tu plan.'
+                      : 'Estás cerca del límite mensual de IA. Considera optimizar el uso o contactar a soporte para ampliar tu plan.'}
                   </span>
                 </div>
               )}
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              {quotaLoading ? 'Cargando estado de cuota...' : 'InformaciÃ³n de cuota no disponible.'}
+              {quotaLoading ? 'Cargando estado de cuota...' : 'Información de cuota no disponible.'}
             </p>
           )}
         </div>
@@ -641,7 +641,7 @@ const CompanyConfig: React.FC = () => {
         <div className="space-y-6">
           {/* Nombre de la app */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre que aparece en el menÃº lateral</label>
+            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre que aparece en el menú lateral</label>
             <input
               className="w-full max-w-xs p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
               value={theme.appName}
@@ -697,7 +697,7 @@ const CompanyConfig: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Color Sidebar (fondo del menÃº)</label>
+              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Color Sidebar (fondo del menú)</label>
               <div className="flex items-center gap-3">
                 <input
                   type="color"
