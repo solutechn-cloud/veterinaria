@@ -37,7 +37,7 @@ export const WARM_ENDPOINTS: WarmEndpoint[] = [
   { key: 'cache:/arqueo/active',               url: '/api/arqueo/active',                 ttl: CACHE_TTL_TRANSAC, permission: 'VER_CAJA' },
   // Datos maestros
   { key: 'cache:/config',                      url: '/api/config',                        ttl: CACHE_TTL_MASTER  },
-  { key: 'cache:/labels',                      url: '/api/labels',                        ttl: CACHE_TTL_MASTER,  permission: 'DISEÃ‘AR_ETIQUETAS' },
+  { key: 'cache:/labels',                      url: '/api/labels',                        ttl: CACHE_TTL_MASTER,  permission: 'DISEÑAR_ETIQUETAS' },
   // Admin
   { key: 'cache:/roles',                       url: '/api/roles',                         ttl: CACHE_TTL_MASTER,  permission: 'GESTIONAR_ROLES' },
   { key: 'cache:/cajas',                       url: '/api/cajas',                         ttl: CACHE_TTL_MASTER,  permission: 'GESTIONAR_PANEL_CAJAS' },

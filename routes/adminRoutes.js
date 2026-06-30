@@ -653,7 +653,20 @@ router.delete('/roles/:id', authenticateToken, requireAdmin, async (req, res) =>
 // permisos is a global catalog — no tenant_id filter
 router.get('/permisos', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const r = await pool.query('SELECT idPermiso as "idPermiso", nombre, modulo FROM permisos ORDER BY modulo, nombre');
+        const r = await pool.query(`
+            SELECT idPermiso as "idPermiso", nombre, modulo
+            FROM permisos
+            ORDER BY
+                CASE modulo
+                    WHEN 'Comercial' THEN 1
+                    WHEN 'Clinica' THEN 2
+                    WHEN 'Inventario' THEN 3
+                    WHEN 'Finanzas' THEN 4
+                    WHEN 'Administracion' THEN 5
+                    ELSE 9
+                END,
+                nombre
+        `);
         res.json(r.rows);
     } catch(e) { handleDbError(res, e); }
 });

@@ -191,18 +191,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { name: 'Agenda', path: '/agenda', icon: <CalendarDays size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_citas', minimumPlan: 'basico' },
         { name: 'Expediente', path: '/expediente', icon: <FileHeart size={18} />, permission: 'VER_EXPEDIENTE', planFeature: 'modulo_expediente', minimumPlan: 'profesional' },
         { name: 'Vacunas', path: '/vacunas', icon: <Syringe size={18} />, permission: 'VER_VACUNAS', planFeature: 'modulo_vacunas', minimumPlan: 'profesional' },
-        { name: 'Flowboard', path: '/flowboard', icon: <Activity size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_hospitalizacion', minimumPlan: 'enterprise' },
+        { name: 'Flowboard', path: '/flowboard', icon: <Activity size={18} />, permission: 'VER_FLOWBOARD', planFeature: 'modulo_hospitalizacion', minimumPlan: 'enterprise' },
       ]
     },
     {
       name: 'Inventario', icon: <Pill size={20} />, permission: 'VER_INVENTARIO',
       subItems: [
         { name: 'Inventario Clínico', path: '/medicamentos', icon: <Pill size={18} />, permission: 'VER_INVENTARIO' },
-        { name: 'Control Vencimientos', path: '/vencimientos', icon: <AlertTriangle size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_vencimientos', minimumPlan: 'profesional' },
-        { name: 'Transferencias', path: '/transferencias', icon: <ArrowLeftRight size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_transferencias', minimumPlan: 'enterprise' },
-        { name: 'Entregas Sucursal', path: '/cross-branch/deliveries', icon: <Truck size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_entregas', minimumPlan: 'enterprise' },
+        { name: 'Control Vencimientos', path: '/vencimientos', icon: <AlertTriangle size={18} />, permission: 'VER_VENCIMIENTOS', planFeature: 'modulo_vencimientos', minimumPlan: 'profesional' },
+        { name: 'Transferencias', path: '/transferencias', icon: <ArrowLeftRight size={18} />, permission: 'VER_TRANSFERENCIAS', planFeature: 'modulo_transferencias', minimumPlan: 'enterprise' },
+        { name: 'Entregas Sucursal', path: '/cross-branch/deliveries', icon: <Truck size={18} />, permission: 'VER_ENTREGAS', planFeature: 'modulo_entregas', minimumPlan: 'enterprise' },
         { name: 'Programa de Lealtad', path: '/lealtad', icon: <Star size={18} />, permission: 'VER_LEALTAD', planFeature: 'modulo_lealtad', minimumPlan: 'profesional' },
-        { name: 'Órdenes de Compra', path: '/ordenes-compra', icon: <ShoppingBag size={18} />, permission: 'VER_INVENTARIO', planFeature: 'modulo_ordenes_compra', minimumPlan: 'profesional' },
+        { name: 'Órdenes de Compra', path: '/ordenes-compra', icon: <ShoppingBag size={18} />, permission: 'VER_ORDENES_COMPRA', planFeature: 'modulo_ordenes_compra', minimumPlan: 'profesional' },
         { name: 'Proveedores', path: '/providers', icon: <Truck size={18} />, permission: 'VER_PROVEEDORES', planFeature: 'modulo_proveedores', minimumPlan: 'profesional' },
         { name: 'Etiquetas', path: '/label-designer', icon: <Tag size={18} />, permission: 'DISEÑAR_ETIQUETAS', planFeature: 'modulo_etiquetas', minimumPlan: 'profesional' },
       ]
@@ -217,15 +217,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     {
       name: 'Administración', icon: <ShieldCheck size={20} />, permission: 'VER_ADMIN',
       subItems: [
-        { name: 'Sucursales', path: '/sucursales', icon: <Building2 size={18} />, permission: 'GESTIONAR_PANEL_CAJAS', planFeature: 'modulo_sucursales', minimumPlan: 'enterprise' },
-        { name: 'Panel Cajas', path: '/admin/cash-dashboard', icon: <Activity size={18} />, permission: 'GESTIONAR_PANEL_CAJAS', planFeature: 'modulo_panel_cajas', minimumPlan: 'enterprise' },
+        { name: 'Sucursales', path: '/sucursales', icon: <Building2 size={18} />, permission: 'VER_SUCURSALES', planFeature: 'modulo_sucursales', minimumPlan: 'enterprise' },
+        { name: 'Panel Cajas', path: '/admin/cash-dashboard', icon: <Activity size={18} />, permission: 'VER_PANEL_CAJAS', planFeature: 'modulo_panel_cajas', minimumPlan: 'enterprise' },
         { name: 'Usuarios', path: '/admin/users', icon: <UserCog size={18} />, permission: 'GESTIONAR_USUARIOS' },
         { name: 'Empleados', path: '/admin/employees', icon: <Briefcase size={18} />, permission: 'GESTIONAR_USUARIOS' },
         { name: 'Roles', path: '/admin/roles', icon: <ShieldCheck size={18} />, permission: 'GESTIONAR_ROLES' },
-        { name: 'Cajas', path: '/admin/boxes', icon: <Box size={18} />, permission: 'GESTIONAR_PANEL_CAJAS' },
+        { name: 'Cajas', path: '/admin/boxes', icon: <Box size={18} />, permission: 'GESTIONAR_CAJAS' },
         { name: 'Reportes', path: '/reports', icon: <FileText size={18} />, permission: 'VER_REPORTES' },
         { name: 'Configuración', path: '/admin/config', icon: <Settings size={18} />, permission: 'CONFIGURAR_EMPRESA' },
-        { name: 'IA y Cuotas', path: '/admin/ai', icon: <Sparkles size={18} />, permission: 'CONFIGURAR_EMPRESA' },
+        { name: 'IA y Cuotas', path: '/admin/ai', icon: <Sparkles size={18} />, permission: 'VER_IA_CUOTAS' },
       ]
     }
   ];

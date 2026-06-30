@@ -97,7 +97,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/flowboard" element={
-            <ProtectedRoute requiredPermission="VER_CITAS" requiredFeature="modulo_hospitalizacion">
+            <ProtectedRoute requiredPermission="VER_FLOWBOARD" requiredFeature="modulo_hospitalizacion">
               <Layout><Flowboard /></Layout>
             </ProtectedRoute>
           } />
@@ -114,22 +114,22 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/vencimientos" element={
-            <ProtectedRoute requiredPermission="VER_INVENTARIO" requiredFeature="modulo_vencimientos">
+            <ProtectedRoute requiredPermission="VER_VENCIMIENTOS" requiredFeature="modulo_vencimientos">
               <Layout><Vencimientos /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/transferencias" element={
-            <ProtectedRoute requiredPermission="VER_INVENTARIO" requiredFeature="modulo_transferencias">
+            <ProtectedRoute requiredPermission="VER_TRANSFERENCIAS" requiredFeature="modulo_transferencias">
               <Layout><Transferencias /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/ordenes-compra" element={
-            <ProtectedRoute requiredPermission="VER_INVENTARIO" requiredFeature="modulo_ordenes_compra">
+            <ProtectedRoute requiredPermission="VER_ORDENES_COMPRA" requiredFeature="modulo_ordenes_compra">
               <Layout><OrdenesCompra /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/cross-branch/deliveries" element={
-            <ProtectedRoute requiredPermission="VER_INVENTARIO" requiredFeature="modulo_entregas">
+            <ProtectedRoute requiredPermission="VER_ENTREGAS" requiredFeature="modulo_entregas">
               <Layout><EntregasPendientes /></Layout>
             </ProtectedRoute>
           } />
@@ -168,12 +168,12 @@ const App: React.FC = () => {
 
           {/* Administración */}
           <Route path="/sucursales" element={
-            <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS" requiredFeature="modulo_sucursales">
+            <ProtectedRoute requiredPermission="VER_SUCURSALES" requiredFeature="modulo_sucursales">
               <Layout><Sucursales /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/admin/cash-dashboard" element={
-            <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS" requiredFeature="modulo_panel_cajas">
+            <ProtectedRoute requiredPermission="VER_PANEL_CAJAS" requiredFeature="modulo_panel_cajas">
               <Layout><AdminCashDashboard /></Layout>
             </ProtectedRoute>
           } />
@@ -193,7 +193,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/admin/boxes" element={
-            <ProtectedRoute requiredPermission="GESTIONAR_PANEL_CAJAS">
+            <ProtectedRoute requiredPermission="GESTIONAR_CAJAS">
               <Layout><AdminUsers initialView="CAJAS" /></Layout>
             </ProtectedRoute>
           } />
@@ -203,7 +203,7 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/admin/ai" element={
-            <ProtectedRoute requiredPermission="CONFIGURAR_EMPRESA">
+            <ProtectedRoute requiredPermission="VER_IA_CUOTAS">
               <Layout><AIUsage /></Layout>
             </ProtectedRoute>
           } />

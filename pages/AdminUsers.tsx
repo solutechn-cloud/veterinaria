@@ -36,6 +36,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const [userForm, setUserForm]   = useState({ usuario: '', password: '', identidad: '', idrol: '', idCaja: '', estado: 'Activo', id_sucursal: '' });
   const [empForm, setEmpForm]     = useState({ identidad: '', nombre: '', apellido: '', direccion: '', telefono: '', estado: 'Activo', id_sucursal: '' });
   const [rolForm, setRolForm]     = useState<{ nombre: string; estado: string; permisos: string[] }>({ nombre: '', estado: 'Activo', permisos: [] });
+  const [permissionSearch, setPermissionSearch] = useState('');
   const [cajaForm, setCajaForm]   = useState({ nombre: '', estado: 'Activo', id_sucursal: '' });
 
   // ── Transfer modal ────────────────────────────────────────────────────────
@@ -110,6 +111,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
   const openModal = (data?: any) => {
     setIsEditing(!!data);
     setCurrentId(data ? (data.codUsuario || data.identidad || data.idrol || data.idCaja) : null);
+    setPermissionSearch('');
     if (activeTab === 'USERS') {
       setUserForm(data ? {
         usuario: data.usuario || '', password: '',
@@ -228,7 +230,11 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
     } catch (err: any) { Swal.fire('Error', err.message, 'error'); }
   };
 
-  const groupedPermisos = permisos.reduce((acc, p) => {
+  const permissionQuery = permissionSearch.trim().toLowerCase();
+  const groupedPermisos = permisos.filter(p => {
+    if (!permissionQuery) return true;
+    return `${p.nombre} ${p.idPermiso} ${p.modulo}`.toLowerCase().includes(permissionQuery);
+  }).reduce((acc, p) => {
     if (!acc[p.modulo]) acc[p.modulo] = [];
     acc[p.modulo].push(p);
     return acc;
@@ -437,7 +443,16 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ initialView }) => {
                     </div>
                   </div>
                   <div><label className={`${lbl} block mb-3`}>Asignar Permisos</label>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 max-h-72 overflow-y-auto">
+                    <input
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl mb-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                      value={permissionSearch}
+                      onChange={e => setPermissionSearch(e.target.value)}
+                      placeholder="Buscar permiso por modulo, nombre o codigo..."
+                    />
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 max-h-[420px] overflow-y-auto">
+                      {(Object.entries(groupedPermisos) as [string, Permiso[]][]).length === 0 && (
+                        <p className="text-sm text-slate-400 text-center py-6">No hay permisos que coincidan con la busqueda.</p>
+                      )}
                       {(Object.entries(groupedPermisos) as [string, Permiso[]][]).map(([modulo, perms]) => (
                         <div key={modulo} className="mb-4 last:mb-0">
                           <h4 className="text-xs font-bold text-indigo-600 uppercase mb-2 border-b border-indigo-100 pb-1">{modulo}</h4>
