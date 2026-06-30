@@ -28,6 +28,7 @@ const startOfWeek = (date: string) => {
 };
 const formatTime = (value: string) => new Date(value).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' });
 const formatLong = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString('es-HN', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
+const hourLabel = (hour: number) => hour < 12 ? `${hour} a.m.` : hour === 12 ? '12 p.m.' : `${hour - 12} p.m.`;
 
 function monthDays(date: string) {
   const base = new Date(`${date}T12:00:00`);
@@ -191,44 +192,51 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
     </div>
   );
 
-  const renderScheduler = () => (
-    <div className="overflow-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-      <div className="min-w-[1100px]">
-        <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: `260px repeat(${hours.length}, 92px)` }}>
-          <div className="sticky left-0 z-10 bg-white p-3 text-sm font-black text-slate-700">Usuarios</div>
-          {hours.map(h => <div key={h} className="border-l border-slate-100 p-3 text-center text-sm font-black text-slate-500">{h <= 12 ? `${h} a.m.` : `${h - 12} p.m.`}</div>)}
-        </div>
-        {schedulerVets.map(vet => (
-          <div key={vet.id_veterinario} className="grid min-h-[92px] border-b border-slate-100" style={{ gridTemplateColumns: `260px repeat(${hours.length}, 92px)` }}>
-            <div className="sticky left-0 z-10 flex items-center gap-3 bg-white p-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><UserRound size={18} /></div>
-              <div>
-                <p className="font-black text-slate-800">{vet.nombre}</p>
-                <p className="text-xs text-slate-400">{vet.sucursalNombre || 'Agenda clinica'}</p>
-              </div>
-            </div>
-            {hours.map(hour => {
-              const cellCitas = filtered.filter(c => {
-                const d = new Date(c.fecha_inicio);
-                const sameDate = d.toISOString().slice(0, 10) === date;
-                const sameVet = vet.id_veterinario === 'sin-asignar' ? !c.id_veterinario : String(c.id_veterinario) === String(vet.id_veterinario);
-                return sameDate && sameVet && d.getHours() === hour;
-              });
-              return (
-                <button key={hour} onClick={() => openNew({ date, hour, vet: vet.id_veterinario })} className="min-h-[92px] border-l border-slate-100 bg-slate-50/40 p-1 text-left hover:bg-indigo-50">
-                  {cellCitas.map(c => (
-                    <div key={c.id_cita} className={`mb-1 rounded-lg border px-2 py-1 text-[11px] shadow-sm ${statusTone[c.estado] || statusTone.Programada}`}>
-                      <b>{formatTime(c.fecha_inicio)}</b> {c.pacienteNombre || c.motivo || 'Reserva'}
-                    </div>
-                  ))}
-                </button>
-              );
-            })}
+  const renderScheduler = () => {
+    const template = `minmax(142px, 1.15fr) repeat(${hours.length}, minmax(38px, 1fr))`;
+    return (
+      <>
+        <div className="lg:hidden">{renderAgendaList()}</div>
+        <div className="hidden min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm lg:block">
+          <div className="grid border-b border-slate-100 bg-slate-50/80" style={{ gridTemplateColumns: template }}>
+            <div className="p-2.5 text-xs font-black uppercase tracking-wide text-slate-500">Equipo</div>
+            {hours.map(h => <div key={h} className="border-l border-slate-100 px-1 py-2.5 text-center text-[11px] font-black text-slate-500">{hourLabel(h)}</div>)}
           </div>
-        ))}
-      </div>
-    </div>
-  );
+          {schedulerVets.map(vet => (
+            <div key={vet.id_veterinario} className="grid min-h-[84px] border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: template }}>
+              <div className="flex min-w-0 items-center gap-2 bg-white p-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><UserRound size={17} /></div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-800">{vet.nombre}</p>
+                  <p className="truncate text-[11px] text-slate-400">{vet.sucursalNombre || 'Agenda clínica'}</p>
+                </div>
+              </div>
+              {hours.map(hour => {
+                const cellCitas = filtered.filter(c => {
+                  const d = new Date(c.fecha_inicio);
+                  const sameDate = d.toISOString().slice(0, 10) === date;
+                  const sameVet = vet.id_veterinario === 'sin-asignar' ? !c.id_veterinario : String(c.id_veterinario) === String(vet.id_veterinario);
+                  return sameDate && sameVet && d.getHours() === hour;
+                });
+                const visible = cellCitas.slice(0, 2);
+                return (
+                  <button key={hour} onClick={() => openNew({ date, hour, vet: vet.id_veterinario })} className="min-h-[84px] overflow-hidden border-l border-slate-100 bg-white p-1 text-left transition-colors hover:bg-indigo-50/70">
+                    {visible.map(c => (
+                      <div key={c.id_cita} className={`mb-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight shadow-sm ${statusTone[c.estado] || statusTone.Programada}`}>
+                        <b className="block truncate">{formatTime(c.fecha_inicio)}</b>
+                        <span className="block truncate">{c.pacienteNombre || c.motivo || 'Reserva'}</span>
+                      </div>
+                    ))}
+                    {cellCitas.length > visible.length && <span className="text-[10px] font-black text-indigo-500">+{cellCitas.length - visible.length}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
 
   const renderAgendaList = () => (
     <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
@@ -241,7 +249,7 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
                 <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${statusTone[c.estado] || statusTone.Programada}`}>{c.estado}</span>
                 {c.tutorCorreo && <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700"><Mail size={12} />Recordatorios</span>}
               </div>
-              <p className="mt-1 font-black text-slate-800">{c.pacienteNombre || 'Reserva sin paciente'} · {c.tipoCitaNombre || 'Cita medica'}</p>
+              <p className="mt-1 font-black text-slate-800">{c.pacienteNombre || 'Reserva sin paciente'} · {c.tipoCitaNombre || 'Cita médica'}</p>
               <p className="text-xs text-slate-500">{c.tutorNombre || 'Sin tutor'} · {c.veterinarioNombre || 'Sin veterinario'}{c.motivo ? ` · ${c.motivo}` : ''}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -257,20 +265,20 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 font-sans">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-black text-slate-900">
             <CalendarDays className="text-cyan-500" /> {personal ? 'Agenda personal' : 'Agenda general'}
           </h2>
-          <p className="text-sm text-slate-500">Programacion clinica, busqueda de pacientes, recordatorios por correo y estados de atencion.</p>
+          <p className="text-sm text-slate-500">Programación clínica, búsqueda de pacientes, recordatorios por correo y estados de atención.</p>
         </div>
         <button onClick={() => openNew()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-100">
           <Plus size={18} /> Crear
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_1fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[250px_minmax(0,1fr)]">
         <aside className="space-y-4">
           {renderMiniCalendar()}
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -284,7 +292,7 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
           </div>
         </aside>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-center gap-2">
@@ -296,7 +304,7 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
                 {view === 'Semana' ? `${formatLong(visibleDates[0])} AL ${formatLong(visibleDates[6])}` : formatLong(date)}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex overflow-hidden rounded-xl border border-slate-200">
+                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 sm:flex">
                   {views.map(v => (
                     <button key={v} onClick={() => setView(v)} className={`px-4 py-2 text-sm font-bold ${view === v ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500'}`}>{v}</button>
                   ))}
@@ -306,7 +314,7 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
             </div>
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Search size={18} className="text-slate-400" />
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por documento, nombre, mascota, telefono, encargado o motivo" className="w-full bg-transparent text-sm outline-none" />
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por documento, nombre, mascota, teléfono, encargado o motivo" className="w-full bg-transparent text-sm outline-none" />
             </div>
           </div>
 
@@ -357,11 +365,11 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
               <label className="text-sm font-bold text-slate-600">Finaliza
                 <input type="datetime-local" required value={form.fecha_fin || ''} onChange={e => setForm({ ...form, fecha_fin: e.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3" />
               </label>
-              <label className="md:col-span-2 text-sm font-bold text-slate-600">Titulo / motivo
-                <input value={form.motivo || ''} onChange={e => setForm({ ...form, motivo: e.target.value })} placeholder="Consulta, vacuna, control, cirugia, grooming..." className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3" />
+              <label className="md:col-span-2 text-sm font-bold text-slate-600">Título / motivo
+                <input value={form.motivo || ''} onChange={e => setForm({ ...form, motivo: e.target.value })} placeholder="Consulta, vacuna, control, cirugía, grooming..." className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3" />
               </label>
-              <label className="md:col-span-2 text-sm font-bold text-slate-600">Descripcion
-                <textarea value={form.notas || ''} onChange={e => setForm({ ...form, notas: e.target.value })} placeholder="Detalles visibles para el equipo clinico" className="mt-2 min-h-[110px] w-full rounded-xl border border-slate-200 px-3 py-3" />
+              <label className="md:col-span-2 text-sm font-bold text-slate-600">Descripción
+                <textarea value={form.notas || ''} onChange={e => setForm({ ...form, notas: e.target.value })} placeholder="Detalles visibles para el equipo clínico" className="mt-2 min-h-[110px] w-full rounded-xl border border-slate-200 px-3 py-3" />
               </label>
               <div className="md:col-span-2 rounded-xl border border-violet-100 bg-violet-50 p-4 text-sm text-violet-700">
                 <Mail size={16} className="mr-2 inline" />

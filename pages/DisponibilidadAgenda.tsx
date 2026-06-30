@@ -4,8 +4,8 @@ import { AgendaDisponibilidad, AgendaSlot, AgendaVeterinario } from '../types';
 import { CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const days = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
-const weekLabels = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'];
+const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const weekLabels = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
 const hours = Array.from({ length: 17 }, (_, i) => i + 6);
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (date: string, amount: number) => {
@@ -80,7 +80,7 @@ export default function DisponibilidadAgenda() {
   };
 
   const remove = async (id: number) => {
-    const ok = await Swal.fire({ icon: 'warning', title: 'Desactivar disponibilidad', text: 'Este bloque dejara de usarse para nuevos horarios.', showCancelButton: true, confirmButtonText: 'Desactivar' });
+    const ok = await Swal.fire({ icon: 'warning', title: 'Desactivar disponibilidad', text: 'Este bloque dejará de usarse para nuevos horarios.', showCancelButton: true, confirmButtonText: 'Desactivar' });
     if (!ok.isConfirmed) return;
     await CitasService.deleteDisponibilidad(id);
     await load();
@@ -98,11 +98,11 @@ export default function DisponibilidadAgenda() {
   const activeVet = vets.find(v => v.id_veterinario === vetFilter);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 font-sans">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-            <CalendarClock className="text-cyan-500" /> Disponibilidad / programacion
+            <CalendarClock className="text-cyan-500" /> Disponibilidad / programación
           </h2>
           <p className="text-sm text-slate-500">Establece la disponibilidad de agenda para cada profesional encargado y visualiza cupos libres.</p>
         </div>
@@ -112,7 +112,7 @@ export default function DisponibilidadAgenda() {
         </label>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[340px_1fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <form onSubmit={save} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
@@ -126,7 +126,7 @@ export default function DisponibilidadAgenda() {
                   {vets.map(v => <option key={v.id_veterinario} value={v.id_veterinario}>{v.nombre}</option>)}
                 </select>
               </label>
-              <label className="block text-xs font-black uppercase text-slate-500">Dia
+              <label className="block text-xs font-black uppercase text-slate-500">Día
                 <select value={form.dia_semana} onChange={e => setForm({ ...form, dia_semana: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
                   {days.map((d, i) => <option key={d} value={i}>{d}</option>)}
                 </select>
@@ -158,7 +158,7 @@ export default function DisponibilidadAgenda() {
           </form>
 
           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h3 className="mb-4 font-black text-slate-800">Cupos del dia</h3>
+            <h3 className="mb-4 font-black text-slate-800">Cupos del día</h3>
             <div className="max-h-80 space-y-2 overflow-auto">
               {slots.map(slot => (
                 <div key={`${slot.inicio}-${slot.fin}`} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm ${slot.disponible ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
@@ -171,7 +171,7 @@ export default function DisponibilidadAgenda() {
           </div>
         </aside>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
@@ -193,9 +193,32 @@ export default function DisponibilidadAgenda() {
             </div>
           </div>
 
-          <div className="overflow-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <div className="min-w-[1000px]">
-              <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
+          <div className="space-y-3 md:hidden">
+            {weekDates.map((d, i) => {
+              const dayBlocks = blocks.filter(b => b.dia_semana === new Date(`${d}T12:00:00`).getDay());
+              return (
+                <div key={d} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-slate-800">{weekLabels[i]} {new Date(`${d}T12:00:00`).getDate()}</h4>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500">{dayBlocks.length} bloques</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {dayBlocks.map(b => (
+                      <div key={b.id_disponibilidad} className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold ${b.tipo === 'Disponible' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                        <span>{normalizeTime(b.hora_inicio)} - {normalizeTime(b.hora_fin)} · {b.tipo}</span>
+                        <button onClick={() => remove(b.id_disponibilidad)}><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                    {!dayBlocks.length && <p className="text-sm text-slate-400">Sin disponibilidad registrada.</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:block">
+            <div>
+              <div className="grid border-b border-slate-100 bg-slate-50/70" style={{ gridTemplateColumns: 'minmax(54px, .45fr) repeat(7, minmax(0, 1fr))' }}>
                 <div className="p-3 text-xs font-bold text-slate-400">{activeVet ? <UserRound size={16} /> : null}</div>
                 {weekDates.map((d, i) => (
                   <div key={d} className="border-l border-slate-100 p-3 text-center font-black text-slate-600">
@@ -204,7 +227,7 @@ export default function DisponibilidadAgenda() {
                 ))}
               </div>
               {hours.map(hour => (
-                <div key={hour} className="grid min-h-[62px] border-b border-slate-100" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
+                <div key={hour} className="grid min-h-[62px] border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: 'minmax(54px, .45fr) repeat(7, minmax(0, 1fr))' }}>
                   <div className="bg-slate-50 p-2 text-right text-xs font-bold text-slate-500">{timeLabel(hour)}</div>
                   {weekDates.map(d => {
                     const cellBlocks = blocksFor(d, hour);

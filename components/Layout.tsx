@@ -233,7 +233,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const getPageTitle = () => {
     const allItems = navigationStructure.flatMap(i => i.subItems ? i.subItems : [i]);
-    const item = allItems.find(i => i.path === location.pathname || (i.path !== '/' && location.pathname.startsWith(`${i.path}/`)));
+    const item = [...allItems]
+      .filter(i => i.path)
+      .sort((a, b) => (b.path?.length || 0) - (a.path?.length || 0))
+      .find(i => i.path === location.pathname || (i.path !== '/' && location.pathname.startsWith(`${i.path}/`)));
     return item ? item.name : theme.appName;
   };
 
