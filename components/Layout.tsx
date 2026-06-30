@@ -190,7 +190,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { name: 'Agenda General', path: '/agenda', icon: <CalendarDays size={18} />, permission: 'VER_CITAS', planFeature: 'modulo_citas', minimumPlan: 'basico' },
         { name: 'Agenda Personal', path: '/agenda-personal', icon: <Stethoscope size={18} />, permission: 'VER_AGENDA_PERSONAL', planFeature: 'modulo_citas', minimumPlan: 'basico' },
         { name: 'Disponibilidad', path: '/agenda/disponibilidad', icon: <CalendarClock size={18} />, permission: 'VER_DISPONIBILIDAD_AGENDA', planFeature: 'modulo_citas', minimumPlan: 'basico' },
-        { name: 'Consultorio', path: '/consultorio', icon: <FileHeart size={18} />, permission: 'VER_EXPEDIENTE', planFeature: 'modulo_expediente', minimumPlan: 'profesional' },
+        { name: 'Consultorio', path: '/consultorio', icon: <FileHeart size={18} />, permission: 'VER_CONSULTORIO', planFeature: 'modulo_consultorio', minimumPlan: 'profesional' },
         { name: 'Vacunas', path: '/vacunas', icon: <Syringe size={18} />, permission: 'VER_VACUNAS', planFeature: 'modulo_vacunas', minimumPlan: 'profesional' },
         { name: 'Flowboard', path: '/flowboard', icon: <Activity size={18} />, permission: 'VER_FLOWBOARD', planFeature: 'modulo_hospitalizacion', minimumPlan: 'enterprise' },
       ]

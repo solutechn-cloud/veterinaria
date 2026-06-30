@@ -99,12 +99,12 @@ const App: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="/consultorio" element={
-            <ProtectedRoute requiredPermission="VER_EXPEDIENTE" requiredFeature="modulo_expediente">
+            <ProtectedRoute requiredPermission="VER_CONSULTORIO" requiredFeature="modulo_consultorio">
               <Layout><Expediente /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/consultorio/:idPaciente" element={
-            <ProtectedRoute requiredPermission="VER_EXPEDIENTE" requiredFeature="modulo_expediente">
+            <ProtectedRoute requiredPermission="VER_CONSULTORIO" requiredFeature="modulo_consultorio">
               <Layout><Expediente /></Layout>
             </ProtectedRoute>
           } />
