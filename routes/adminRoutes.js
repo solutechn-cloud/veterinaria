@@ -204,7 +204,7 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
                 admin_email, email_from, automation_sender_name, backup_r2_prefix,
                 backup_retention_days, backup_enabled, backup_time
             )
-            VALUES ($19, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NULLIF($18, '')::time)
+            VALUES ($20, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULLIF($19, '')::time)
             ON CONFLICT (tenant_id) DO UPDATE SET
                 nombreempresa = EXCLUDED.nombreempresa,
                 rtn           = EXCLUDED.rtn,
