@@ -125,6 +125,11 @@ export function useLabelDesignerElements(
             { content: '{{empresa.direccion}}',       fontSize: isDoc ? 9  : 8, fontWeight: 'normal', label: 'Dirección' },
             { content: 'Tel: {{empresa.telefono}}',   fontSize: isDoc ? 9  : 8, fontWeight: 'normal', label: 'Teléfono' },
             { content: '{{empresa.correo}}',          fontSize: isDoc ? 9  : 8, fontWeight: 'normal', label: 'Correo' },
+            ...(isDoc ? [
+                { content: 'CAI: {{empresa.cai}}',                                             fontSize: 8, fontWeight: 'normal', label: 'CAI' },
+                { content: 'Rango Autorizado: {{empresa.rangoInicial}} - {{empresa.rangoFinal}}', fontSize: 8, fontWeight: 'normal', label: 'Rango Autorizado' },
+                { content: 'Fecha Límite de Emisión: {{empresa.fechaLimite}}',                 fontSize: 8, fontWeight: 'normal', label: 'Fecha Límite CAI' },
+            ] : []),
         ];
 
         let textY = startY;
