@@ -23,7 +23,7 @@ export const MODULES: ConsultorioModule[] = [
   { tipo: 'historia', label: 'Historia', icon: FileHeart, accent: 'text-teal-600' },
   { tipo: 'consulta', label: 'Consultas', icon: Stethoscope, accent: 'text-blue-600', creatable: true },
   { tipo: 'vacuna', label: 'Vacunaciones', icon: Syringe, accent: 'text-indigo-600', creatable: true },
-  { tipo: 'formula', label: 'Fórmulas médicas', icon: Pill, accent: 'text-violet-600', creatable: true },
+  { tipo: 'formula', label: 'Recetas', icon: Pill, accent: 'text-violet-600', creatable: true },
   { tipo: 'desparasitacion', label: 'Desparasitaciones', icon: ShieldCheck, accent: 'text-cyan-600', creatable: true },
   { tipo: 'hospitalizacion', label: 'Hospitalizaciones', icon: Building2, accent: 'text-rose-600', creatable: true },
   { tipo: 'cirugia', label: 'Cirugías/procedimientos', icon: HeartPulse, accent: 'text-red-600', creatable: true },
@@ -97,10 +97,6 @@ export function fieldsFor(tipo: ConsultorioTipo): FieldDef[] {
     ],
     formula: [
       { key: 'diagnostico', label: 'Diagnóstico presuntivo/final', type: 'textarea', wide: true },
-      { key: 'medicamento', label: 'Medicamento' },
-      { key: 'presentacion', label: 'Presentación' },
-      { key: 'cantidad', label: 'Cantidad', type: 'number' },
-      { key: 'posologia', label: 'Posología / vía / frecuencia', type: 'textarea', wide: true },
       commonObs,
     ],
     desparasitacion: [

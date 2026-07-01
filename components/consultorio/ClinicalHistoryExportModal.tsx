@@ -38,6 +38,7 @@ const LABELS: Record<string, string> = {
   fecha_envio: 'Fecha envio',
   tipo_recordatorio: 'Tipo recordatorio',
   pruebas: 'Pruebas de laboratorio',
+  medicamentos: 'Medicamentos recetados',
   profesional: 'Profesional',
   diagnostico: 'Diagnostico',
   observaciones: 'Observaciones',
@@ -355,10 +356,12 @@ function displayValue(value: any): string {
   if (Array.isArray(value)) {
     return value.map((item, index) => {
       if (item && typeof item === 'object') {
-        const name = item.prueba || item.nombre || `Item ${index + 1}`;
+        const name = item.prueba || item.nombre || item.medicamento || `Item ${index + 1}`;
         const professional = item.profesional?.nombre || item.profesional || '';
+        const presentacion = item.presentacion ? `Presentación: ${item.presentacion}` : '';
         const quantity = item.cantidad ? `Cantidad ${item.cantidad}` : '';
-        return [name, professional && `Profesional: ${professional}`, quantity].filter(Boolean).join(' | ');
+        const posologia = item.posologia ? `Posología: ${item.posologia}` : '';
+        return [name, professional && `Profesional: ${professional}`, presentacion, quantity, posologia].filter(Boolean).join(' | ');
       }
       return displayValue(item);
     }).join('\n');

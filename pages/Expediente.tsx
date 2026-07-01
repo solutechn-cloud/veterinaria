@@ -12,6 +12,7 @@ import Swal from 'sweetalert2';
 import { ClinicalHistoryExportModal } from '../components/consultorio/ClinicalHistoryExportModal';
 import { AttachmentList, AttachmentUploader, type ClinicalAttachment } from '../components/consultorio/ClinicalAttachments';
 import { LaboratoryTestsEditor } from '../components/consultorio/LaboratoryTestsEditor';
+import { MedicationItemsEditor } from '../components/consultorio/MedicationItemsEditor';
 import { ProfessionalSelect } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
@@ -380,6 +381,12 @@ function EventModal({ form, patient, setForm, onClose, onSubmit }: {
                 onAttachmentsChange={updateAttachments}
               />
             )}
+            {form.tipo === 'formula' && (
+              <MedicationItemsEditor
+                value={Array.isArray(form.payload.medicamentos) ? form.payload.medicamentos : []}
+                onChange={value => updatePayload('medicamentos', value)}
+              />
+            )}
             {visibleFields.map(field => (
               <Field
                 key={field.key}
@@ -487,11 +494,15 @@ function payloadSummary(tipo: ConsultorioTipo, payload: Record<string, any>) {
     const pruebas = payload.pruebas.map((item: any) => item.prueba).filter(Boolean).join(', ');
     if (pruebas) return `Pruebas solicitadas: ${pruebas}`;
   }
+  if (tipo === 'formula' && Array.isArray(payload.medicamentos)) {
+    const medicamentos = payload.medicamentos.map((item: any) => item.medicamento).filter(Boolean).join(', ');
+    if (medicamentos) return `Recetado: ${medicamentos}`;
+  }
   return payload.mensaje || payload.motivo || payload.diagnostico || payload.observaciones || payload.detalles || '';
 }
 
 function displayPayloadValue(value: any): string {
   if (Array.isArray(value)) return value.map(displayPayloadValue).filter(Boolean).join('; ');
-  if (value && typeof value === 'object') return value.nombre || value.prueba || value.titulo || JSON.stringify(value);
+  if (value && typeof value === 'object') return value.nombre || value.prueba || value.medicamento || value.titulo || JSON.stringify(value);
   return String(value ?? '');
 }
