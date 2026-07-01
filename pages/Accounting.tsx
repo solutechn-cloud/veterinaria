@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { AccountingService } from '../services/api';
+import { printSaleInvoice, downloadSaleInvoicePDF } from '../services/DocumentService';
 import {
   Calculator, TrendingUp, DollarSign, Search,
   Download, Activity, ChevronLeft, ChevronRight,
-  RefreshCw, BarChart2, ShoppingCart, Package
+  RefreshCw, BarChart2, ShoppingCart, Package, Printer
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import Swal from 'sweetalert2';
 
 type TabType = 'DASHBOARD' | 'AUDITORIA';
 type PeriodType = 'HOY' | 'SEMANA' | 'MES' | 'AÑO';
+const AUDIT_PAGE_SIZE = 50;
 
 interface VentaAudit {
   id: string;
+  numeroFactura?: string;
   monto: number;
   estado: string;
   categoria: string;
   idCaja: string;
   fecha: string;
   cliente: string;
+  vendedor?: string;
 }
 
 function getPeriodDates(period: PeriodType, date: string) {
@@ -58,25 +63,52 @@ const Accounting: React.FC = () => {
   const [report, setReport]       = useState<any>(null);
   const [ventas, setVentas]       = useState<VentaAudit[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [estadoFilter, setEstadoFilter] = useState('');
+  const [auditPage, setAuditPage] = useState(0);
+  const [auditTotal, setAuditTotal] = useState(0);
 
   const { startDate, endDate, label } = getPeriodDates(period, selectedDate);
 
-  useEffect(() => { loadData(); }, [selectedDate, period]);
+  useEffect(() => { setAuditPage(0); loadData(0); }, [selectedDate, period, estadoFilter]);
 
-  const loadData = async () => {
+  const loadData = async (nextAuditPage = auditPage) => {
     setLoading(true);
     const { startDate: sd, endDate: ed } = getPeriodDates(period, selectedDate);
     try {
       const [profData, auditData] = await Promise.all([
         AccountingService.getProfitabilityReport(sd, ed),
-        AccountingService.getAuditTransactions(sd, ed),
+        AccountingService.getAuditTransactions({
+          startDate: sd, endDate: ed,
+          estado: estadoFilter || undefined,
+          limit: AUDIT_PAGE_SIZE, offset: nextAuditPage * AUDIT_PAGE_SIZE,
+        }),
       ]);
       setReport(profData);
-      setVentas(auditData || []);
+      setVentas(auditData?.rows || []);
+      setAuditTotal(auditData?.total || 0);
+      setAuditPage(nextAuditPage);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePrint = async (saleId: string) => {
+    try {
+      const result = await printSaleInvoice(saleId);
+      if (!result.success) Swal.fire('Sin plantilla', result.message, 'warning');
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo generar la factura.', 'error');
+    }
+  };
+
+  const handleDownload = async (saleId: string) => {
+    try {
+      const result = await downloadSaleInvoicePDF(saleId);
+      if (!result.success) Swal.fire('Sin plantilla', result.message, 'warning');
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo generar la factura.', 'error');
     }
   };
 
@@ -114,8 +146,10 @@ const Accounting: React.FC = () => {
 
   const filteredVentas = ventas.filter(v =>
     v.cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.id?.toLowerCase().includes(searchTerm.toLowerCase())
+    v.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    v.numeroFactura?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const auditTotalPages = Math.max(Math.ceil(auditTotal / AUDIT_PAGE_SIZE), 1);
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: <BarChart2 size={14} /> },
@@ -157,7 +191,7 @@ const Accounting: React.FC = () => {
               className="bg-indigo-50 p-2 rounded-xl text-xs font-bold text-indigo-700 outline-none border border-indigo-100" />
             <button onClick={() => setSelectedDate(advanceDate(period, selectedDate, 1))} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronRight size={14} /></button>
           </div>
-          <button onClick={loadData} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors"><RefreshCw size={14} /></button>
+          <button onClick={() => loadData(auditPage)} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors"><RefreshCw size={14} /></button>
           {activeTab === 'DASHBOARD' && (
             <button onClick={exportPDF} className="flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-colors">
               <Download size={13} />PDF
@@ -266,17 +300,28 @@ const Accounting: React.FC = () => {
       {/* ── AUDITORÍA ── */}
       {!loading && activeTab === 'AUDITORIA' && (
         <div className="flex flex-col flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 transition"
-                placeholder="Buscar por factura o cliente..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
+          <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 transition"
+                  placeholder="Buscar por factura o cliente..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <select
+                value={estadoFilter}
+                onChange={e => setEstadoFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 transition"
+              >
+                <option value="">Todos los estados</option>
+                <option value="Completada">Completada</option>
+                <option value="Anulada">Anulada</option>
+              </select>
             </div>
-            <span className="text-xs text-slate-400 font-medium">{filteredVentas.length} registros</span>
+            <span className="text-xs text-slate-400 font-medium">{auditTotal} registros</span>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left text-xs">
@@ -284,25 +329,28 @@ const Accounting: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3">Factura</th>
                   <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Vendedor</th>
                   <th className="px-4 py-3">Caja</th>
                   <th className="px-4 py-3">Tipo Pago</th>
                   <th className="px-4 py-3 text-right">Monto</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filteredVentas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                       <Activity size={32} className="mx-auto mb-3 text-slate-200" />
                       <p>Sin transacciones en el período seleccionado.</p>
                     </td>
                   </tr>
                 ) : filteredVentas.map(v => (
                   <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.estado === 'Anulada' ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3 font-mono text-slate-600">{v.id}</td>
+                    <td className="px-4 py-3 font-mono text-slate-600">{v.numeroFactura || v.id}</td>
                     <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate">{v.cliente}</td>
+                    <td className="px-4 py-3 text-slate-500 max-w-[140px] truncate">{v.vendedor || '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{v.idCaja}</td>
                     <td className="px-4 py-3">
                       <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[10px] font-medium">
@@ -324,19 +372,36 @@ const Accounting: React.FC = () => {
                     <td className="px-4 py-3 text-slate-500">
                       {v.fecha ? new Date(v.fecha).toLocaleDateString('es-HN') : '—'}
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => handlePrint(v.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Imprimir (vista previa)">
+                          <Printer size={14} />
+                        </button>
+                        <button onClick={() => handleDownload(v.id)} className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Descargar PDF">
+                          <Download size={14} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {filteredVentas.length > 0 && (
-            <div className="flex items-center justify-end gap-4 px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs">
-              <span className="text-slate-500">Total facturado (completadas):</span>
-              <span className="font-bold text-slate-800 text-sm">
-                {fmtL(filteredVentas.filter(v => v.estado !== 'Anulada').reduce((a, v) => a + Number(v.monto), 0))}
-              </span>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Página {auditPage + 1} de {auditTotalPages}</span>
+              <button disabled={auditPage === 0 || loading} onClick={() => loadData(auditPage - 1)} className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40"><ChevronLeft size={14} /></button>
+              <button disabled={auditPage + 1 >= auditTotalPages || loading} onClick={() => loadData(auditPage + 1)} className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-40"><ChevronRight size={14} /></button>
             </div>
-          )}
+            {filteredVentas.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">Total facturado en esta página (completadas):</span>
+                <span className="font-bold text-slate-800 text-sm">
+                  {fmtL(filteredVentas.filter(v => v.estado !== 'Anulada').reduce((a, v) => a + Number(v.monto), 0))}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

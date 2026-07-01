@@ -6,7 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 // --- AUDITORÍA DE VENTAS ---
 router.get('/audit/transactions', authenticateToken, async (req, res) => {
     try {
-        const { date, startDate, endDate } = req.query;
+        const { date, startDate, endDate, estado, numeroFactura } = req.query;
         const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
         const params = [];
         let where = '1=1';
@@ -25,25 +25,40 @@ router.get('/audit/transactions', authenticateToken, async (req, res) => {
             params.push(date);
         }
 
+        if (estado) { params.push(estado); where += ` AND v.estado = $${params.length}`; }
+        if (numeroFactura) { params.push(`%${numeroFactura}%`); where += ` AND v.numero_factura ILIKE $${params.length}`; }
+
         params.push(req.tenantId);
         const tidx = params.length;
         where += ` AND v.tenant_id = $${tidx}`;
 
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+        const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+        const countResult = await pool.query(`
+            SELECT COUNT(*)::int AS total FROM ventas v WHERE ${where}
+        `, params);
+
         const result = await pool.query(`
             SELECT
                 v.codVenta      AS id,
+                v.numero_factura AS "numeroFactura",
                 v.total         AS monto,
                 v.estado,
                 v.tipoCompra    AS categoria,
                 v.idCaja        AS "idCaja",
                 TO_CHAR(v.fecha, 'YYYY-MM-DD HH24:MI:SS') AS fecha,
-                COALESCE(c.nombre || ' ' || c.apellido, 'Consumidor Final') AS cliente
+                COALESCE(c.nombre || ' ' || c.apellido, 'Consumidor Final') AS cliente,
+                COALESCE(e.nombre || ' ' || e.apellido, u.usuario) AS vendedor
             FROM ventas v
             LEFT JOIN clientes c ON v.identidadCliente = c.identidad AND c.tenant_id = $${tidx}
+            LEFT JOIN usuarios u ON v.codVendedor::text = u.codUsuario::text AND u.tenant_id = $${tidx}
+            LEFT JOIN empleado e ON u.identidad = e.identidad AND e.tenant_id = $${tidx}
             WHERE ${where}
             ORDER BY v.fecha DESC
-        `, params);
-        res.json(result.rows);
+            LIMIT $${tidx + 1} OFFSET $${tidx + 2}
+        `, [...params, limit, offset]);
+        res.json({ rows: result.rows, total: countResult.rows[0].total, limit, offset });
     } catch(e) { handleDbError(res, e); }
 });
 

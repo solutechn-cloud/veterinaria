@@ -5,13 +5,14 @@ import { ConsultorioService } from '../services/api';
 import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, Paciente } from '../types';
 import {
   ChevronLeft, ChevronRight, PawPrint,
-  FileDown, Plus, RefreshCw, Search, Send,
+  FileDown, Plus, Printer, RefreshCw, Search, Send,
   Users, X,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { ClinicalHistoryExportModal } from '../components/consultorio/ClinicalHistoryExportModal';
+import { ClinicalHistoryExportModal, printClinicalEvent } from '../components/consultorio/ClinicalHistoryExportModal';
 import { AttachmentList, AttachmentUploader, type ClinicalAttachment } from '../components/consultorio/ClinicalAttachments';
 import { LaboratoryTestsEditor } from '../components/consultorio/LaboratoryTestsEditor';
+import { MedicationItemsEditor } from '../components/consultorio/MedicationItemsEditor';
 import { ProfessionalSelect } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
@@ -177,7 +178,7 @@ export default function Expediente() {
                 <EmptyState label={activeModule.label} onCreate={activeModule.creatable ? () => openCreate() : undefined} />
               ) : (
                 <div className="space-y-3">
-                  {items.map(item => <TimelineCard key={`${item.source || 'event'}-${item.id_evento || item.id}`} item={item} />)}
+                  {items.map(item => <TimelineCard key={`${item.source || 'event'}-${item.id_evento || item.id}`} item={item} patient={patient} />)}
                 </div>
               )}
             </div>
@@ -305,12 +306,21 @@ function PatientSidebar({ patient, conteos, active, onChange }: { patient: any; 
   );
 }
 
-function TimelineCard({ item }: { item: ConsultorioEvento }) {
+function TimelineCard({ item, patient }: { item: ConsultorioEvento; patient?: Paciente }) {
   const mod = moduleFor(item.tipo);
   const Icon = mod.icon;
   const payload = item.payload || {};
   const chips = Object.entries(payload).filter(([, v]) => v !== null && v !== undefined && displayPayloadValue(v).trim() !== '').slice(0, 6);
   const attachments = Array.isArray(item.adjuntos) ? item.adjuntos as ClinicalAttachment[] : [];
+  const canPrintSingle = item.tipo === 'formula';
+  const printThis = async () => {
+    if (!patient) return;
+    try {
+      await printClinicalEvent(patient, item);
+    } catch (err: any) {
+      Swal.fire('No se pudo imprimir', err.message || 'Intente de nuevo.', 'error');
+    }
+  };
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 hover:border-teal-200 transition-colors">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
@@ -324,7 +334,14 @@ function TimelineCard({ item }: { item: ConsultorioEvento }) {
             <p className="text-xs text-slate-400 mt-0.5">{fmtDate(item.fecha_evento)} {item.estado ? `- ${item.estado}` : ''}</p>
           </div>
         </div>
-        {item.correo_enviado && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"><Send size={12} /> Enviado</span>}
+        <div className="flex items-center gap-2">
+          {item.correo_enviado && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"><Send size={12} /> Enviado</span>}
+          {canPrintSingle && (
+            <button type="button" onClick={printThis} className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
+              <Printer size={13} /> Imprimir
+            </button>
+          )}
+        </div>
       </div>
       {(item.resumen || item.detalle) && <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap">{item.resumen || item.detalle}</p>}
       {chips.length > 0 && (
@@ -378,6 +395,12 @@ function EventModal({ form, patient, setForm, onClose, onSubmit }: {
                 tipo={form.tipo}
                 attachments={form.adjuntos}
                 onAttachmentsChange={updateAttachments}
+              />
+            )}
+            {form.tipo === 'formula' && (
+              <MedicationItemsEditor
+                value={Array.isArray(form.payload.medicamentos) ? form.payload.medicamentos : []}
+                onChange={value => updatePayload('medicamentos', value)}
               />
             )}
             {visibleFields.map(field => (
@@ -487,11 +510,15 @@ function payloadSummary(tipo: ConsultorioTipo, payload: Record<string, any>) {
     const pruebas = payload.pruebas.map((item: any) => item.prueba).filter(Boolean).join(', ');
     if (pruebas) return `Pruebas solicitadas: ${pruebas}`;
   }
+  if (tipo === 'formula' && Array.isArray(payload.medicamentos)) {
+    const medicamentos = payload.medicamentos.map((item: any) => item.medicamento).filter(Boolean).join(', ');
+    if (medicamentos) return `Recetado: ${medicamentos}`;
+  }
   return payload.mensaje || payload.motivo || payload.diagnostico || payload.observaciones || payload.detalles || '';
 }
 
 function displayPayloadValue(value: any): string {
   if (Array.isArray(value)) return value.map(displayPayloadValue).filter(Boolean).join('; ');
-  if (value && typeof value === 'object') return value.nombre || value.prueba || value.titulo || JSON.stringify(value);
+  if (value && typeof value === 'object') return value.nombre || value.prueba || value.medicamento || value.titulo || JSON.stringify(value);
   return String(value ?? '');
 }

@@ -247,7 +247,7 @@ const CONSULTORIO_TYPES = {
     historia: 'Historia',
     consulta: 'Consulta',
     vacuna: 'Vacunación',
-    formula: 'Fórmula médica',
+    formula: 'Recetas',
     desparasitacion: 'Desparasitación',
     hospitalizacion: 'Hospitalización/ambulatorio',
     cirugia: 'Cirugía/procedimiento',
@@ -503,6 +503,10 @@ router.get('/agenda/veterinarios', authenticateToken, async (req, res) => {
                 LOWER(COALESCE(r.nombre, '')) LIKE '%veterinario%'
                 OR LOWER(COALESCE(r.nombre, '')) LIKE '%medico%'
                 OR LOWER(COALESCE(r.nombre, '')) LIKE '%doctor%'
+                OR EXISTS (
+                    SELECT 1 FROM rol_permisos rp
+                    WHERE rp.idRol = u.idrol AND rp.idPermiso = 'GESTIONAR_CONSULTORIO'
+                )
                 OR EXISTS (
                     SELECT 1 FROM citas c
                     WHERE c.tenant_id = u.tenant_id

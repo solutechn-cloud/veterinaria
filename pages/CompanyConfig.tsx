@@ -303,8 +303,19 @@ const CompanyConfig: React.FC = () => {
                 </div>
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha Límite de Emisión</label>
-                    <input type="date" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                    <input type="date" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                         value={config.fechaLimite} onChange={e => setConfig({...config, fechaLimite: e.target.value})} />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Próximo Número de Factura</label>
+                    <input type="number" min="1" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={config.facturaCorrelativoActual ?? 1} onChange={e => setConfig({...config, facturaCorrelativoActual: Number(e.target.value)})} />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                        {config.rangoInicial.split('-').length >= 4
+                            ? `Próxima factura: ${config.rangoInicial.split('-').slice(0, 3).join('-')}-${String(config.facturaCorrelativoActual ?? 1).padStart(8, '0')}`
+                            : 'Completa el Rango Inicial para ver el número completo.'}
+                        {' '}Si tu negocio ya venía facturando manualmente, pon aquí el siguiente número que le corresponde (ej. si vas por la 20, pon 21).
+                    </p>
                 </div>
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Porcentaje ISV (%)</label>

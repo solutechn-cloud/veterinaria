@@ -657,8 +657,30 @@ export const NotificationService = {
     request<{ ok: boolean; notification: AppNotification }>('/notifications/broadcast', { method: 'POST', body: JSON.stringify(data) }),
 };
 
+export type AuditTransactionsFiltro = {
+  startDate: string;
+  endDate: string;
+  estado?: string;
+  numeroFactura?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type AuditTransactionsListado = {
+  rows: any[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export const AccountingService = {
-  getAuditTransactions: (startDate: string, endDate: string) => request<any[]>(`/accounting/audit/transactions?startDate=${startDate}&endDate=${endDate}`),
+  getAuditTransactions: (filtro: AuditTransactionsFiltro) => {
+    const params = new URLSearchParams();
+    Object.entries(filtro).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+    });
+    return request<AuditTransactionsListado>(`/accounting/audit/transactions?${params.toString()}`);
+  },
   getProfitabilityReport: (startDate: string, endDate: string) => request<any>(`/accounting/report/profitability?startDate=${startDate}&endDate=${endDate}`),
 };
 

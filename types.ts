@@ -141,6 +141,7 @@ export interface Proveedor {
 
 export interface Venta {
   codVenta: string;
+  numeroFactura?: string;
   fecha: string;
   codVendedor?: string;
   identidadCliente: string;
@@ -213,6 +214,7 @@ export interface EmpresaConfig {
   rangoInicial: string;
   rangoFinal: string;
   fechaLimite: string;
+  facturaCorrelativoActual?: number;
   isv: number;
   mensajeFinal: string;
   logoBase64?: string;

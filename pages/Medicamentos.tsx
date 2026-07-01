@@ -287,8 +287,16 @@ export default function Medicamentos() {
     }
   };
 
-  const openNewPres  = () => { setPresForm(blankPres()); setEditingPres(null); setShowPresModal(true); };
-  const openEditPres = (p: PresentacionVenta) => { setPresForm({ ...p }); setEditingPres(p.id_presentacion); setShowPresModal(true); };
+  const loadLotesForPricing = async () => {
+    if (selectedMed) setLotesDetalle(await MedicamentosService.getLotes(selectedMed.codigo));
+  };
+
+  const openNewPres  = async () => { await loadLotesForPricing(); setPresForm(blankPres()); setEditingPres(null); setShowPresModal(true); };
+  const openEditPres = async (p: PresentacionVenta) => { await loadLotesForPricing(); setPresForm({ ...p }); setEditingPres(p.id_presentacion); setShowPresModal(true); };
+
+  const costoBaseUnitario = lotesDetalle
+    .filter(l => l.precio_compra_unitario != null)
+    .sort((a, b) => b.id_lote - a.id_lote)[0]?.precio_compra_unitario;
 
   const savePres = async () => {
     if (!selectedMed || !presForm.nombre) return;
@@ -322,6 +330,14 @@ export default function Medicamentos() {
       setShowLoteModal(false); setLoteForm(blankLote()); loadDetail(selectedMed, 'LOTES');
       await refreshSelectedFromList(selectedMed.codigo);
       Swal.fire({ icon: 'success', title: 'Lote ingresado', timer: 1400, showConfirmButton: false });
+    } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
+  };
+
+  const applySuggestedPrice = async (idPresentacion: number, precio: number) => {
+    try {
+      await MedicamentosService.updatePresentacion(idPresentacion, { precio_venta: precio });
+      if (selectedMed) loadDetail(selectedMed, 'PRESENTACIONES');
+      Swal.fire({ icon: 'success', title: 'Precio de venta actualizado', timer: 1200, showConfirmButton: false });
     } catch (e: any) { Swal.fire('Error', e.message, 'error'); }
   };
 
@@ -441,11 +457,13 @@ export default function Medicamentos() {
         onAIImagesReady={setPendingAIImages} />
 
       <PresModal show={showPresModal} editingId={editingPres} form={presForm}
+        costoBaseUnitario={costoBaseUnitario} medMargenGanancia={selectedMed?.margen_ganancia}
         onChange={setPresForm} onSave={savePres} onClose={() => setShowPresModal(false)} />
 
-      <LoteModal show={showLoteModal} medNombre={selectedMed?.nombre_generico} form={loteForm}
+      <LoteModal show={showLoteModal} medNombre={selectedMed?.nombre_generico} medMargenDefault={selectedMed?.margen_ganancia} form={loteForm}
         presentaciones={presentaciones} proveedores={proveedores}
-        onChange={setLoteForm} onSave={saveLote} onClose={() => setShowLoteModal(false)} />
+        onChange={setLoteForm} onSave={saveLote} onClose={() => setShowLoteModal(false)}
+        onApplySuggestedPrice={applySuggestedPrice} />
     </div>
   );
 }

@@ -18,7 +18,7 @@ export const FACTURA_TERMICA: Omit<LabelTemplate, 'id'> = {
     el('st_htri',  'SHAPE',          0,   0,   3.5, 2.8, { shapeType: 'TRIANGLE_TL', fill: '#3b82f6', stroke: 'transparent', strokeWidth: 0 }),
     el('st_ch',    'COMPANY_HEADER', 3.3, 0,   4.7, 2.8, { fontSize: 8, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('st_title', 'TEXT',           0.2, 1.0, 2.8, 1.0, { content: 'FACTURA', fontSize: 13, fontWeight: '900', color: '#ffffff', textAlign: 'left', letterSpacing: 2 }),
-    el('st_t2', 'TEXT', 0.2, 3.0, 7.6, 0.55, { content: 'No.: {{venta.codVenta}}', fontSize: 9 }),
+    el('st_t2', 'TEXT', 0.2, 3.0, 7.6, 0.55, { content: 'No.: {{venta.numeroFactura}}', fontSize: 9 }),
     el('st_t3', 'TEXT', 0.2, 3.6, 7.6, 0.55, { content: 'Fecha: {{venta.fecha}}', fontSize: 9 }),
     el('st_t4', 'TEXT', 0.2, 4.2, 7.6, 0.5, { content: 'CAI: {{empresa.cai}}', fontSize: 7, color: '#555555' }),
     el('st_t5', 'TEXT', 0.2, 4.75, 7.6, 0.5, { content: '{{empresa.rangoInicial}} - {{empresa.rangoFinal}}', fontSize: 7, color: '#555555' }),
@@ -68,7 +68,7 @@ export const FACTURA_TERMICA_FISCAL: Omit<LabelTemplate, 'id'> = {
       textAlign: 'center', fontSize: 7, fontFamily: "'Courier New', monospace",
     }),
     el('tf_meta', 'TEXT', 0.15, 3.35, 7.7, 2.55, {
-      content: 'No.: {{venta.codVenta}}\nFecha: {{venta.fecha}}\nCajero: {{venta.nombreVendedor}}\nTipo venta: {{venta.tipoCompra}}\nCAI: {{empresa.cai}}\nRango autorizado:\n{{empresa.rangoInicial}} - {{empresa.rangoFinal}}\nFecha limite emision: {{empresa.fechaLimite}}',
+      content: 'No.: {{venta.numeroFactura}}\nFecha: {{venta.fecha}}\nCajero: {{venta.nombreVendedor}}\nTipo venta: {{venta.tipoCompra}}\nCAI: {{empresa.cai}}\nRango autorizado:\n{{empresa.rangoInicial}} - {{empresa.rangoFinal}}\nFecha limite emision: {{empresa.fechaLimite}}',
       textAlign: 'left', fontSize: 6.5, fontFamily: "'Courier New', monospace", isMultiline: true, lineHeight: 1.18,
     }),
     el('tf_client', 'TEXT', 0.15, 6.05, 7.7, 1.25, {
@@ -115,7 +115,7 @@ export const FACTURA_A4: Omit<LabelTemplate, 'id'> = {
     el('a4_ch',    'COMPANY_HEADER', 8.5,  0,   12,  4,   { fontSize: 11, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: true }),
     el('a4_title', 'TEXT',           14.5, 0.8,  6,  2.4, { content: 'FACTURA', fontSize: 26, fontWeight: '900', color: '#ffffff', textAlign: 'right', letterSpacing: 4, fontFamily: "'Montserrat', sans-serif" }),
     el('a4_m1', 'TEXT', 1,    4.4, 5.5, 0.6, { content: 'No. Factura:',     fontSize: 9, color: '#64748b', fontWeight: 'bold' }),
-    el('a4_m2', 'TEXT', 6.5,  4.4, 7,   0.6, { content: '{{venta.codVenta}}', fontSize: 9 }),
+    el('a4_m2', 'TEXT', 6.5,  4.4, 7,   0.6, { content: '{{venta.numeroFactura}}', fontSize: 9 }),
     el('a4_m3', 'TEXT', 1,    5.1, 5.5, 0.6, { content: 'Fecha Emisión:',   fontSize: 9, color: '#64748b', fontWeight: 'bold' }),
     el('a4_m4', 'TEXT', 6.5,  5.1, 7,   0.6, { content: '{{venta.fecha}}',  fontSize: 9 }),
     el('a4_m5', 'TEXT', 14,   4.4, 3.5, 0.6, { content: 'Tipo Venta:',      fontSize: 9, color: '#64748b', fontWeight: 'bold' }),

@@ -170,7 +170,7 @@ export function useLabelDesignerElements(
         };
 
         const textFields = [
-            { content: 'No. Factura: {{venta.codVenta}}',        fontSize: isDoc ? 9 : 8, fontWeight: 'normal', label: 'Número de Factura' },
+            { content: 'No. Factura: {{venta.numeroFactura}}',   fontSize: isDoc ? 9 : 8, fontWeight: 'normal', label: 'Número de Factura' },
             { content: 'Fecha: {{venta.fecha}}',                 fontSize: isDoc ? 9 : 8, fontWeight: 'normal', label: 'Fecha de Facturación' },
             { content: 'Cliente: {{cliente.nombre}}',           fontSize: isDoc ? 9 : 8, fontWeight: 'normal', label: 'Nombre Cliente' },
             { content: 'RTN / Identidad: {{cliente.identidad}}', fontSize: isDoc ? 9 : 8, fontWeight: 'normal', label: 'RTN Cliente' },
