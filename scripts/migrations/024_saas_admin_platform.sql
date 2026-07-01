@@ -74,6 +74,8 @@ BEGIN
     END IF;
 END $$;
 
+DROP VIEW IF EXISTS v_ai_quota_status;
+
 ALTER TABLE tenants ALTER COLUMN plan TYPE VARCHAR(80);
 ALTER TABLE plan_features ALTER COLUMN plan TYPE VARCHAR(80);
 
@@ -81,6 +83,49 @@ DO $$
 BEGIN
     IF to_regclass('ai_quota_plans') IS NOT NULL THEN
         ALTER TABLE ai_quota_plans ALTER COLUMN plan TYPE VARCHAR(80);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF to_regclass('ai_quota_plans') IS NOT NULL THEN
+        EXECUTE $view$
+            CREATE OR REPLACE VIEW v_ai_quota_status AS
+            SELECT
+                t.id               AS tenant_id,
+                t.slug,
+                t.nombre_empresa,
+                t.plan,
+                t.ai_habilitado,
+                p.tokens_mensual,
+                p.requests_mensual,
+                p.requests_diario,
+                COALESCE(t.ai_tokens_override,   p.tokens_mensual)   AS tokens_limite,
+                COALESCE(t.ai_requests_override, p.requests_mensual) AS requests_limite,
+                COALESCE(t.ai_req_diario_override, p.requests_diario) AS req_diario_limite,
+                TO_CHAR(NOW() AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM') AS periodo_actual,
+                COALESCE(u.tokens_consumidos, 0)  AS tokens_consumidos,
+                COALESCE(u.requests_totales,  0)  AS requests_totales,
+                COALESCE(u.requests_hoy,      0)  AS requests_hoy,
+                CASE
+                    WHEN NOT t.ai_habilitado THEN 'deshabilitado'
+                    WHEN COALESCE(u.tokens_consumidos, 0) >= COALESCE(t.ai_tokens_override, p.tokens_mensual) THEN 'agotado'
+                    WHEN COALESCE(u.tokens_consumidos, 0) >= COALESCE(t.ai_tokens_override, p.tokens_mensual) * 0.80 THEN 'alerta'
+                    ELSE 'ok'
+                END AS estado_cuota,
+                ROUND(
+                    COALESCE(u.tokens_consumidos, 0) * 100.0
+                    / NULLIF(COALESCE(t.ai_tokens_override, p.tokens_mensual), 0)
+                , 1) AS pct_tokens_usado,
+                u.alerta_80_enviada,
+                u.alerta_100_enviada,
+                u.ultimo_exceso_at
+            FROM tenants t
+            JOIN ai_quota_plans p ON p.plan = t.plan
+            LEFT JOIN ai_quota_usage u
+                ON u.tenant_id = t.id
+                AND u.periodo = TO_CHAR(NOW() AT TIME ZONE 'America/Tegucigalpa', 'YYYY-MM')
+        $view$;
     END IF;
 END $$;
 
