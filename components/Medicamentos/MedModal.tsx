@@ -490,6 +490,21 @@ export default function MedModal({ show, editingId, form, formas, categorias, on
                     ))}
                   </div>
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">% Ganancia Sugerida</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" step="1"
+                      className="w-24 text-sm text-slate-700 font-medium bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-300"
+                      value={form.margen_ganancia ?? 30}
+                      onChange={e => set({ margen_ganancia: Number(e.target.value) })}
+                    />
+                    <span className="text-sm text-slate-400">%</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">Se usa junto con el costo del último lote registrado para sugerir el precio de venta en cada presentación.</p>
+                </div>
               </div>
             </div>
           )}
