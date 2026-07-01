@@ -174,4 +174,4 @@ async function applyPendingMigrations(client) {
     console.log('[migrations] All migrations up to date.');
 }
 
-module.exports = { runMigrations };
+module.exports = { runMigrations, splitSqlStatements };

@@ -4,29 +4,15 @@ const router = express.Router();
 const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
+const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
+const { asignarLotesFefo } = require('../services/sales/fefo');
+const { buildTutorIdentity } = require('../services/sales/tutorIdentity');
 
 function httpError(statusCode, message, code) {
     const err = new Error(message);
     err.statusCode = statusCode;
     err.code = code;
     return err;
-}
-
-// --- CLIENTES ---
-function normalizePhone(value) {
-    return String(value || '').replace(/\D/g, '');
-}
-
-function buildTutorIdentity({ identidad, telefono, tipo_identificacion, tenantId }) {
-    const doc = String(identidad || '').trim();
-    if (tipo_identificacion !== 'telefono' && doc) return doc;
-    const phone = normalizePhone(telefono);
-    if (!phone) {
-        const err = httpError(400, 'Debe ingresar numero de identidad o telefono movil.', 'CLIENT_ID_REQUIRED');
-        throw err;
-    }
-    const tenantPrefix = String(tenantId || '0000').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4) || '0000';
-    return `TEL_${tenantPrefix}_${phone}`.slice(0, 20);
 }
 
 router.get('/clientes', authenticateToken, async (req, res) => {
@@ -193,11 +179,10 @@ router.post('/ventas', authenticateToken, async (req, res) => {
         if (!Array.isArray(detalles) || detalles.length === 0) {
             return res.status(400).json({ error: 'detalles debe ser un arreglo con al menos un ítem' });
         }
-        const VALID_TIPO_ISV = new Set(['exento', '15', '18']);
         for (const item of detalles) {
             if (toSafeNum(item.cantidad) === null || Number(item.cantidad) <= 0) return res.status(400).json({ error: 'cantidad de ítem inválida' });
             if (toSafeNum(item.precioVenta) === null) return res.status(400).json({ error: 'precioVenta de ítem inválido' });
-            if (item.tipoIsv && !VALID_TIPO_ISV.has(item.tipoIsv)) return res.status(400).json({ error: `tipoIsv inválido: ${item.tipoIsv}` });
+            if (item.tipoIsv && !TIPOS_ISV_VALIDOS.has(item.tipoIsv)) return res.status(400).json({ error: `tipoIsv inválido: ${item.tipoIsv}` });
         }
 
         await client.query('BEGIN');
@@ -277,15 +262,8 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
         for (const item of detalles) {
             if (item.tipoProducto === 'SERVICIO') {
-                const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
                 const tipoIsv = item.tipoIsv || 'exento';
-                let subExento = 0, subGravado = 0, isvLinea = 0;
-                if (tipoIsv === 'exento') subExento = lineTotal;
-                else {
-                    const rate = tipoIsv === '18' ? 0.18 : 0.15;
-                    subGravado = lineTotal / (1 + rate);
-                    isvLinea = lineTotal - subGravado;
-                }
+                const { subExento, subGravado, isvLinea } = calcularIsvLinea(item.precioVenta, item.cantidad, tipoIsv);
                 const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
                 await client.query(
                     `INSERT INTO detalleventa
@@ -318,36 +296,19 @@ router.post('/ventas', authenticateToken, async (req, res) => {
                 [item.id_medicamento, sucursalLotes, req.tenantId]
             );
 
-            let remaining = cantidadBase;
-            let primaryLoteId = null;
-            for (const lote of lotesR.rows) {
-                if (remaining <= 0) break;
-                const deduct = Math.min(remaining, Number(lote.cantidad_actual));
+            const { plan: planLotes, primaryLoteId } = asignarLotesFefo(
+                lotesR.rows, cantidadBase,
+                { descripcion: item.descripcionProducto || item.id_medicamento }
+            );
+            for (const p of planLotes) {
                 await client.query(
                     'UPDATE lotes_medicamento SET cantidad_actual = cantidad_actual - $1 WHERE id_lote = $2 AND tenant_id = $3',
-                    [deduct, lote.id_lote, req.tenantId]
-                );
-                if (!primaryLoteId) primaryLoteId = lote.id_lote;
-                remaining -= deduct;
-            }
-            if (remaining > 0.001) {
-                throw httpError(
-                    400,
-                    `Stock insuficiente para ${item.descripcionProducto || item.id_medicamento}`,
-                    'INSUFFICIENT_STOCK'
+                    [p.deduct, p.id_lote, req.tenantId]
                 );
             }
 
-            const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
             const tipoIsv = item.tipoIsv || 'exento';
-            let subExento = 0, subGravado = 0, isvLinea = 0;
-            if (tipoIsv === 'exento') {
-                subExento = lineTotal;
-            } else {
-                const rate = tipoIsv === '18' ? 0.18 : 0.15;
-                subGravado = lineTotal / (1 + rate);
-                isvLinea = lineTotal - subGravado;
-            }
+            const { subExento, subGravado, isvLinea } = calcularIsvLinea(item.precioVenta, item.cantidad, tipoIsv);
 
             const nombreProd = item.descripcionProducto || item.id_medicamento;
             const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
@@ -499,15 +460,8 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
 
         for (const item of detalles) {
             if (item.tipoProducto === 'SERVICIO') {
-                const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
                 const tipoIsv = item.tipoIsv || 'exento';
-                let subExento = 0, subGravado = 0, isvLinea = 0;
-                if (tipoIsv === 'exento') subExento = lineTotal;
-                else {
-                    const rate = tipoIsv === '18' ? 0.18 : 0.15;
-                    subGravado = lineTotal / (1 + rate);
-                    isvLinea = lineTotal - subGravado;
-                }
+                const { subExento, subGravado, isvLinea } = calcularIsvLinea(item.precioVenta, item.cantidad, tipoIsv);
                 const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);
                 await client.query(
                     `INSERT INTO detalleventa
@@ -540,30 +494,19 @@ router.put('/ventas/:id', authenticateToken, async (req, res) => {
                 [item.id_medicamento, sucursalLotes, req.tenantId]
             );
 
-            let remaining = cantidadBase;
-            let primaryLoteId = null;
-            for (const lote of lotesR.rows) {
-                if (remaining <= 0) break;
-                const deduct = Math.min(remaining, Number(lote.cantidad_actual));
+            const { plan: planLotes, primaryLoteId } = asignarLotesFefo(
+                lotesR.rows, cantidadBase,
+                { descripcion: item.descripcionProducto || item.id_medicamento }
+            );
+            for (const p of planLotes) {
                 await client.query(
                     'UPDATE lotes_medicamento SET cantidad_actual = cantidad_actual - $1 WHERE id_lote = $2 AND tenant_id = $3',
-                    [deduct, lote.id_lote, req.tenantId]
+                    [p.deduct, p.id_lote, req.tenantId]
                 );
-                if (!primaryLoteId) primaryLoteId = lote.id_lote;
-                remaining -= deduct;
             }
-            if (remaining > 0.001) throw new Error(`Stock insuficiente para ${item.descripcionProducto || item.id_medicamento}`);
 
-            const lineTotal = Number(item.precioVenta) * Number(item.cantidad);
             const tipoIsv = item.tipoIsv || 'exento';
-            let subExento = 0, subGravado = 0, isvLinea = 0;
-            if (tipoIsv === 'exento') {
-                subExento = lineTotal;
-            } else {
-                const rate = tipoIsv === '18' ? 0.18 : 0.15;
-                subGravado = lineTotal / (1 + rate);
-                isvLinea = lineTotal - subGravado;
-            }
+            const { subExento, subGravado, isvLinea } = calcularIsvLinea(item.precioVenta, item.cantidad, tipoIsv);
 
             const nombreProd = item.descripcionProducto || item.id_medicamento;
             const codDetalle = await generateNextId('detalleventa', 'codDetalleVenta', 'PROD', client);

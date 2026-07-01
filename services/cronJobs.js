@@ -1,7 +1,13 @@
 'use strict';
 
 const cron = require('node-cron');
-const { pool } = require('../config/db');
+const { pool, setRequestBypass } = require('../config/db');
+
+// Los cron jobs corren sin sesión HTTP (sin contexto de tenant) y son
+// legítimamente cross-tenant, así que se ejecutan bajo bypass de RLS.
+function scheduleBypass(expr, handler, opts) {
+    return require('node-cron').schedule(expr, () => setRequestBypass(handler), opts);
+}
 const emailService = require('./emailService');
 const { getSystemConfig } = require('../config/systemConfig');
 const automationService = require('./automationService');
@@ -390,32 +396,32 @@ async function runVeterinaryReminders(tenantId = null) {
 // ---------------------------------------------------------------------------
 function startCronJobs() {
     // Daily report — 11:00 PM Honduras (UTC-6) = 05:00 UTC
-    cron.schedule('0 5 * * *', async () => {
+    scheduleBypass('0 5 * * *', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runDailyReport(t.id)));
     }, { timezone: 'UTC' });
 
     // Weekly report — Monday 8:00 AM Honduras = 14:00 UTC
-    cron.schedule('0 14 * * 1', async () => {
+    scheduleBypass('0 14 * * 1', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runWeeklyReport(t.id)));
     }, { timezone: 'UTC' });
 
     // Tomorrow agenda - 5:00 PM Honduras = 23:00 UTC
-    cron.schedule('0 23 * * *', async () => {
+    scheduleBypass('0 23 * * *', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runTomorrowAgenda(t.id)));
     }, { timezone: 'UTC' });
 
     // Monthly management report - 1st day, 8:30 AM Honduras = 14:30 UTC
-    cron.schedule('30 14 1 * *', async () => {
+    scheduleBypass('30 14 1 * *', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runMonthlyReport(t.id)));
     }, { timezone: 'UTC' });
 
     // Daily database backup — 2:30 AM Honduras (UTC-6) = 08:30 UTC.
     // Backup runs once globally because the database contains all tenants.
-    cron.schedule('30 8 * * *', async () => {
+    scheduleBypass('30 8 * * *', async () => {
         const { backupEnabled, backupRetentionDays, backupR2Prefix } = await getSystemConfig();
         if (!backupEnabled) return;
         let jobId = null;
@@ -457,7 +463,7 @@ function startCronJobs() {
 
     // Monthly quota usage cleanup — 2nd of each month at 07:00 UTC (01:00 AM Honduras)
     // Removes ai_quota_usage rows older than 13 months to keep rolling year data.
-    cron.schedule('0 7 2 * *', async () => {
+    scheduleBypass('0 7 2 * *', async () => {
         try {
             const cutoff = new Date();
             cutoff.setMonth(cutoff.getMonth() - 13);
@@ -475,7 +481,7 @@ function startCronJobs() {
     }, { timezone: 'UTC' });
 
     // Loyalty points expiration — 2:00 AM Honduras (UTC-6) = 08:00 UTC
-    cron.schedule('0 8 * * *', async () => {
+    scheduleBypass('0 8 * * *', async () => {
         const { expirePoints } = require('./loyalty/loyaltyEngine');
         const tenants = await getActiveTenants();
         for (const t of tenants) {
@@ -492,7 +498,7 @@ function startCronJobs() {
     }, { timezone: 'UTC' });
 
     // Veterinary reminders every 15 minutes.
-    cron.schedule('*/15 * * * *', async () => {
+    scheduleBypass('*/15 * * * *', async () => {
         const tenants = await getActiveTenants();
         await Promise.allSettled(tenants.map(t => runVeterinaryReminders(t.id)));
     }, { timezone: 'UTC' });

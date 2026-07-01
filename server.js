@@ -25,7 +25,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 // Config & Middleware
-const { pool, withRequestTenant } = require('./config/db');
+const { pool, withRequestTenant, withRequestBypass } = require('./config/db');
 const { runMigrations } = require('./config/migrations');
 const { authenticateToken, requireTenant } = require('./middleware/auth');
 const { requireTenantFromJWT, requireSuperAdmin } = require('./middleware/tenant');
@@ -154,16 +154,19 @@ app.get('/healthz', async (req, res) => {
 });
 
 function mountRoutes() {
+    // Rutas cross-tenant / pre-autenticación: corren con bypass de RLS porque
+    // necesitan resolver/gestionar tenants antes de tener contexto de uno solo.
+
     // Public routes (no auth)
-    app.use('/api/public', publicRoutes);
+    app.use('/api/public', withRequestBypass, publicRoutes);
 
     // SaaS admin login (no auth needed on the login endpoint itself)
-    app.use('/api/saas', saasAuthRoutes);
+    app.use('/api/saas', withRequestBypass, saasAuthRoutes);
 
     // SaaS tenant management - requireSuperAdmin verifies SAAS_SUPER_SECRET independently
-    app.use('/api/saas', requireSuperAdmin, tenantRoutes);
+    app.use('/api/saas', requireSuperAdmin, withRequestBypass, tenantRoutes);
 
-    app.use('/api/auth', internalAuthRoutes);
+    app.use('/api/auth', withRequestBypass, internalAuthRoutes);
 
     // Propagates req.tenantId into AsyncLocalStorage so every pool.query() in the
     // async call chain automatically sets app.current_tenant_id for PostgreSQL RLS.
@@ -172,7 +175,10 @@ function mountRoutes() {
     // Single authenticated router — all protected routes share ONE middleware chain so
     // rate-limiter and other middleware only add event listeners once per request.
     const apiRouter = express.Router();
-    apiRouter.use(authenticateToken, requireTenantFromJWT, requireTenant, tenantRateLimiter, withTenant, planFeatureGuard, endpointPermissionGuard);
+    // withTenant se coloca ANTES de requireTenantFromJWT: ese guard consulta la
+    // tabla `tenants` (con RLS), por lo que necesita el contexto ya establecido
+    // para ver su propia fila. El tenantId proviene del JWT firmado (confiable).
+    apiRouter.use(authenticateToken, requireTenant, withTenant, requireTenantFromJWT, tenantRateLimiter, planFeatureGuard, endpointPermissionGuard);
     apiRouter.use(adminRoutes);
     apiRouter.use(medicamentosRoutes);
     apiRouter.use(sucursalesRoutes);

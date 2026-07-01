@@ -1,6 +1,7 @@
 
 const { Pool } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
+const { siguienteCorrelativo } = require('../services/idSequence');
 
 const _CONNECT_TIMEOUT_MS = parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10);
 const _QUERY_TIMEOUT_MS = Math.max(1000, parseInt(process.env.DB_QUERY_TIMEOUT_MS || '60000', 10) || 60000);
@@ -109,7 +110,8 @@ async function _getRequestClient(store) {
     if (!store.clientPromise) {
         store.clientPromise = (async () => {
             const client = await _connectWithRetry('request tenant client');
-            await _setTenantContext(client, store.tenantId, false);
+            if (store.tenantId) await _setTenantContext(client, store.tenantId, false);
+            if (store.bypass) await client.query("SELECT set_config('app.bypass_rls', 'true', false)");
             store.client = client;
             return client;
         })().catch(err => {
@@ -133,7 +135,10 @@ async function _releaseRequestClient(store) {
     if (!client) return;
 
     try {
-        await client.query('RESET app.current_tenant_id');
+        // Reset ambas variables de contexto a vacío (no RESET, que fallaría si la
+        // GUC nunca se seteó en esta conexión) para que la conexión vuelva limpia
+        // al pool y no arrastre bypass/tenant a la siguiente petición.
+        await client.query("SELECT set_config('app.current_tenant_id','',false), set_config('app.bypass_rls','',false)");
         client.release();
     } catch (err) {
         console.error('[DB] Error limpiando contexto tenant:', err.message);
@@ -145,7 +150,7 @@ async function _releaseRequestClient(store) {
 // when pool.connect (overridden below) would also inject it.
 pool.query = async function tenantAwareQuery(...args) {
     const store = _getTenantStore();
-    if (store?.tenantId) {
+    if (store?.tenantId || store?.bypass) {
         const client = await _getRequestClient(store);
         return client.query(...args);
     }
@@ -184,8 +189,8 @@ pool.connect = async function tenantAwareConnect() {
             throw err;
         }
     }
-    const tenantId = _getTenantStore()?.tenantId;
-    if (!tenantId) return client;
+    const store = _getTenantStore();
+    if (!store || (!store.tenantId && !store.bypass)) return client;
 
     const origQuery   = client.query.bind(client);
     const origRelease = client.release.bind(client);
@@ -197,7 +202,8 @@ pool.connect = async function tenantAwareConnect() {
             if (sql.startsWith('BEGIN')) {
                 injected = true;
                 await origQuery(...args);
-                await _setTenantContext({ query: origQuery }, tenantId, true);
+                if (store.tenantId) await _setTenantContext({ query: origQuery }, store.tenantId, true);
+                if (store.bypass) await origQuery("SELECT set_config('app.bypass_rls', 'true', true)");
                 return;
             }
         }
@@ -236,6 +242,39 @@ function withRequestTenant(tenantId, req, res, next) {
         });
     };
 
+    res.once('finish', cleanup);
+    res.once('close', cleanup);
+    return _tenantALS.run(store, next);
+}
+
+/**
+ * Ejecuta `fn` con el bypass de RLS activo (app.bypass_rls = 'true').
+ * Para trabajos de fondo legítimamente cross-tenant (cron, cache global).
+ * El bypass se resetea al terminar, así que la conexión vuelve limpia al pool.
+ */
+function setRequestBypass(fn) {
+    const store = { bypass: true, client: null, clientPromise: null, releaseStarted: false };
+    return _tenantALS.run(store, async () => {
+        try {
+            return await fn();
+        } finally {
+            await _releaseRequestClient(store);
+        }
+    });
+}
+
+/**
+ * Middleware Express que activa el bypass de RLS para toda la petición.
+ * Se usa en rutas legítimamente cross-tenant o pre-autenticación:
+ * login, refresh, registro público y gestión de super-admin.
+ */
+function withRequestBypass(req, res, next) {
+    const store = { bypass: true, client: null, clientPromise: null, releaseStarted: false };
+    const cleanup = () => {
+        _releaseRequestClient(store).catch(err => {
+            console.error('[DB] Error liberando cliente bypass:', err.message);
+        });
+    };
     res.once('finish', cleanup);
     res.once('close', cleanup);
     return _tenantALS.run(store, next);
@@ -303,14 +342,7 @@ async function generateNextId(table, column, prefix, client = pool) {
              LIMIT 1`,
             [`${safePrefix}-%`]
         );
-        let maxNum = 0;
-        if (result.rows.length > 0) {
-            const parts = result.rows[0].id.split(`${safePrefix}-`);
-            if (parts.length === 2 && /^\d+$/.test(parts[1])) {
-                maxNum = parseInt(parts[1], 10);
-            }
-        }
-        const nextId = `${safePrefix}-${(maxNum + 1).toString().padStart(4, '0')}`;
+        const nextId = siguienteCorrelativo(safePrefix, result.rows.map(r => r.id));
 
         if (usingPool) await txClient.query('COMMIT');
         return nextId;
@@ -439,4 +471,4 @@ async function tenantQuery(tenantId, text, values = []) {
     return withTenantContext(tenantId, (client) => client.query(text, values));
 }
 
-module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant };
+module.exports = { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass };
