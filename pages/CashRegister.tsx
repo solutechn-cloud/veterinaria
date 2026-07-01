@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { CashService, SalesService, ConfigService } from '../services/api';
 import { useOfflineSync } from '../hooks/useOfflineSync';
-import { getLogoSync } from '../services/logoLoader';
+import { printSaleInvoice, downloadSaleInvoicePDF } from '../services/DocumentService';
 import { Arqueo, Venta } from '../types';
 import {
   Lock, ShoppingCart, CloudLightning, Printer, RefreshCw, Ban, Edit2,
@@ -14,37 +14,6 @@ import * as ReactRouterDOM from 'react-router-dom';
 const { useNavigate } = ReactRouterDOM as any;
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
-
-const numeroALetras = (num: number): string => {
-  const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
-  const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
-  const diez_veinte = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
-  const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
-  const convertGroup = (n: number): string => {
-    if (n === 0) return '';
-    if (n === 100) return 'CIEN';
-    let out = '';
-    if (n >= 100) { out += centenas[Math.floor(n / 100)] + ' '; n %= 100; }
-    if (n >= 10 && n <= 19) { out += diez_veinte[n - 10]; }
-    else if (n >= 20) { out += decenas[Math.floor(n / 10)]; if (n % 10 > 0) out += ' Y ' + unidades[n % 10]; }
-    else if (n > 0) { out += unidades[n]; }
-    return out.trim();
-  };
-  const int = Math.floor(num);
-  const dec = Math.round((num - int) * 100);
-  let text = '';
-  if (int === 0) text = 'CERO';
-  else if (int >= 1000000) {
-    const m = Math.floor(int / 1000000), r = int % 1000000;
-    text += (m === 1 ? 'UN MILLON' : convertGroup(m) + ' MILLONES');
-    if (r > 0) text += ' ' + (r >= 1000 ? convertGroup(Math.floor(r / 1000)) + ' MIL ' + convertGroup(r % 1000) : convertGroup(r));
-  } else if (int >= 1000) {
-    const t = Math.floor(int / 1000), r = int % 1000;
-    text += (t === 1 ? 'MIL' : convertGroup(t) + ' MIL');
-    if (r > 0) text += ' ' + convertGroup(r);
-  } else { text = convertGroup(int); }
-  return `${text} CON ${dec.toString().padStart(2, '0')}/100 LEMPIRAS`.toUpperCase();
-};
 
 const fmt = (n: number) => `L. ${n.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const hasAssignedCashRegister = (idCaja?: string | null) => !!idCaja && idCaja !== 'Sin Caja';
@@ -199,145 +168,27 @@ const CashRegister: React.FC = () => {
 
   /* ── Reimprimir Factura ── */
   const handleReprintInvoice = async (saleId: string) => {
+    const { isConfirmed, isDenied } = await Swal.fire({
+      title: 'Reimprimir Factura',
+      text: `Factura ${saleId}`,
+      icon: 'question',
+      confirmButtonText: 'Imprimir (vista previa)',
+      confirmButtonColor: '#4f46e5',
+      showDenyButton: true,
+      denyButtonText: 'Descargar PDF',
+      denyButtonColor: '#0ea5e9',
+      showCancelButton: true,
+      cancelButtonText: 'Cerrar',
+      cancelButtonColor: '#64748b',
+    });
+    if (!isConfirmed && !isDenied) return;
     try {
-      const [sale, details, cfg] = await Promise.all([
-        SalesService.getVenta(saleId),
-        SalesService.getDetallesVenta(saleId),
-        ConfigService.get(),
-      ]);
-      if (!sale) return;
-      const LOGO_BASE64 = getLogoSync();
-      const doc = new jsPDF();
-      const nombreEmpresa = (cfg.nombreEmpresa || 'VETERINARIA').toUpperCase();
-      const pageWidth = doc.internal.pageSize.width;
-      const pageHeight = doc.internal.pageSize.height;
-      const primaryColor = '#1e3a8a';
-      const accentColor  = '#3b82f6';
-      const grayColor    = '#64748b';
-      const lightGray    = '#f1f5f9';
-
-      doc.setFillColor(primaryColor);
-      doc.triangle(0, 0, pageWidth, 0, pageWidth, 35, 'F');
-      doc.triangle(0, 0, pageWidth, 35, 0, 50, 'F');
-      doc.setFillColor(accentColor);
-      doc.triangle(0, 0, 100, 0, 0, 50, 'F');
-      if (LOGO_BASE64) doc.addImage(LOGO_BASE64, 'PNG', 15, 12, 18, 18);
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text(nombreEmpresa, 38, 18);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(cfg.direccion || '', 38, 25);
-      doc.text(`Tel: ${cfg.telefono || ''} | ${cfg.correo || ''}`, 38, 30);
-      doc.setFontSize(26);
-      doc.setFont('helvetica', 'bold');
-      doc.text('FACTURA', pageWidth - 15, 20, { align: 'right' });
-      doc.setFontSize(10);
-      doc.text(`NO. ${sale.codVenta}`, pageWidth - 15, 29, { align: 'right' });
-
-      const topInfoY = 60;
-      doc.setFillColor(lightGray);
-      doc.roundedRect(14, topInfoY, 95, 38, 3, 3, 'F');
-      doc.setTextColor(primaryColor);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.text('FACTURAR A:', 18, topInfoY + 8);
-      doc.setTextColor(0);
-      doc.setFontSize(13);
-      doc.text((sale.nombreCliente || 'CONSUMIDOR FINAL').toUpperCase(), 18, topInfoY + 18);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(grayColor);
-      doc.text(`RTN/DNI: ${sale.identidadCliente || '99999999999999'}`, 18, topInfoY + 26);
-      doc.text(`${(sale as any).direccionCliente || 'HONDURAS'}`, 18, topInfoY + 32);
-
-      const rightColX = 120;
-      const labels = ['FECHA EMISIÓN:', 'FECHA VENCIMIENTO:', 'R.T.N. EMISOR:', 'CAI:', 'VENDEDOR:'];
-      const values = [
-        new Date(sale.fecha).toLocaleDateString('es-HN'),
-        cfg.fechaLimite ? new Date(cfg.fechaLimite).toLocaleDateString('es-HN') : 'N/A',
-        cfg.rtn || 'N/A',
-        cfg.cai || 'N/A',
-        sale.nombreVendedor?.toUpperCase() || 'ADMINISTRADOR',
-      ];
-      doc.setFontSize(9);
-      labels.forEach((label, i) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(grayColor);
-        doc.text(label, rightColX, topInfoY + 5 + i * 6);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0);
-        doc.text(String(values[i]), rightColX + 45, topInfoY + 5 + i * 6);
-      });
-
-      // @ts-ignore
-      doc.autoTable({
-        startY: topInfoY + 45,
-        head: [['COD.', 'CANT.', 'DESCRIPCIÓN', 'PRECIO UNIT.', 'TOTAL']],
-        body: details.map(item => [
-          (item as any).id_medicamento || '-',
-          item.cantidad,
-          (item.descripcionProducto || 'PRODUCTO').toUpperCase(),
-          fmt(Number(item.precioVenta)),
-          fmt(Number(item.cantidad) * Number(item.precioVenta)),
-        ]),
-        theme: 'striped',
-        styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
-        headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', halign: 'center', textColor: [255, 255, 255] },
-        columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 15 }, 2: { halign: 'left' }, 3: { cellWidth: 30 }, 4: { cellWidth: 30, fontStyle: 'bold' } },
-        margin: { left: 14, right: 14 },
-      });
-
-      // @ts-ignore
-      let finalY = doc.lastAutoTable.finalY + 10;
-      const totalsX = 135;
-      const isvRate = (cfg.isv || 15) / 100;
-      const totalVal = Number(sale.total);
-      const subtotal = totalVal / (1 + isvRate);
-      const isvVal = totalVal - subtotal;
-      doc.setFontSize(10);
-      doc.setTextColor(grayColor);
-      doc.setFont('helvetica', 'normal');
-      doc.text('Subtotal:', totalsX, finalY);
-      doc.text(fmt(subtotal), pageWidth - 14, finalY, { align: 'right' });
-      finalY += 7;
-      doc.text('Descuentos:', totalsX, finalY);
-      doc.text(fmt(Number((sale as any).descuento || 0)), pageWidth - 14, finalY, { align: 'right' });
-      finalY += 7;
-      doc.text(`ISV (${cfg.isv || 15}%):`, totalsX, finalY);
-      doc.text(fmt(isvVal), pageWidth - 14, finalY, { align: 'right' });
-      finalY += 3;
-      doc.setDrawColor(primaryColor);
-      doc.setLineWidth(0.5);
-      doc.line(totalsX, finalY, pageWidth - 14, finalY);
-      finalY += 6;
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(primaryColor);
-      doc.setFontSize(13);
-      doc.text('TOTAL A PAGAR:', totalsX, finalY);
-      doc.text(fmt(totalVal), pageWidth - 14, finalY, { align: 'right' });
-      doc.setTextColor(grayColor);
-      doc.setFontSize(9);
-      doc.text('SON: ' + numeroALetras(totalVal), 14, finalY + 12);
-
-      const footerY = pageHeight - 40;
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Rango Autorizado: ${cfg.rangoInicial || 'N/A'} al ${cfg.rangoFinal || 'N/A'}`, 14, footerY);
-      doc.text(`Fecha Límite de Emisión: ${cfg.fechaLimite ? new Date(cfg.fechaLimite).toLocaleDateString('es-HN') : 'N/A'}`, 14, footerY + 5);
-      doc.text('Original: Cliente | Copia: Emisor', 14, footerY + 10);
-      doc.setFillColor(lightGray);
-      doc.rect(0, pageHeight - 15, pageWidth, 15, 'F');
-      doc.setTextColor(primaryColor);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text(cfg.mensajeFinal || 'LA FACTURA ES BENEFICIO DE TODOS, EXÍJALA', pageWidth / 2, pageHeight - 6, { align: 'center' });
-
-      doc.save(`Factura_${sale.codVenta}.pdf`);
-    } catch (err) {
-      console.error(err);
-      Swal.fire('Error', 'No se pudo generar la factura. Verifique configuración de empresa.', 'error');
+      const result = isConfirmed
+        ? await printSaleInvoice(saleId)
+        : await downloadSaleInvoicePDF(saleId);
+      if (!result.success) Swal.fire('Sin plantilla', result.message, 'warning');
+    } catch (err: any) {
+      Swal.fire('Error', err.message || 'No se pudo generar la factura.', 'error');
     }
   };
 
