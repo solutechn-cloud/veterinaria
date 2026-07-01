@@ -10,7 +10,7 @@ export const FACTURA_MINIMALISTA: Omit<LabelTemplate, 'id'> = {
     el('mi_bar',   'SHAPE',          0,    0,   21,  0.5,  { shapeType: 'RECTANGLE', fill: '#4f46e5', stroke: 'transparent', strokeWidth: 0 }),
     el('mi_ch',    'COMPANY_HEADER', 1,    0.8, 12,  2.8,  { fontSize: 10, color: '#1e293b', fontFamily: MI_FONT, companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('mi_title', 'TEXT',           14,   0.8, 6.5, 1.5,  { content: 'FACTURA', fontSize: 28, fontWeight: '900', color: '#4f46e5', textAlign: 'right', letterSpacing: 3, fontFamily: MI_FONT }),
-    el('mi_sub',   'TEXT',           14,   2.4, 6.5, 0.7,  { content: '{{venta.codVenta}}', fontSize: 10, color: '#94a3b8', textAlign: 'right', fontFamily: MI_FONT }),
+    el('mi_sub',   'TEXT',           14,   2.4, 6.5, 0.7,  { content: '{{venta.numeroFactura}}', fontSize: 10, color: '#94a3b8', textAlign: 'right', fontFamily: MI_FONT }),
     el('mi_div1',  'SHAPE',          1,    3.9, 19,  0.06, { shapeType: 'LINE', stroke: '#4f46e5', strokeWidth: 1.5 }),
 
     // Columna izquierda: Facturar a
@@ -33,7 +33,7 @@ export const FACTURA_MINIMALISTA: Omit<LabelTemplate, 'id'> = {
     el('mi_b1',    'TEXT',           1,    24.8, 11, 0.5,  { content: 'Rango Autorizado: {{empresa.rangoInicial}} - {{empresa.rangoFinal}}', fontSize: 8, color: '#64748b', fontFamily: MI_FONT }),
     el('mi_b2',    'TEXT',           1,    25.3, 11, 0.5,  { content: 'Fecha Límite de Emisión: {{empresa.fechaLimite}}', fontSize: 8, color: '#64748b', fontFamily: MI_FONT }),
     el('mi_b3',    'TEXT',           1,    25.8, 11, 0.5,  { content: 'Original Cliente | Copia Emisor', fontSize: 8, color: '#94a3b8', fontFamily: MI_FONT }),
-    el('mi_bc',    'BARCODE',        13,   24.7, 7,  2,    { content: '{{venta.codVenta}}', fontSize: 8 }),
+    el('mi_bc',    'BARCODE',        13,   24.7, 7,  2,    { content: '{{venta.numeroFactura}}', fontSize: 8 }),
 
     el('mi_ft',    'TEXT',           1,    27,   19, 0.7,  { content: '{{empresa.mensajeFinal}}', textAlign: 'center', fontSize: 8, color: '#94a3b8', isMultiline: true, fontFamily: MI_FONT }),
 
@@ -55,7 +55,7 @@ export const FACTURA_NOCHE: Omit<LabelTemplate, 'id'> = {
     el('nc_htri',  'SHAPE',          13,   0,   8,   5,   { shapeType: 'TRIANGLE_BR', fill: '#f59e0b', stroke: 'transparent', strokeWidth: 0 }),
     el('nc_ch',    'COMPANY_HEADER', 1,    0.5, 11,  4,   { fontSize: 10, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('nc_title', 'TEXT',           1,    1.2, 19,  1.5, { content: 'FACTURA', fontSize: 32, fontWeight: '900', color: '#f59e0b', textAlign: 'right', letterSpacing: 5, fontFamily: "'Oswald', sans-serif" }),
-    el('nc_num',   'TEXT',           1,    2.9, 19,  0.7, { content: '{{venta.codVenta}}', fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'right' }),
+    el('nc_num',   'TEXT',           1,    2.9, 19,  0.7, { content: '{{venta.numeroFactura}}', fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'right' }),
     el('nc_m1',    'TEXT',           1,    5.5, 4.5, 0.55, { content: 'Fecha:',      fontSize: 9, color: '#64748b', fontWeight: 'bold' }),
     el('nc_m2',    'TEXT',           5.5,  5.5, 6,   0.55, { content: '{{venta.fecha}}', fontSize: 9 }),
     el('nc_m3',    'TEXT',           12,   5.5, 4.5, 0.55, { content: 'CAI:', fontSize: 9, color: '#64748b', fontWeight: 'bold' }),
@@ -83,7 +83,7 @@ export const FACTURA_MARINA: Omit<LabelTemplate, 'id'> = {
     el('bm_rh2',   'SHAPE',          16,   1.5, 1.5, 1.5, { shapeType: 'RHOMBUS', fill: 'rgba(255,255,255,0.1)',  stroke: 'transparent', strokeWidth: 0 }),
     el('bm_ch',    'COMPANY_HEADER', 1,    0.3, 14,  4,   { fontSize: 10, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('bm_title', 'TEXT',           1,    0.5, 19,  1.5, { content: 'FACTURA', fontSize: 30, fontWeight: '900', color: '#ffffff', textAlign: 'right', letterSpacing: 4, fontFamily: "'Raleway', sans-serif" }),
-    el('bm_num',   'TEXT',           1,    2.2, 19,  0.7, { content: '{{venta.codVenta}}', fontSize: 10, color: 'rgba(255,255,255,0.75)', textAlign: 'right' }),
+    el('bm_num',   'TEXT',           1,    2.2, 19,  0.7, { content: '{{venta.numeroFactura}}', fontSize: 10, color: 'rgba(255,255,255,0.75)', textAlign: 'right' }),
     el('bm_m1',    'TEXT',           1,    5.2, 5,   0.55, { content: 'Fecha:',      fontSize: 9, color: '#0891b2', fontWeight: 'bold' }),
     el('bm_m2',    'TEXT',           6,    5.2, 6,   0.55, { content: '{{venta.fecha}}', fontSize: 9 }),
     el('bm_m3',    'TEXT',           1,    5.9, 5,   0.55, { content: 'CAI:', fontSize: 9, color: '#0891b2', fontWeight: 'bold' }),
@@ -109,7 +109,7 @@ export const FACTURA_NARANJA: Omit<LabelTemplate, 'id'> = {
     el('ao_tri',   'SHAPE',          14,   0,   7,   4.5, { shapeType: 'TRIANGLE_TR', fill: 'rgba(0,0,0,0.15)', stroke: 'transparent', strokeWidth: 0 }),
     el('ao_ch',    'COMPANY_HEADER', 1,    0.3, 12,  4,   { fontSize: 10, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('ao_title', 'TEXT',           1,    0.8, 19,  1.6, { content: 'FACTURA', fontSize: 30, fontWeight: '900', color: '#ffffff', textAlign: 'right', letterSpacing: 4, fontFamily: "'Montserrat', sans-serif" }),
-    el('ao_num',   'TEXT',           1,    2.6, 19,  0.7, { content: '{{venta.codVenta}}', fontSize: 10, color: 'rgba(255,255,255,0.8)', textAlign: 'right' }),
+    el('ao_num',   'TEXT',           1,    2.6, 19,  0.7, { content: '{{venta.numeroFactura}}', fontSize: 10, color: 'rgba(255,255,255,0.8)', textAlign: 'right' }),
     el('ao_m1',    'TEXT',           1,    5.2, 5,   0.55, { content: 'Fecha:',      fontSize: 9, color: '#f97316', fontWeight: 'bold' }),
     el('ao_m2',    'TEXT',           6,    5.2, 6,   0.55, { content: '{{venta.fecha}}', fontSize: 9 }),
     el('ao_m3',    'TEXT',           1,    5.9, 5,   0.55, { content: 'CAI:', fontSize: 9, color: '#f97316', fontWeight: 'bold' }),
@@ -138,7 +138,7 @@ export const FACTURA_VIOLETA: Omit<LabelTemplate, 'id'> = {
     el('rv_rh3',   'SHAPE',          19.5, 2.2, 0.9, 0.9, { shapeType: 'RHOMBUS', fill: 'rgba(245,158,11,0.35)', stroke: 'transparent', strokeWidth: 0 }),
     el('rv_ch',    'COMPANY_HEADER', 1,    0.3, 14,  4,   { fontSize: 10, color: '#ffffff', companyStyle: 'PLAIN', companyAlign: 'left', companyShowRTN: true, companyShowPhone: true, companyShowEmail: false }),
     el('rv_title', 'TEXT',           1,    0.6, 19,  1.8, { content: 'FACTURA', fontSize: 30, fontWeight: '900', color: '#f59e0b', textAlign: 'right', letterSpacing: 5, fontFamily: "'Playfair Display', serif" }),
-    el('rv_num',   'TEXT',           1,    2.6, 19,  0.7, { content: '{{venta.codVenta}}', fontSize: 10, color: 'rgba(255,255,255,0.7)', textAlign: 'right' }),
+    el('rv_num',   'TEXT',           1,    2.6, 19,  0.7, { content: '{{venta.numeroFactura}}', fontSize: 10, color: 'rgba(255,255,255,0.7)', textAlign: 'right' }),
     el('rv_div1',  'SHAPE',          1,    5,   19,  0.06, { shapeType: 'LINE', stroke: '#f59e0b', strokeWidth: 1.5 }),
     el('rv_m1',    'TEXT',           1,    5.3, 5,   0.55, { content: 'Fecha:',      fontSize: 9, color: '#7c3aed', fontWeight: 'bold' }),
     el('rv_m2',    'TEXT',           6,    5.3, 6,   0.55, { content: '{{venta.fecha}}', fontSize: 9 }),

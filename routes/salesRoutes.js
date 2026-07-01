@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta } = require('../config/db');
+const { pool, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
@@ -101,7 +101,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
         const { fecha } = req.query;
         const { codUsuario, idCaja } = req.user;
         const result = await pool.query(`
-            SELECT v.codVenta as "codVenta", v.fecha, v.total, v.estado,
+            SELECT v.codVenta as "codVenta", v.numero_factura as "numeroFactura", v.fecha, v.total, v.estado,
                    v.identidadCliente as "identidadCliente",
                    v.tipoCompra as "tipoCompra", v.codVendedor as "codVendedor",
                    COALESCE(c.nombre || ' ' || c.apellido, 'Consumidor Final') as "nombreCliente"
@@ -120,7 +120,7 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query(`
             SELECT
-                v.codVenta as "codVenta", v.fecha, v.codVendedor as "codVendedor",
+                v.codVenta as "codVenta", v.numero_factura as "numeroFactura", v.fecha, v.codVendedor as "codVendedor",
                 v.identidadCliente as "identidadCliente", v.total, v.estado,
                 v.tipoCompra as "tipoCompra", v.isv, v.descuento,
                 v.monto_prima as "montoPrima", v.monto_financiamiento as "montoFinanciado",
@@ -250,14 +250,15 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
         const hndTime = getLocalTimestamp();
         const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
+        const numeroFactura = await generateFacturaCorrelativo(req.tenantId, client);
 
         // Insert parent ventas row first so detalleventa FK constraint is satisfied
         await client.query(
             `INSERT INTO ventas
-             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id)
-             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13)`,
+             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id, numero_factura)
+             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
             [codVenta, hndTime, codUsuario, identidadCliente, total,
-             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null]
+             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null, numeroFactura]
         );
 
         for (const item of detalles) {

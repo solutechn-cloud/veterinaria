@@ -118,7 +118,7 @@ export async function printSaleInvoice(ventaId: string): Promise<DocResult> {
 
     const ctx: PrintDataContext = {
       empresa,
-      venta: { ...venta, detalles },
+      venta: { ...venta, detalles, numeroFactura: (venta as any).numeroFactura || venta.codVenta },
       cliente: {
         nombre:    (venta as any).nombreCliente    || '',
         identidad: (venta as any).identidadCliente || '',
@@ -152,7 +152,7 @@ export async function downloadSaleInvoicePDF(ventaId: string): Promise<DocResult
 
     const ctx: PrintDataContext = {
       empresa,
-      venta: { ...venta, detalles },
+      venta: { ...venta, detalles, numeroFactura: (venta as any).numeroFactura || venta.codVenta },
       cliente: {
         nombre:    (venta as any).nombreCliente    || '',
         identidad: (venta as any).identidadCliente || '',

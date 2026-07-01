@@ -166,6 +166,7 @@ const mapConfigRow = (row) => ({
     rangoInicial:     row.rangoinicial     || '',
     rangoFinal:       row.rangofinal       || '',
     fechaLimite:      row.fechalimite ? String(row.fechalimite).substring(0, 10) : '',
+    facturaCorrelativoActual: Number(row.factura_correlativo_actual) || 1,
     isv:              Number(row.isv)      || 15,
     mensajeFinal:     row.mensajefinal     || 'LA FACTURA ES BENEFICIO DE TODOS, EXIJALA',
     logoBase64:       row.logo_base64      || '',
@@ -195,16 +196,16 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
             nombreEmpresa, rtn, direccion, telefono, correo, cai,
             rangoInicial, rangoFinal, fechaLimite, isv, mensajeFinal, logoBase64,
             adminEmail, emailFrom, automationSenderName, backupR2Prefix,
-            backupRetentionDays, backupEnabled, backupTime,
+            backupRetentionDays, backupEnabled, backupTime, facturaCorrelativoActual,
         } = req.body;
         await pool.query(`
             INSERT INTO configuracion (
                 tenant_id, nombreempresa, rtn, direccion, telefono, correo, cai,
                 rangoinicial, rangofinal, fechalimite, isv, mensajefinal, logo_base64,
                 admin_email, email_from, automation_sender_name, backup_r2_prefix,
-                backup_retention_days, backup_enabled, backup_time
+                backup_retention_days, backup_enabled, backup_time, factura_correlativo_actual
             )
-            VALUES ($20, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULLIF($19, '')::time)
+            VALUES ($20, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULLIF($19, '')::time, $21)
             ON CONFLICT (tenant_id) DO UPDATE SET
                 nombreempresa = EXCLUDED.nombreempresa,
                 rtn           = EXCLUDED.rtn,
@@ -224,14 +225,15 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
                 backup_r2_prefix = EXCLUDED.backup_r2_prefix,
                 backup_retention_days = EXCLUDED.backup_retention_days,
                 backup_enabled = EXCLUDED.backup_enabled,
-                backup_time = EXCLUDED.backup_time
+                backup_time = EXCLUDED.backup_time,
+                factura_correlativo_actual = GREATEST(EXCLUDED.factura_correlativo_actual, configuracion.factura_correlativo_actual)
         `, [
             nombreEmpresa, rtn, direccion, telefono, correo, cai,
             rangoInicial, rangoFinal, fechaLimite || null, isv, mensajeFinal, logoBase64 || null,
             adminEmail || null, emailFrom || null, automationSenderName || null,
             backupR2Prefix || 'backups', Number(backupRetentionDays || 30),
             backupEnabled !== false, backupTime || '02:30',
-            req.tenantId,
+            req.tenantId, Number(facturaCorrelativoActual) || 1,
         ]);
         if (adminEmail) await automationService.ensureAdminRecipient(req.tenantId, adminEmail);
         invalidateSystemConfigCache();

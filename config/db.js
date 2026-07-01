@@ -377,6 +377,62 @@ async function generateNextId(table, column, prefix, client = pool) {
 }
 
 /**
+ * Genera el siguiente número de factura fiscal (correlativo CAI), separado del
+ * codVenta interno. Formato: <prefijo de rangoInicial>-<correlativo 8 dígitos>,
+ * ej. 000-001-01-00000021. El prefijo (sucursal-puntoemision-tipodoc) sale de
+ * los primeros 3 grupos de "Rango Inicial" configurado en Empresa.
+ *
+ * Usa pg_advisory_xact_lock + FOR UPDATE para serializar concurrencia: dos
+ * ventas simultáneas nunca deben recibir el mismo número fiscal.
+ *
+ * Devuelve null si la empresa no tiene rangoInicial configurado (CAI pendiente),
+ * en cuyo lugar la factura simplemente no lleva número fiscal aún.
+ */
+async function generateFacturaCorrelativo(tenantId, client = pool) {
+    if (!tenantId) return null;
+    const lockId = _advisoryLockId('FACTNUM', 'configuracion', tenantId);
+
+    const usingPool = client === pool;
+    let txClient = client;
+    if (usingPool) {
+        txClient = await pool.connect();
+        await txClient.query('BEGIN');
+    }
+
+    try {
+        await txClient.query('SELECT pg_advisory_xact_lock($1)', [lockId]);
+
+        const result = await txClient.query(
+            `SELECT rangoinicial, factura_correlativo_actual
+             FROM configuracion WHERE tenant_id = $1 FOR UPDATE`,
+            [tenantId]
+        );
+        const row = result.rows[0];
+        const parts = (row?.rangoinicial || '').trim().split('-');
+        if (parts.length < 4) {
+            if (usingPool) await txClient.query('COMMIT');
+            return null;
+        }
+        const prefix  = parts.slice(0, 3).join('-');
+        const numero  = Number(row.factura_correlativo_actual) || 1;
+        const numeroFactura = `${prefix}-${String(numero).padStart(8, '0')}`;
+
+        await txClient.query(
+            `UPDATE configuracion SET factura_correlativo_actual = $1 WHERE tenant_id = $2`,
+            [numero + 1, tenantId]
+        );
+
+        if (usingPool) await txClient.query('COMMIT');
+        return numeroFactura;
+    } catch (err) {
+        if (usingPool) await txClient.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        if (usingPool) txClient.release();
+    }
+}
+
+/**
  * Recalcula y actualiza el balance del arqueo activo de una caja.
  * Excluye depósitos KrediYa (van al banco, no a caja física).
  */
@@ -493,4 +549,4 @@ async function tenantQuery(tenantId, text, values = []) {
     return withTenantContext(tenantId, (client) => client.query(text, values));
 }
 
-module.exports = { pool, getPoolStats, generateNextId, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass };
+module.exports = { pool, getPoolStats, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass };

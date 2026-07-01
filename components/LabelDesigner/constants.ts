@@ -114,7 +114,8 @@ export const CONTEXT_GROUPS: CtxGroup[] = [
     {
         icon: '🧾', label: 'Venta / Factura', color: 'green',
         vars: [
-            { key: 'venta.codVenta',       label: 'Código Venta',   example: 'FACT-0001' },
+            { key: 'venta.numeroFactura',  label: 'No. de Factura (fiscal)', example: '000-001-01-00000021' },
+            { key: 'venta.codVenta',       label: 'Código Interno', example: 'FACT-0001' },
             { key: 'venta.fecha',          label: 'Fecha Venta',    example: '05/04/2026' },
             { key: 'venta.total',          label: 'Total',          example: '330.00' },
             { key: 'venta.isv',            label: 'ISV (15%)',      example: '0.00' },
