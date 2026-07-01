@@ -247,7 +247,7 @@ const CONSULTORIO_TYPES = {
     historia: 'Historia',
     consulta: 'Consulta',
     vacuna: 'Vacunación',
-    formula: 'Fórmula médica',
+    formula: 'Recetas',
     desparasitacion: 'Desparasitación',
     hospitalizacion: 'Hospitalización/ambulatorio',
     cirugia: 'Cirugía/procedimiento',

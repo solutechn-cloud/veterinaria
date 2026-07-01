@@ -6,7 +6,7 @@ export type MedicationItem = {
   medicamento?: string;
   presentacion?: string;
   cantidad?: number;
-  posologia?: string;
+  frecuencia?: string;
 };
 
 type MedicationItemsEditorProps = {
@@ -75,10 +75,10 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
               </FieldShell>
             </div>
             <div className="mt-4">
-              <FieldShell label="Posología / cada cuándo tomarlo">
+              <FieldShell label="Frecuencia (cada cuánto se debe tomar)">
                 <textarea
-                  value={row.posologia || ''}
-                  onChange={event => updateRow(row.id, { posologia: event.target.value })}
+                  value={row.frecuencia || ''}
+                  onChange={event => updateRow(row.id, { frecuencia: event.target.value })}
                   placeholder="Ej. 1 tableta cada 12 horas por 7 días, vía oral"
                   className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200"
                 />

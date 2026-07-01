@@ -45,6 +45,16 @@ const LABELS: Record<string, string> = {
   resumen_historial: 'Resumen',
 };
 
+export async function printClinicalEvent(patient: Paciente & Record<string, any>, event: ConsultorioEvento) {
+  const company = (await ConfigService.get().catch(() => ({}))) || {};
+  const printWindow = window.open('', '_blank', 'width=920,height=780');
+  if (!printWindow) throw new Error('El navegador bloqueo la ventana de impresion.');
+  printWindow.document.write(buildSingleEventPrintHtml(patient, event, company));
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 450);
+}
+
 export function ClinicalHistoryExportModal({ patient, onClose }: ClinicalHistoryExportModalProps) {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -292,7 +302,8 @@ function buildPrintHtml(patient: any, report: ReportData, range: { desde?: strin
     body{font-family:Inter,Arial,sans-serif;color:#172033;margin:0;background:#eef6fb}
     .page{width:920px;margin:24px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(15,23,42,.12)}
     .hero{background:linear-gradient(135deg,#101827,#274072);color:#fff;padding:28px 36px;display:grid;grid-template-columns:1fr auto;gap:20px;border-bottom:5px solid #14b8a6}
-    .brand{display:flex;gap:16px;align-items:center}.logo,.pet{width:76px;height:76px;border-radius:18px;background:#e0f2fe;object-fit:cover;display:grid;place-items:center;color:#0f766e;font-weight:800;font-size:24px}
+    .brand{display:flex;gap:16px;align-items:center}.logo,.pet{width:76px;height:76px;border-radius:18px;background:#e0f2fe;display:grid;place-items:center;color:#0f766e;font-weight:800;font-size:24px}
+    .pet{object-fit:cover}.logo{object-fit:contain;padding:8px}
     .hero h1{font-size:26px;margin:0 0 8px}.hero p{margin:3px 0;color:#dbeafe;font-size:12px}.doc{text-align:right}
     .content{padding:30px 36px}.section{margin-bottom:22px}.section-title{font-size:16px;font-weight:800;margin:0 0 12px;color:#0f172a}
     .patient-card{border:1px solid #dbeafe;background:#f8fafc;border-radius:22px;padding:20px;display:grid;grid-template-columns:96px 1fr;gap:18px}
@@ -304,6 +315,8 @@ function buildPrintHtml(patient: any, report: ReportData, range: { desde?: strin
     .event:before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:18px 0 0 18px;background:var(--c,#4f46e5)}
     .event-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.pill{color:var(--c,#4f46e5);font-size:11px;font-weight:800;text-transform:uppercase}.date{color:#64748b;font-size:11px}
     .event h3{font-size:15px;margin:6px 0 10px}.event pre{white-space:pre-wrap;font-family:inherit;margin:0;color:#475569;font-size:12px;line-height:1.45}
+    .event .field{margin:0 0 8px;font-size:12px;color:#475569;line-height:1.5}
+    .meds{width:100%;border-collapse:collapse;margin:6px 0 10px}.meds th,.meds td{border:1px solid #e2e8f0;padding:7px 9px;font-size:11.5px;text-align:left}.meds th{background:#f1f5f9;color:#334155;font-weight:700}
     .attachments{margin-top:10px;color:#2563eb;font-size:12px}.empty{padding:28px;border:1px dashed #cbd5e1;border-radius:18px;color:#64748b;text-align:center;background:#f8fafc}
     @media print{body{background:#fff}.page{width:auto;margin:0;border-radius:0;box-shadow:none}.hero,.event,.patient-card,.metric,.info,.stat{break-inside:avoid}}
   </style></head><body><main class="page">
@@ -332,11 +345,76 @@ function buildPrintHtml(patient: any, report: ReportData, range: { desde?: strin
   </main></body></html>`;
 }
 
+function buildSingleEventPrintHtml(patient: any, event: ConsultorioEvento, company: Partial<EmpresaConfig>) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(event.tipoLabel || labelize(event.tipo))} - ${escapeHtml(patient.nombre)}</title>
+  <style>
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:Inter,Arial,sans-serif;color:#172033;margin:0;background:#eef6fb}
+    .page{width:720px;margin:24px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(15,23,42,.12)}
+    .hero{background:linear-gradient(135deg,#101827,#274072);color:#fff;padding:26px 32px;display:grid;grid-template-columns:1fr auto;gap:20px;border-bottom:5px solid #14b8a6}
+    .brand{display:flex;gap:16px;align-items:center}.logo{width:64px;height:64px;border-radius:16px;background:#e0f2fe;object-fit:contain;padding:6px;display:grid;place-items:center;color:#0f766e;font-weight:800;font-size:20px}
+    .hero h1{font-size:20px;margin:0 0 6px}.hero p{margin:2px 0;color:#dbeafe;font-size:11px}.doc{text-align:right}
+    .content{padding:26px 32px}
+    .patient-strip{display:flex;justify-content:space-between;gap:16px;border:1px solid #dbeafe;background:#f8fafc;border-radius:18px;padding:14px 18px;margin-bottom:20px}
+    .patient-strip h2{margin:0;font-size:18px}.muted{color:#64748b;font-size:12px;margin-top:2px}
+    .event{position:relative;border:1px solid #e2e8f0;border-radius:18px;padding:20px 22px 20px 28px;background:#fff}
+    .event:before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:18px 0 0 18px;background:var(--c,#4f46e5)}
+    .event-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.pill{color:var(--c,#4f46e5);font-size:12px;font-weight:800;text-transform:uppercase}.date{color:#64748b;font-size:12px}
+    .event h3{font-size:17px;margin:8px 0 12px}.event pre{white-space:pre-wrap;font-family:inherit;margin:0;color:#334155;font-size:13px;line-height:1.55}
+    .event .field{margin:0 0 10px;font-size:13px;color:#334155;line-height:1.5}
+    .meds{width:100%;border-collapse:collapse;margin:6px 0 12px}.meds th,.meds td{border:1px solid #e2e8f0;padding:8px 10px;font-size:12.5px;text-align:left}.meds th{background:#f1f5f9;color:#334155;font-weight:700}
+    .attachments{margin-top:12px;color:#2563eb;font-size:12px}
+    .sign{margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:24px;text-align:center}.sign div{border-top:1px solid #94a3b8;padding-top:6px;font-size:11px;color:#64748b}
+    @media print{body{background:#fff}.page{width:auto;margin:0;border-radius:0;box-shadow:none}}
+  </style></head><body><main class="page">
+    <header class="hero">
+      <div class="brand">${imageOrInitial(company.logoBase64, company.nombreEmpresa || 'VetCare', 'logo')}
+        <div><h1>${escapeHtml(company.nombreEmpresa || 'Clínica veterinaria')}</h1>
+          <p>${escapeHtml([company.direccion, company.telefono, company.correo].filter(Boolean).join(' · '))}</p>
+          <p>${company.rtn ? `RTN: ${escapeHtml(company.rtn)}` : ''}</p>
+        </div>
+      </div>
+      <div class="doc"><p>Generado: ${escapeHtml(formatDate(new Date().toISOString()))}</p></div>
+    </header>
+    <section class="content">
+      <div class="patient-strip">
+        <div><h2>${escapeHtml(patient.nombre || 'Paciente sin nombre')}</h2><div class="muted">${escapeHtml([patient.especie, patient.raza, patient.sexo].filter(Boolean).join(' · ') || 'Datos generales no registrados')}</div></div>
+        <div class="muted" style="text-align:right">Tutor: ${escapeHtml(patient.tutorNombre || 'N/D')}<br>${escapeHtml(patient.tutorTelefono || '')}</div>
+      </div>
+      ${eventHtml(event)}
+      <div class="sign"><div>Firma del médico veterinario</div><div>Sello</div></div>
+    </section>
+  </main></body></html>`;
+}
+
 function eventHtml(event: ConsultorioEvento) {
-  const lines = eventLines(event).join('\n');
   const attachments = attachmentLines(event).join('<br>');
   const color = TYPE_COLORS[event.tipo] || '#4f46e5';
-  return `<article class="event" style="--c:${color}"><div class="event-head"><div><div class="pill">${escapeHtml(event.tipoLabel || labelize(event.tipo))}</div><h3>${escapeHtml(event.titulo || 'Registro clínico')}</h3></div><div class="date">${escapeHtml(formatDate(event.fecha_evento))}</div></div><pre>${escapeHtml(lines || 'Sin detalle registrado.')}</pre>${attachments ? `<div class="attachments">${attachments}</div>` : ''}</article>`;
+  const titleLine = event.tipo === 'formula'
+    ? `<h3>${escapeHtml(event.tipoLabel || 'Recetas')}</h3>`
+    : `<div class="pill">${escapeHtml(event.tipoLabel || labelize(event.tipo))}</div><h3>${escapeHtml(event.titulo || 'Registro clínico')}</h3>`;
+  const head = `<div class="event-head"><div>${titleLine}</div><div class="date">${escapeHtml(formatDate(event.fecha_evento))}</div></div>`;
+  if (event.tipo === 'formula') {
+    const payload = event.payload || {};
+    const diagnostico = payload.diagnostico ? `<p class="field"><b>Diagnóstico:</b> ${escapeHtml(payload.diagnostico)}</p>` : '';
+    const table = formulaTableHtml(payload);
+    const observaciones = payload.observaciones ? `<p class="field"><b>Observaciones:</b> ${escapeHtml(payload.observaciones)}</p>` : '';
+    return `<article class="event" style="--c:${color}">${head}${diagnostico}${table || '<p class="field">Sin medicamentos registrados.</p>'}${observaciones}${attachments ? `<div class="attachments">${attachments}</div>` : ''}</article>`;
+  }
+  const lines = eventLines(event).join('\n');
+  return `<article class="event" style="--c:${color}">${head}<pre>${escapeHtml(lines || 'Sin detalle registrado.')}</pre>${attachments ? `<div class="attachments">${attachments}</div>` : ''}</article>`;
+}
+
+function formulaTableHtml(payload: Record<string, any>) {
+  const meds = Array.isArray(payload?.medicamentos) ? payload.medicamentos : [];
+  if (!meds.length) return '';
+  const rows = meds.map((item: any) => `<tr>
+    <td>${escapeHtml(item.medicamento || 'N/D')}</td>
+    <td>${escapeHtml(item.presentacion || 'N/D')}</td>
+    <td>${escapeHtml(item.cantidad != null && item.cantidad !== '' ? String(item.cantidad) : 'N/D')}</td>
+    <td>${escapeHtml(item.frecuencia || 'N/D')}</td>
+  </tr>`).join('');
+  return `<table class="meds"><thead><tr><th>Medicamento</th><th>Presentación</th><th>Cantidad</th><th>Frecuencia</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function eventLines(event: ConsultorioEvento) {
@@ -360,8 +438,8 @@ function displayValue(value: any): string {
         const professional = item.profesional?.nombre || item.profesional || '';
         const presentacion = item.presentacion ? `Presentación: ${item.presentacion}` : '';
         const quantity = item.cantidad ? `Cantidad ${item.cantidad}` : '';
-        const posologia = item.posologia ? `Posología: ${item.posologia}` : '';
-        return [name, professional && `Profesional: ${professional}`, presentacion, quantity, posologia].filter(Boolean).join(' | ');
+        const frecuencia = item.frecuencia ? `Frecuencia: ${item.frecuencia}` : '';
+        return [name, professional && `Profesional: ${professional}`, presentacion, quantity, frecuencia].filter(Boolean).join(' | ');
       }
       return displayValue(item);
     }).join('\n');
