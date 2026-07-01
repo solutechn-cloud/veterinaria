@@ -504,6 +504,10 @@ router.get('/agenda/veterinarios', authenticateToken, async (req, res) => {
                 OR LOWER(COALESCE(r.nombre, '')) LIKE '%medico%'
                 OR LOWER(COALESCE(r.nombre, '')) LIKE '%doctor%'
                 OR EXISTS (
+                    SELECT 1 FROM rol_permisos rp
+                    WHERE rp.idRol = u.idrol AND rp.idPermiso = 'GESTIONAR_CONSULTORIO'
+                )
+                OR EXISTS (
                     SELECT 1 FROM citas c
                     WHERE c.tenant_id = u.tenant_id
                       AND c.id_veterinario::text = u.codUsuario::text
