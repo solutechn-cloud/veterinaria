@@ -403,13 +403,15 @@ const CashRegister: React.FC = () => {
                               >
                                 <Edit2 size={15} />
                               </button>
-                              <button
-                                onClick={() => handleAnularVenta(v.codVenta)}
-                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Anular venta"
-                              >
-                                <Ban size={15} />
-                              </button>
+                              {hasPermission('ANULAR_VENTA') && (
+                                <button
+                                  onClick={() => handleAnularVenta(v.codVenta)}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Anular venta"
+                                >
+                                  <Ban size={15} />
+                                </button>
+                              )}
                             </>
                           )}
                           {hasPermission('VER_ADMIN') && (v as any).codVendedor !== user?.codUsuario && (

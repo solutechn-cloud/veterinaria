@@ -508,6 +508,10 @@ async function updateArqueoBalance(idCaja, client = pool, tenantId = null) {
  * Si el SP no existe en la DB (migración pendiente), ejecuta la lógica manualmente.
  */
 async function anularVenta(codVenta, codUsuario, motivo = 'Sin motivo', client = pool, tenantId = null) {
+    // SAVEPOINT: si sp_anular_venta no existe, el error deja la transacción abortada
+    // en Postgres (25P02) hasta hacer ROLLBACK TO SAVEPOINT; sin esto, el fallback
+    // manual que sigue en el caller fallaría con "current transaction is aborted".
+    await client.query('SAVEPOINT sp_anular_venta');
     try {
         const spRes = await client.query(
             `SELECT sp_anular_venta($1, $2, $3, $4) AS resultado`,
@@ -523,8 +527,10 @@ async function anularVenta(codVenta, codUsuario, motivo = 'Sin motivo', client =
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
             console.warn('sp_anular_venta no encontrado, usando lógica manual.');
+            await client.query('ROLLBACK TO SAVEPOINT sp_anular_venta');
             return null;
         }
+        await client.query('ROLLBACK TO SAVEPOINT sp_anular_venta');
         throw err;
     }
 }

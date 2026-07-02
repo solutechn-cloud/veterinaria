@@ -135,7 +135,17 @@ router.delete('/clientes/:id', authenticateToken, async (req, res) => {
 router.get('/ventas/historial', authenticateToken, async (req, res) => {
     try {
         const { fecha } = req.query;
-        const { codUsuario, idCaja } = req.user;
+        const { codUsuario, idCaja, rol, permisos } = req.user;
+        const isAdmin = ['administrador', 'admin', 'superadmin'].includes(String(rol || '').toLowerCase())
+            || (permisos || []).includes('VER_ADMIN');
+
+        const params = [idCaja, fecha || getLocalTimestamp().substring(0, 10), req.tenantId];
+        let filtroVendedor = '';
+        if (!isAdmin) {
+            params.push(codUsuario);
+            filtroVendedor = ' AND v.codVendedor = $4::text';
+        }
+
         const result = await pool.query(`
             SELECT v.codVenta as "codVenta", v.numero_factura as "numeroFactura",
                    COALESCE(v.numero_factura, v.codVenta) as "numeroDocumento",
@@ -146,12 +156,13 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
                    v.tipoCompra as "tipoCompra", v.codVendedor as "codVendedor",
                    COALESCE(c.nombre || ' ' || c.apellido, 'Consumidor Final') as "nombreCliente"
             FROM ventas v
-            LEFT JOIN clientes c ON v.identidadCliente = c.identidad AND c.tenant_id = $4
-            WHERE v.idCaja = $2 AND v.codVendedor = $1::text
-              AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $3
-              AND v.tenant_id = $4
+            LEFT JOIN clientes c ON v.identidadCliente = c.identidad AND c.tenant_id = $3
+            WHERE v.idCaja = $1
+              AND TO_CHAR(v.fecha, 'YYYY-MM-DD') = $2
+              AND v.tenant_id = $3
+              ${filtroVendedor}
             ORDER BY v.fecha DESC
-        `, [codUsuario, idCaja, fecha || getLocalTimestamp().substring(0, 10), req.tenantId]);
+        `, params);
         res.json(result.rows);
     } catch(e) { handleDbError(res, e); }
 });

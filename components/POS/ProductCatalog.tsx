@@ -130,10 +130,13 @@ export default function ProductCatalog({
 
   // ── List row ──────────────────────────────────────────────────────────────
   const renderListRow = (p: ProductoFarmacia) => (
-    <button
+    <div
       key={p.codigo}
+      role="button"
+      tabIndex={0}
       onClick={() => onProductClick(p)}
-      className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left active:scale-[0.99] ${
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onProductClick(p); } }}
+      className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left active:scale-[0.99] cursor-pointer ${
         p.stock === 0
           ? 'bg-slate-50 border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 opacity-80'
           : 'bg-white border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-sm'
@@ -206,7 +209,7 @@ export default function ProductCatalog({
           <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
         </div>
       </div>
-    </button>
+    </div>
   );
 
   // ── Grid card ─────────────────────────────────────────────────────────────
