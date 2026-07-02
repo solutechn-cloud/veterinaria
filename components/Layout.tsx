@@ -12,6 +12,7 @@ import {
   AlertTriangle, Building2, ArrowLeftRight, ShoppingBag,
   KeyRound, Eye, EyeOff, BookOpen, Sparkles, Info, CheckCheck, Trash2, Zap, Star,
   PawPrint, CalendarDays, CalendarClock, FileHeart, Syringe, Stethoscope, HeartPulse,
+  Mail,
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { name: 'Roles', path: '/admin/roles', icon: <ShieldCheck size={18} />, permission: 'GESTIONAR_ROLES' },
         { name: 'Cajas', path: '/admin/boxes', icon: <Box size={18} />, permission: 'GESTIONAR_CAJAS' },
         { name: 'Reportes', path: '/reports', icon: <FileText size={18} />, permission: 'VER_REPORTES' },
+        { name: 'Mensajeria', path: '/admin/messaging', icon: <Mail size={18} />, permission: 'VER_MENSAJERIA', planFeature: 'modulo_mensajeria', minimumPlan: 'basico' },
         { name: 'Configuración', path: '/admin/config', icon: <Settings size={18} />, permission: 'CONFIGURAR_EMPRESA' },
         { name: 'IA y Cuotas', path: '/admin/ai', icon: <Sparkles size={18} />, permission: 'VER_IA_CUOTAS', planFeature: 'ia_basica' },
       ]

@@ -460,6 +460,10 @@ export interface AutomationRecipient {
   email: string;
   tipo: 'persona' | 'grupo';
   activo: boolean;
+  cargo?: string | null;
+  telefono?: string | null;
+  descripcion?: string | null;
+  notas?: string | null;
   events: AutomationRecipientEvent[];
 }
 
@@ -482,6 +486,8 @@ export const AutomationService = {
   getRecipients: () => request<AutomationRecipient[]>('/admin/automation/recipients'),
   createRecipient: (data: Partial<AutomationRecipient>) =>
     request<AutomationRecipient>('/admin/automation/recipients', { method: 'POST', body: JSON.stringify(data) }),
+  updateRecipient: (id: number, data: Partial<AutomationRecipient>) =>
+    request<AutomationRecipient>(`/admin/automation/recipients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   updateRecipientEvents: (id: number, events: AutomationRecipientEvent[]) =>
     request<void>(`/admin/automation/recipients/${id}/events`, { method: 'PUT', body: JSON.stringify({ events }) }),
   deleteRecipient: (id: number) => request<void>(`/admin/automation/recipients/${id}`, { method: 'DELETE' }),
@@ -673,6 +679,329 @@ export const NotificationService = {
   remove: (id: number) => request<void>(`/notifications/${id}`, { method: 'DELETE' }),
   broadcast: (data: { titulo: string; cuerpo?: string; tipo?: string }) =>
     request<{ ok: boolean; notification: AppNotification }>('/notifications/broadcast', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export type MessagingStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'failed' | 'cancelled';
+
+export interface MessagingMessage {
+  id: number;
+  channel: 'email';
+  source: string | null;
+  eventKey: string | null;
+  templateKey: string | null;
+  fromEmail: string | null;
+  recipientEmail: string;
+  recipientName: string | null;
+  subject: string;
+  status: MessagingStatus;
+  provider: string;
+  providerMessageId: string | null;
+  relatedTable: string | null;
+  relatedId: string | null;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
+  failedAt: string | null;
+  attempts: number;
+  lastError: string | null;
+  metadata: Record<string, any>;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingEvent {
+  id: number;
+  eventType: string;
+  providerEventId: string | null;
+  payload: Record<string, any>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface MessagingListResponse {
+  data: MessagingMessage[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: Record<string, number>;
+}
+
+export interface MessagingFilters {
+  q?: string;
+  status?: string;
+  eventKey?: string;
+  desde?: string;
+  hasta?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface MessagingMetricCount {
+  key: string;
+  label: string;
+  total: number;
+}
+
+export interface MessagingDailyMetric {
+  day: string;
+  total: number;
+  sent: number;
+  failed: number;
+}
+
+export interface MessagingCampaignMetric {
+  id: number;
+  name: string;
+  status: string;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+}
+
+export interface MessagingFailureMetric {
+  id: number;
+  recipientEmail: string;
+  recipientName: string | null;
+  subject: string;
+  status: string;
+  eventKey: string | null;
+  lastError: string | null;
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingAnalytics {
+  range: { desde: string; hasta: string };
+  totals: {
+    total: number;
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    failed: number;
+    inProcess: number;
+    deliveryRate: number;
+    openRate: number;
+    clickRate: number;
+    failureRate: number;
+  };
+  byStatus: MessagingMetricCount[];
+  byEvent: MessagingMetricCount[];
+  bySource: MessagingMetricCount[];
+  providerEvents: MessagingMetricCount[];
+  dailyTrend: MessagingDailyMetric[];
+  campaigns: {
+    summary: {
+      total: number;
+      scheduled: number;
+      sent: number;
+      failed: number;
+      totalRecipients: number;
+      sentCount: number;
+      failedCount: number;
+      skippedCount: number;
+    };
+    top: MessagingCampaignMetric[];
+    upcoming: MessagingCampaignMetric[];
+  };
+  recentFailures: MessagingFailureMetric[];
+}
+
+export type MessagingCampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
+export type MessagingAudienceType =
+  | 'all_tutors'
+  | 'active_patients'
+  | 'recent_tutors'
+  | 'appointment_upcoming'
+  | 'appointment_tomorrow'
+  | 'vaccines_due'
+  | 'vaccines_next_30'
+  | 'inactive_tutors'
+  | 'species_canine'
+  | 'species_feline';
+
+export interface MessagingCampaign {
+  id: number;
+  name: string;
+  subject: string;
+  body: string;
+  audienceType: MessagingAudienceType;
+  templateId: number | null;
+  status: MessagingCampaignStatus;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  metadata: Record<string, any>;
+  createdBy: string | null;
+  scheduledAt: string | null;
+  queuedAt: string | null;
+  sentAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingCampaignRecipient {
+  id: number;
+  campaignId: number;
+  clienteId: string | null;
+  recipientEmail: string;
+  recipientName: string | null;
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
+  messageId: number | null;
+  error: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingCampaignListResponse {
+  data: MessagingCampaign[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type MessagingTemplateCategory = 'marketing' | 'clinical' | 'operations' | 'reports' | 'custom';
+
+export interface MessagingTemplate {
+  id: number;
+  name: string;
+  category: MessagingTemplateCategory;
+  subject: string;
+  body: string;
+  active: boolean;
+  systemKey: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingTemplateListResponse {
+  data: MessagingTemplate[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface MessagingAudienceDefinition {
+  value: MessagingAudienceType;
+  label: string;
+  hint: string;
+  group: string;
+}
+
+export interface MessagingAudiencePreview {
+  audienceType: MessagingAudienceType;
+  total: number;
+  definition?: MessagingAudienceDefinition | null;
+  sample: Array<{ clienteId: string; recipientEmail: string; recipientName: string }>;
+}
+
+export type MessagingAutomationFrequency = 'daily' | 'weekly' | 'monthly';
+export type MessagingAutomationStatus = 'active' | 'paused' | 'archived';
+export type MessagingAutomationSendMode = 'schedule' | 'send_now';
+
+export interface MessagingAutomationRule {
+  id: number;
+  name: string;
+  audienceType: MessagingAudienceType;
+  templateId: number;
+  templateName: string | null;
+  templateSubject: string | null;
+  frequency: MessagingAutomationFrequency;
+  runTime: string;
+  dayOfWeek: number | null;
+  dayOfMonth: number | null;
+  sendMode: MessagingAutomationSendMode;
+  status: MessagingAutomationStatus;
+  metadata: Record<string, any>;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingAutomationRun {
+  id: number;
+  automationId: number;
+  campaignId: number | null;
+  campaignName: string | null;
+  status: 'running' | 'completed' | 'failed' | 'skipped';
+  recipientsCount: number;
+  error: string | null;
+  metadata: Record<string, any>;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+function toQuery(params: Record<string, any>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  });
+  const value = query.toString();
+  return value ? `?${value}` : '';
+}
+
+export const MessagingService = {
+  getAnalytics: (filters: { desde?: string; hasta?: string } = {}) =>
+    request<MessagingAnalytics>(`/messaging/analytics${toQuery(filters)}`),
+  getMessages: (filters: MessagingFilters = {}) =>
+    request<MessagingListResponse>(`/messaging/messages${toQuery(filters)}`),
+  getEvents: (id: number) =>
+    request<MessagingEvent[]>(`/messaging/messages/${id}/events`),
+  resend: (id: number) =>
+    request<{ success: boolean; providerMessageId?: string }>(`/messaging/messages/${id}/resend`, { method: 'POST' }),
+  sendManual: (data: { to: string; subject: string; body: string }) =>
+    request<{ success: boolean; id?: number }>('/messaging/messages', { method: 'POST', body: JSON.stringify(data) }),
+  getTemplates: (filters: { q?: string; category?: string; active?: boolean; page?: number; pageSize?: number } = {}) =>
+    request<MessagingTemplateListResponse>(`/messaging/templates${toQuery(filters)}`),
+  createTemplate: (data: { name: string; category: MessagingTemplateCategory; subject: string; body: string }) =>
+    request<MessagingTemplate>('/messaging/templates', { method: 'POST', body: JSON.stringify(data) }),
+  updateTemplate: (id: number, data: Partial<{ name: string; category: MessagingTemplateCategory; subject: string; body: string; active: boolean }>) =>
+    request<MessagingTemplate>(`/messaging/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  archiveTemplate: (id: number) =>
+    request<MessagingTemplate>(`/messaging/templates/${id}`, { method: 'DELETE' }),
+  getCampaigns: (filters: { q?: string; status?: string; page?: number; pageSize?: number } = {}) =>
+    request<MessagingCampaignListResponse>(`/messaging/campaigns${toQuery(filters)}`),
+  getAudienceOptions: () =>
+    request<MessagingAudienceDefinition[]>('/messaging/campaigns/audience/options'),
+  previewAudience: (audienceType: MessagingAudienceType) =>
+    request<MessagingAudiencePreview>(`/messaging/campaigns/audience/preview${toQuery({ audienceType })}`),
+  getAutomations: () =>
+    request<MessagingAutomationRule[]>('/messaging/automations'),
+  createAutomation: (data: Partial<MessagingAutomationRule>) =>
+    request<MessagingAutomationRule>('/messaging/automations', { method: 'POST', body: JSON.stringify(data) }),
+  updateAutomation: (id: number, data: Partial<MessagingAutomationRule>) =>
+    request<MessagingAutomationRule>(`/messaging/automations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  runAutomation: (id: number) =>
+    request<MessagingAutomationRun>(`/messaging/automations/${id}/run`, { method: 'POST' }),
+  getAutomationRuns: (id: number) =>
+    request<MessagingAutomationRun[]>(`/messaging/automations/${id}/runs`),
+  createCampaign: (data: { name: string; subject: string; body: string; audienceType: MessagingAudienceType; templateId?: number | null; scheduledAt?: string | null }) =>
+    request<MessagingCampaign>('/messaging/campaigns', { method: 'POST', body: JSON.stringify(data) }),
+  updateCampaign: (id: number, data: Partial<{ name: string; subject: string; body: string; audienceType: MessagingAudienceType; templateId: number | null; scheduledAt: string | null }>) =>
+    request<MessagingCampaign>(`/messaging/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  scheduleCampaign: (id: number, scheduledAt: string) =>
+    request<MessagingCampaign>(`/messaging/campaigns/${id}/schedule`, { method: 'POST', body: JSON.stringify({ scheduledAt }) }),
+  cancelCampaign: (id: number) =>
+    request<MessagingCampaign>(`/messaging/campaigns/${id}/cancel`, { method: 'POST' }),
+  sendCampaign: (id: number) =>
+    request<MessagingCampaign>(`/messaging/campaigns/${id}/send`, { method: 'POST' }),
+  getCampaignRecipients: (id: number) =>
+    request<MessagingCampaignRecipient[]>(`/messaging/campaigns/${id}/recipients`),
 };
 
 export type AuditTransactionsFiltro = {

@@ -33,7 +33,7 @@ export type PlanFeatureKey =
     | 'modulo_contabilidad' | 'modulo_etiquetas' | 'reportes_exportar' | 'ia_avanzada'
     | 'modulo_sucursales' | 'modulo_transferencias' | 'modulo_entregas' | 'modulo_panel_cajas'
     | 'modulo_pacientes' | 'modulo_citas' | 'modulo_expediente' | 'modulo_consultorio' | 'modulo_recordatorios'
-    | 'modulo_vacunas' | 'modulo_hospitalizacion';
+    | 'modulo_vacunas' | 'modulo_hospitalizacion' | 'modulo_mensajeria';
 
 export const PERMISSIONS = {
     VER_POS: 'VER_POS', VER_CLIENTES: 'VER_CLIENTES', VER_INVENTARIO: 'VER_INVENTARIO',
@@ -67,6 +67,7 @@ export const PERMISSIONS = {
     VER_PANEL_CAJAS: 'VER_PANEL_CAJAS', GESTIONAR_CAJAS: 'GESTIONAR_CAJAS',
     VER_AUTOMATIZACIONES: 'VER_AUTOMATIZACIONES', GESTIONAR_AUTOMATIZACIONES: 'GESTIONAR_AUTOMATIZACIONES',
     VER_BACKUPS: 'VER_BACKUPS', GESTIONAR_BACKUPS: 'GESTIONAR_BACKUPS',
+    VER_MENSAJERIA: 'VER_MENSAJERIA', GESTIONAR_MENSAJERIA: 'GESTIONAR_MENSAJERIA',
     VER_IA_CUOTAS: 'VER_IA_CUOTAS',
 } as const;
 

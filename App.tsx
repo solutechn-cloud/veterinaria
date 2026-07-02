@@ -23,6 +23,7 @@ import Reports from './pages/Reports';
 import LabelDesigner from './pages/LabelDesigner';
 import CompanyConfig from './pages/CompanyConfig';
 import Accounting from './pages/Accounting';
+import MessagingCenter from './pages/MessagingCenter';
 
 // Páginas nuevas de veterinaria
 import Medicamentos from './pages/Medicamentos';
@@ -222,6 +223,11 @@ const App: React.FC = () => {
           <Route path="/admin/boxes" element={
             <ProtectedRoute requiredPermission="GESTIONAR_CAJAS">
               <Layout><AdminUsers initialView="CAJAS" /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/messaging" element={
+            <ProtectedRoute requiredPermission="VER_MENSAJERIA" requiredFeature="modulo_mensajeria">
+              <Layout><MessagingCenter /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/admin/config" element={

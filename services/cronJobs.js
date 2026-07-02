@@ -11,6 +11,8 @@ function scheduleBypass(expr, handler, opts) {
 const emailService = require('./emailService');
 const { getSystemConfig } = require('../config/systemConfig');
 const automationService = require('./automationService');
+const messagingCampaignService = require('./messagingCampaignService');
+const messagingAutomationService = require('./messagingAutomationService');
 
 function getHondurasDateString() {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Tegucigalpa' });
@@ -133,8 +135,8 @@ async function runDailyReport(tenantId = null) {
             topProductos,
             stockCritico,
         };
-        await automationService.sendEventEmail(tenantId, 'daily_report', (to) =>
-            emailService.sendDailyReportEmail(to, reportPayload)
+        await automationService.sendEventEmail(tenantId, 'daily_report', (to, meta) =>
+            emailService.sendDailyReportEmail(to, reportPayload, meta)
         );
 
         console.log(`[cronJobs] Daily report sent (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'})`);
@@ -215,8 +217,8 @@ async function runWeeklyReport(tenantId = null) {
             topClientes:     clientesRes.rows.map(r => ({ nombre: r.nombre, total: Number(r.total) })),
             stockCritico:    stockRes.rows.map(r => ({ producto: r.producto, stock: Number(r.stock) })),
         };
-        await automationService.sendEventEmail(tenantId, 'weekly_report', (to) =>
-            emailService.sendWeeklyReportEmail(to, weeklyPayload)
+        await automationService.sendEventEmail(tenantId, 'weekly_report', (to, meta) =>
+            emailService.sendWeeklyReportEmail(to, weeklyPayload, meta)
         );
 
         console.log(`[cronJobs] Weekly report sent (tenant: ${tenantId ? tenantId.substring(0, 8) : 'env'})`);
@@ -257,7 +259,7 @@ async function runTomorrowAgenda(tenantId = null) {
             veterinario: r.veterinario,
             estado: r.estado,
         }));
-        await automationService.sendEventEmail(tenantId, 'citas_manana', (to) =>
+        await automationService.sendEventEmail(tenantId, 'citas_manana', (to, meta) =>
             emailService.sendAppointmentAgendaEmail(to, {
                 fecha,
                 citas,
@@ -265,7 +267,7 @@ async function runTomorrowAgenda(tenantId = null) {
                     total: citas.length,
                     confirmadas: citas.filter(c => c.estado === 'Confirmada').length,
                 },
-            })
+            }, meta)
         );
         if (citas.length > 0) console.log(`[cronJobs] Tomorrow agenda sent (${citas.length} citas).`);
     } catch (err) {
@@ -331,7 +333,7 @@ async function runMonthlyReport(tenantId = null) {
             `, params),
         ]);
 
-        await automationService.sendEventEmail(tenantId, 'monthly_report', (to) =>
+        await automationService.sendEventEmail(tenantId, 'monthly_report', (to, meta) =>
             emailService.sendMonthlyManagementReportEmail(to, {
                 mes,
                 ventas: Number(ventasRes.rows[0]?.ventas || 0),
@@ -342,7 +344,7 @@ async function runMonthlyReport(tenantId = null) {
                 noShows: Number(citasRes.rows[0]?.no_shows || 0),
                 topItems: topRes.rows,
                 stockCritico: stockRes.rows,
-            })
+            }, meta)
         );
         console.log(`[cronJobs] Monthly report sent for ${mes}.`);
     } catch (err) {
@@ -367,7 +369,13 @@ async function runVeterinaryReminders(tenantId = null) {
 
         for (const reminder of rows) {
             try {
-                await emailService.sendVeterinaryReminderEmail(reminder.correo_destino, reminder);
+                await emailService.sendVeterinaryReminderEmail(reminder.correo_destino, reminder, {
+                    tenantId: reminder.tenant_id || tenantId,
+                    eventKey: reminder.tipo || 'recordatorio_veterinario',
+                    source: 'recordatorios',
+                    relatedTable: 'recordatorios',
+                    relatedId: reminder.id_recordatorio,
+                });
                 await pool.query(`
                     UPDATE recordatorios
                     SET estado='Enviado', fecha_envio=NOW(), intentos=intentos+1, ultimo_error=NULL
@@ -394,6 +402,20 @@ async function runVeterinaryReminders(tenantId = null) {
 // ---------------------------------------------------------------------------
 // Register all cron jobs — fan out per active tenant
 // ---------------------------------------------------------------------------
+async function runScheduledMessagingCampaigns(tenantId = null) {
+    if (!tenantId) return 0;
+    try {
+        const processed = await messagingCampaignService.processDueCampaigns(tenantId, 3);
+        if (processed > 0) {
+            console.log(`[cronJobs] Campanas programadas procesadas (${processed}) tenant ${tenantId.substring(0, 8)}.`);
+        }
+        return processed;
+    } catch (err) {
+        console.error(`[cronJobs] Error procesando campanas programadas (tenant: ${tenantId.substring(0, 8)}):`, err.message);
+        return 0;
+    }
+}
+
 function startCronJobs() {
     // Daily report — 11:00 PM Honduras (UTC-6) = 05:00 UTC
     scheduleBypass('0 5 * * *', async () => {
@@ -443,12 +465,13 @@ function startCronJobs() {
 
             const tenants = await getActiveTenants();
             await Promise.allSettled(tenants.filter(t => t.id).map(t =>
-                automationService.sendEventEmail(t.id, 'backup_ok', (to) =>
+                automationService.sendEventEmail(t.id, 'backup_ok', (to, meta) =>
                     emailService.sendBackupConfirmationEmail(
                         to,
                         new Date().toLocaleDateString('es-HN'),
                         `${Math.round((result.size || 0) / 1024)} KB`,
-                        result.objectKey
+                        result.objectKey,
+                        meta
                     )
                 )
             ));
@@ -503,7 +526,18 @@ function startCronJobs() {
         await Promise.allSettled(tenants.map(t => runVeterinaryReminders(t.id)));
     }, { timezone: 'UTC' });
 
-    console.log('[cronJobs] Cron jobs registered: daily/weekly/monthly reports, tomorrow agenda, R2 backup, AI quota cleanup, loyalty expiry, veterinary reminders.');
+    // Scheduled messaging automations and campaigns every 5 minutes.
+    scheduleBypass('*/5 * * * *', async () => {
+        const tenants = await getActiveTenants();
+        await Promise.allSettled(tenants.filter(t => t.id).map(async t => {
+            await messagingAutomationService.processDueAutomations(t.id, 3).catch(err =>
+                console.error(`[cronJobs] Error procesando automatizaciones de mensajeria (tenant: ${t.id.substring(0, 8)}):`, err.message)
+            );
+            return runScheduledMessagingCampaigns(t.id);
+        }));
+    }, { timezone: 'UTC' });
+
+    console.log('[cronJobs] Cron jobs registered: reports, agenda, R2 backup, AI quota cleanup, loyalty, reminders and messaging automations.');
 }
 
-module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runMonthlyReport, runTomorrowAgenda, runVeterinaryReminders };
+module.exports = { startCronJobs, runDailyReport, runWeeklyReport, runMonthlyReport, runTomorrowAgenda, runVeterinaryReminders, runScheduledMessagingCampaigns };

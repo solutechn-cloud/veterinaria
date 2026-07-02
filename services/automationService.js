@@ -18,6 +18,8 @@ const EVENT_CATALOG = [
     { key: 'facturacion_pendiente', label: 'Facturacion pendiente', category: 'Finanzas', recommendedTime: '16:30', description: 'Consultas o servicios clinicos pendientes de cobro.' },
 ];
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function getEventCatalog() {
     return EVENT_CATALOG;
 }
@@ -49,7 +51,8 @@ async function ensureAdminRecipient(tenantId, adminEmail) {
 async function listRecipients(tenantId) {
     const { rows } = await pool.query(`
         SELECT
-            r.id, r.nombre, r.email, r.tipo, r.activo, r.created_at, r.updated_at,
+            r.id, r.nombre, r.email, r.tipo, r.activo, r.cargo, r.telefono,
+            r.descripcion, r.notas, r.created_at, r.updated_at,
             COALESCE(
                 json_agg(
                     json_build_object(
@@ -70,33 +73,116 @@ async function listRecipients(tenantId) {
     return rows;
 }
 
+async function getRecipient(tenantId, id) {
+    const { rows } = await pool.query(`
+        SELECT
+            r.id, r.nombre, r.email, r.tipo, r.activo, r.cargo, r.telefono,
+            r.descripcion, r.notas, r.created_at, r.updated_at,
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'eventKey', e.event_key,
+                        'enabled', e.enabled,
+                        'scheduledTime', TO_CHAR(e.scheduled_time, 'HH24:MI')
+                    )
+                    ORDER BY e.event_key
+                ) FILTER (WHERE e.id IS NOT NULL),
+                '[]'::json
+            ) AS events
+        FROM automation_recipients r
+        LEFT JOIN automation_recipient_events e ON e.recipient_id = r.id AND e.tenant_id = r.tenant_id
+        WHERE r.tenant_id = $1 AND r.id = $2
+        GROUP BY r.id
+        LIMIT 1
+    `, [tenantId, id]);
+    return rows[0] || null;
+}
+
 async function upsertRecipient(tenantId, payload) {
     const nombre = String(payload.nombre || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
     const tipo = payload.tipo === 'grupo' ? 'grupo' : 'persona';
     const activo = payload.activo !== false;
-    if (!nombre || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const cargo = String(payload.cargo || '').trim() || null;
+    const telefono = String(payload.telefono || '').trim() || null;
+    const descripcion = String(payload.descripcion || '').trim() || null;
+    const notas = String(payload.notas || '').trim() || null;
+    if (!nombre || !email || !EMAIL_RE.test(email)) {
         const err = new Error('Nombre y correo valido son requeridos.');
         err.statusCode = 400;
         throw err;
     }
 
-    const params = [tenantId, nombre, email, tipo, activo];
+    const params = [tenantId, nombre, email, tipo, activo, cargo, telefono, descripcion, notas];
     const { rows } = await pool.query(`
-        INSERT INTO automation_recipients (tenant_id, nombre, email, tipo, activo)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO automation_recipients (tenant_id, nombre, email, tipo, activo, cargo, telefono, descripcion, notas)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (tenant_id, email) DO UPDATE SET
             nombre = EXCLUDED.nombre,
             tipo = EXCLUDED.tipo,
             activo = EXCLUDED.activo,
+            cargo = EXCLUDED.cargo,
+            telefono = EXCLUDED.telefono,
+            descripcion = EXCLUDED.descripcion,
+            notas = EXCLUDED.notas,
             updated_at = NOW()
-        RETURNING *
+        RETURNING id
     `, params);
 
     if (Array.isArray(payload.events)) {
         await setRecipientEvents(tenantId, rows[0].id, payload.events);
     }
-    return rows[0];
+    return getRecipient(tenantId, rows[0].id);
+}
+
+async function updateRecipient(tenantId, id, payload) {
+    const current = await getRecipient(tenantId, id);
+    if (!current) {
+        const err = new Error('Destinatario no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const nombre = Object.prototype.hasOwnProperty.call(payload, 'nombre')
+        ? String(payload.nombre || '').trim()
+        : current.nombre;
+    const email = Object.prototype.hasOwnProperty.call(payload, 'email')
+        ? String(payload.email || '').trim().toLowerCase()
+        : current.email;
+    const tipo = Object.prototype.hasOwnProperty.call(payload, 'tipo')
+        ? (payload.tipo === 'grupo' ? 'grupo' : 'persona')
+        : current.tipo;
+    const activo = Object.prototype.hasOwnProperty.call(payload, 'activo') ? payload.activo !== false : current.activo;
+    const cargo = Object.prototype.hasOwnProperty.call(payload, 'cargo') ? String(payload.cargo || '').trim() || null : current.cargo || null;
+    const telefono = Object.prototype.hasOwnProperty.call(payload, 'telefono') ? String(payload.telefono || '').trim() || null : current.telefono || null;
+    const descripcion = Object.prototype.hasOwnProperty.call(payload, 'descripcion') ? String(payload.descripcion || '').trim() || null : current.descripcion || null;
+    const notas = Object.prototype.hasOwnProperty.call(payload, 'notas') ? String(payload.notas || '').trim() || null : current.notas || null;
+
+    if (!nombre || !email || !EMAIL_RE.test(email)) {
+        const err = new Error('Nombre y correo valido son requeridos.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    await pool.query(`
+        UPDATE automation_recipients
+        SET nombre = $3,
+            email = $4,
+            tipo = $5,
+            activo = $6,
+            cargo = $7,
+            telefono = $8,
+            descripcion = $9,
+            notas = $10,
+            updated_at = NOW()
+        WHERE tenant_id = $1 AND id = $2
+    `, [tenantId, id, nombre, email, tipo, activo, cargo, telefono, descripcion, notas]);
+
+    if (Array.isArray(payload.events)) {
+        await setRecipientEvents(tenantId, id, payload.events);
+    }
+
+    return getRecipient(tenantId, id);
 }
 
 async function setRecipientEvents(tenantId, recipientId, events) {
@@ -135,7 +221,7 @@ async function getRecipientEmails(tenantId, eventKey) {
 async function sendEventEmail(tenantId, eventKey, sendFn) {
     const recipients = await getRecipientEmails(tenantId, eventKey);
     if (!recipients.length) return { sent: 0 };
-    await Promise.all(recipients.map(email => sendFn(email)));
+    await Promise.all(recipients.map(email => sendFn(email, { tenantId, eventKey, source: 'automation' })));
     return { sent: recipients.length };
 }
 
@@ -154,7 +240,9 @@ module.exports = {
     getEventCatalog,
     ensureAdminRecipient,
     listRecipients,
+    getRecipient,
     upsertRecipient,
+    updateRecipient,
     setRecipientEvents,
     deleteRecipient,
     getRecipientEmails,

@@ -21,6 +21,7 @@ const ROUTE_PLAN_FEATURES = [
     { pattern: /^\/api\/recordatorios\b/, feature: 'modulo_recordatorios' },
     { pattern: /^\/api\/clinica\/flowboard\b/, feature: 'modulo_hospitalizacion' },
     { pattern: /^\/api\/consultorio\b/, feature: 'modulo_consultorio' },
+    { pattern: /^\/api\/messaging\b/, feature: 'modulo_mensajeria' },
 ];
 
 const PLAN_ORDER = ['basico', 'profesional', 'enterprise'];

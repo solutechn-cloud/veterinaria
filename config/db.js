@@ -85,6 +85,14 @@ function _getTenantStore() {
     return store;
 }
 
+function getCurrentRequestContext() {
+    const store = _getTenantStore();
+    return {
+        tenantId: store?.tenantId || null,
+        bypass: Boolean(store?.bypass),
+    };
+}
+
 function _connectWithTimeout() {
     let timeoutId;
     const connectPromise = _rawPoolConnect();
@@ -586,4 +594,4 @@ async function tenantQuery(tenantId, text, values = []) {
     return withTenantContext(tenantId, (client) => client.query(text, values));
 }
 
-module.exports = { pool, getPoolStats, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass };
+module.exports = { pool, getPoolStats, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass, getCurrentRequestContext };

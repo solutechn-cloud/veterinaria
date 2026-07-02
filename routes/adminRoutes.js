@@ -264,10 +264,28 @@ router.get('/admin/automation/recipients', authenticateToken, requireAdmin, asyn
     } catch (e) { handleDbError(res, e); }
 });
 
+router.get('/admin/automation/recipients/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const recipient = await automationService.getRecipient(req.tenantId, Number(req.params.id));
+        if (!recipient) return res.status(404).json({ error: 'Destinatario no encontrado' });
+        res.json(recipient);
+    } catch (e) { handleDbError(res, e); }
+});
+
 router.post('/admin/automation/recipients', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const recipient = await automationService.upsertRecipient(req.tenantId, req.body || {});
         res.status(201).json(recipient);
+    } catch (e) {
+        if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+        handleDbError(res, e);
+    }
+});
+
+router.put('/admin/automation/recipients/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const recipient = await automationService.updateRecipient(req.tenantId, Number(req.params.id), req.body || {});
+        res.json(recipient);
     } catch (e) {
         if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
         handleDbError(res, e);

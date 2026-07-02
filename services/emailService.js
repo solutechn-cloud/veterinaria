@@ -1,6 +1,7 @@
 'use strict';
 
 const { Resend } = require('resend');
+const messagingService = require('./messagingService');
 
 // Lazily instantiated so the module can be loaded without RESEND_API_KEY set.
 let _resend = null;
@@ -16,8 +17,8 @@ const { getSystemConfig } = require('../config/systemConfig');
 // Module-level cache so getFROM/getCOMPANY stay synchronous inside template literals.
 // Call warmEmailConfig() at the start of every exported send function.
 let _cfg = null;
-async function warmEmailConfig() {
-    _cfg = await getSystemConfig();
+async function warmEmailConfig(options = {}) {
+    _cfg = await getSystemConfig(options?.tenantId || null);
 }
 function getFROM() {
     return _cfg?.emailFrom || process.env.EMAIL_FROM || 'ERPSmartCloud <noreply@erpsmartcloud.com>';
@@ -25,6 +26,24 @@ function getFROM() {
 function getCOMPANY() {
     const raw = _cfg?.emailFrom || '';
     return raw.match(/^(.+?)\s*</)?.[1] || process.env.COMPANY_NAME || 'ERPSmartCloud';
+}
+
+async function dispatchEmail({ to, subject, html, text = null, tracking = {} }) {
+    return messagingService.sendEmail({
+        tenantId: tracking.tenantId || null,
+        to,
+        subject,
+        html,
+        text,
+        from: getFROM(),
+        source: tracking.source || 'email_service',
+        eventKey: tracking.eventKey || null,
+        templateKey: tracking.templateKey || null,
+        relatedTable: tracking.relatedTable || null,
+        relatedId: tracking.relatedId || null,
+        metadata: tracking.metadata || {},
+        createdBy: tracking.createdBy || null,
+    });
 }
 
 function escapeHtml(value) {
@@ -220,7 +239,7 @@ async function sendWarrantyExpiryEmail(to, clientName, warrantyId, deviceDesc, e
 // ---------------------------------------------------------------------------
 // c) Daily report
 // ---------------------------------------------------------------------------
-async function sendDailyReportEmail(to, reportData) {
+async function sendDailyReportEmail(to, reportData, options = {}) {
     const {
         fecha,
         totalVentas = 0,
@@ -234,7 +253,7 @@ async function sendDailyReportEmail(to, reportData) {
         stockCritico = []
     } = reportData;
 
-    await warmEmailConfig();
+    await warmEmailConfig(options);
     const gananciaColor = gananciaEstimada >= 0 ? '#2e7d32' : '#c62828';
 
     const topProductosRows = topProductos.length > 0
@@ -272,11 +291,17 @@ async function sendDailyReportEmail(to, reportData) {
              </div>`
         );
 
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Reporte diario operativo - ${fecha}`,
-            html
+            html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'daily_report',
+                source: options.source || 'reportes',
+                templateKey: 'daily_report',
+                metadata: { fecha },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -288,8 +313,8 @@ async function sendDailyReportEmail(to, reportData) {
 // ---------------------------------------------------------------------------
 // d) Weekly report
 // ---------------------------------------------------------------------------
-async function sendWeeklyReportEmail(to, reportData) {
-    await warmEmailConfig();
+async function sendWeeklyReportEmail(to, reportData, options = {}) {
+    await warmEmailConfig(options);
     const {
         semana,
         ventas = 0,
@@ -343,11 +368,17 @@ async function sendWeeklyReportEmail(to, reportData) {
              </div>`
         );
 
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Resumen semanal gerencial - ${semana}`,
-            html
+            html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'weekly_report',
+                source: options.source || 'reportes',
+                templateKey: 'weekly_report',
+                metadata: { semana },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -409,8 +440,8 @@ async function sendLowBalanceAlertEmail(to, red, saldoActual, umbral) {
 // ---------------------------------------------------------------------------
 // f) Backup confirmation
 // ---------------------------------------------------------------------------
-async function sendBackupConfirmationEmail(to, date, fileSize, objectKey) {
-    await warmEmailConfig();
+async function sendBackupConfirmationEmail(to, date, fileSize, objectKey, options = {}) {
+    await warmEmailConfig(options);
     try {
         const html = wrapHtml(
             `Backup exitoso ${date}`,
@@ -439,11 +470,17 @@ async function sendBackupConfirmationEmail(to, date, fileSize, objectKey) {
              </div>`
         );
 
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Backup exitoso - ${date}`,
-            html
+            html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'backup_ok',
+                source: options.source || 'backup',
+                templateKey: 'backup_ok',
+                metadata: { date, fileSize, objectKey },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -523,8 +560,8 @@ async function sendVeterinaryReminderEmail(to, reminder) {
     }
 }
 
-async function sendVeterinaryReminderEmailV2(to, reminder) {
-    await warmEmailConfig();
+async function sendVeterinaryReminderEmailV2(to, reminder, options = {}) {
+    await warmEmailConfig(options);
     try {
         const company = getCOMPANY();
         const title = reminder.asunto || 'Recordatorio veterinario';
@@ -549,11 +586,19 @@ async function sendVeterinaryReminderEmailV2(to, reminder) {
              </div>`,
             { preheader: `${title} - ${scheduled}` }
         );
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: reminder.asunto || `Recordatorio - ${company}`,
             html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || reminder.tipo || 'recordatorio_veterinario',
+                source: options.source || 'recordatorios',
+                templateKey: 'veterinary_reminder',
+                relatedTable: options.relatedTable || 'recordatorios',
+                relatedId: options.relatedId || reminder.id_recordatorio || null,
+                metadata: { tipo: reminder.tipo || null, fecha_programada: reminder.fecha_programada || null },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -562,8 +607,8 @@ async function sendVeterinaryReminderEmailV2(to, reminder) {
     }
 }
 
-async function sendAppointmentConfirmationEmail(to, appointment) {
-    await warmEmailConfig();
+async function sendAppointmentConfirmationEmail(to, appointment, options = {}) {
+    await warmEmailConfig(options);
     try {
         const company = getCOMPANY();
         const patient = appointment.paciente || appointment.pacienteNombre || 'su mascota';
@@ -592,11 +637,19 @@ async function sendAppointmentConfirmationEmail(to, appointment) {
              </div>`,
             { preheader: `Cita de ${patient} confirmada para ${when}` }
         );
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Cita programada para ${patient} - ${company}`,
             html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'appointment_created',
+                source: options.source || 'agenda',
+                templateKey: 'appointment_confirmation',
+                relatedTable: options.relatedTable || 'citas',
+                relatedId: options.relatedId || appointment.id_cita || appointment.id || null,
+                metadata: { patient, type, fecha_inicio: appointment.fecha_inicio || null },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -605,8 +658,8 @@ async function sendAppointmentConfirmationEmail(to, appointment) {
     }
 }
 
-async function sendAppointmentAgendaEmail(to, { fecha, citas = [], resumen = {} }) {
-    await warmEmailConfig();
+async function sendAppointmentAgendaEmail(to, { fecha, citas = [], resumen = {} }, options = {}) {
+    await warmEmailConfig(options);
     try {
         const company = getCOMPANY();
         const rows = citas.length ? citas.map(c => `
@@ -636,11 +689,17 @@ async function sendAppointmentAgendaEmail(to, { fecha, citas = [], resumen = {} 
                </div>
              </div>`
         );
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Agenda de citas - ${fecha}`,
             html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'citas_manana',
+                source: options.source || 'agenda',
+                templateKey: 'appointment_agenda',
+                metadata: { fecha, total: resumen.total || citas.length },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -649,8 +708,8 @@ async function sendAppointmentAgendaEmail(to, { fecha, citas = [], resumen = {} 
     }
 }
 
-async function sendClinicalOwnerNotificationEmail(to, data = {}) {
-    await warmEmailConfig();
+async function sendClinicalOwnerNotificationEmail(to, data = {}, options = {}) {
+    await warmEmailConfig(options);
     try {
         const company = getCOMPANY();
         const patient = data.paciente || data.pacienteNombre || 'su mascota';
@@ -682,11 +741,19 @@ async function sendClinicalOwnerNotificationEmail(to, data = {}) {
              </div>`,
             { preheader: `${type} - ${patient}` }
         );
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `${type} de ${patient} - ${company}`,
             html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'mensaje_tutor',
+                source: options.source || 'consultorio',
+                templateKey: 'clinical_owner_notification',
+                relatedTable: options.relatedTable || data.relatedTable || 'consultorio_eventos',
+                relatedId: options.relatedId || data.id_evento || data.id || null,
+                metadata: { patient, type, proximo_control: data.proximo_control || null },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -698,15 +765,21 @@ async function sendClinicalOwnerNotificationEmail(to, data = {}) {
 // ---------------------------------------------------------------------------
 // h) Monthly report email - receives pre-built HTML content
 // ---------------------------------------------------------------------------
-async function sendMonthlyReportEmail(to, mes, htmlBody) {
-    await warmEmailConfig();
+async function sendMonthlyReportEmail(to, mes, htmlBody, options = {}) {
+    await warmEmailConfig(options);
     try {
         const html = wrapHtml(`Reporte Mensual ${mes}`, '#1b5e20', htmlBody);
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
-            subject: `Reporte Mensual — ${mes}`,
-            html
+            subject: `Reporte Mensual - ${mes}`,
+            html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'monthly_report',
+                source: options.source || 'reportes',
+                templateKey: 'monthly_report',
+                metadata: { mes },
+            },
         });
         return { success: true };
     } catch (err) {
@@ -715,8 +788,8 @@ async function sendMonthlyReportEmail(to, mes, htmlBody) {
     }
 }
 
-async function sendMonthlyManagementReportEmail(to, reportData) {
-    await warmEmailConfig();
+async function sendMonthlyManagementReportEmail(to, reportData, options = {}) {
+    await warmEmailConfig(options);
     try {
         const {
             mes,
@@ -768,11 +841,17 @@ async function sendMonthlyManagementReportEmail(to, reportData) {
                </div>
              </div>`
         );
-        await getResend().emails.send({
-            from: getFROM(),
+        await dispatchEmail({
             to,
             subject: `Reporte mensual gerencial - ${mes}`,
             html,
+            tracking: {
+                ...options,
+                eventKey: options.eventKey || 'monthly_management_report',
+                source: options.source || 'reportes',
+                templateKey: 'monthly_management_report',
+                metadata: { mes },
+            },
         });
         return { success: true };
     } catch (err) {

@@ -50,6 +50,8 @@ const dashboardRoutes    = require('./routes/dashboardRoutes');
 const entregasRoutes     = require('./routes/entregasRoutes');
 const loyaltyRoutes      = require('./routes/loyaltyRoutes');
 const veterinaryRoutes   = require('./routes/veterinaryRoutes');
+const messagingRoutes    = require('./routes/messagingRoutes');
+const messagingWebhookRoutes = require('./routes/messagingWebhookRoutes');
 
 // SaaS Routes
 const { router: saasAuthRoutes } = require('./routes/saasAuthRoutes');
@@ -143,6 +145,7 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use('/api/webhooks/resend', express.raw({ type: 'application/json', limit: '2mb' }), withRequestBypass, messagingWebhookRoutes);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '15mb' }));
 
 app.get('/healthz', async (req, res) => {
@@ -205,6 +208,7 @@ function mountRoutes() {
     apiRouter.use(entregasRoutes);
     apiRouter.use(loyaltyRoutes);
     apiRouter.use(veterinaryRoutes);
+    apiRouter.use(messagingRoutes);
     apiRouter.use('/ai', aiRoutes);
     app.use('/api', apiRouter);
 
