@@ -22,7 +22,7 @@ import AIAssistantPanel  from '../components/POS/AIAssistantPanel';
 import QuickClientModal  from '../components/POS/QuickClientModal';
 import HoldPanel         from '../components/POS/HoldPanel';
 import * as ReactRouterDOM from 'react-router-dom';
-const { useNavigate } = ReactRouterDOM as any;
+const { useNavigate, useLocation } = ReactRouterDOM as any;
 
 // ── Session stats (local counter, resets on page reload) ─────────────────────
 const sessionStart = new Date();
@@ -36,11 +36,13 @@ function formatDuration(from: Date): string {
 const POS: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [products, setProducts]       = useState<ProductoFarmacia[]>([]);
   const [clients, setClients]         = useState<Cliente[]>([]);
   const [cart, setCart]               = useState<CartItem[]>([]);
   const [activeArqueo, setActiveArqueo] = useState<any>(null);
+  const [cotizacionOrigen, setCotizacionOrigen] = useState<string | null>(null);
 
   const [isLoading, setIsLoading]         = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -127,6 +129,40 @@ const POS: React.FC = () => {
   }, []);
 
   useEffect(() => { loadInitialData(); }, [loadInitialData]);
+
+  // Convertir cotización → venta: carga sus ítems al carrito si se llega con ?cotizacion=
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const codigo = params.get('cotizacion');
+    if (!codigo) return;
+    (async () => {
+      try {
+        const [cot, dets] = await Promise.all([QuoteService.get(codigo), QuoteService.getDetalles(codigo)]);
+        const items: CartItem[] = (dets || []).map((d: any, idx: number) => ({
+          key: `cot-${codigo}-${idx}`,
+          id_medicamento: d.id_medicamento || '',
+          id_presentacion: Number(d.id_presentacion) || 0,
+          id_servicio: d.id_servicio || undefined,
+          nombre: d.descripcionProducto || 'Producto',
+          cantidad: Number(d.cantidad) || 1,
+          precioVenta: Number(d.precioVenta) || 0,
+          tipoIsv: (d.tipoIsv as CartItem['tipoIsv']) || 'exento',
+          tipoProducto: (d.tipoProducto as CartItem['tipoProducto']) || 'MEDICAMENTO',
+          requiereReceta: false,
+          esControlado: false,
+          stock: 999999,
+        }));
+        setCart(items);
+        if ((cot as any)?.identidadCliente) setSelectedClientId((cot as any).identidadCliente);
+        setCotizacionOrigen(codigo);
+        navigate('/pos', { replace: true });
+        Swal.fire({ icon: 'info', title: 'Cotización cargada', text: `${codigo} cargada en el carrito. Revisa y cobra para convertirla en venta.`, timer: 2600, showConfirmButton: false });
+      } catch (e: any) {
+        Swal.fire('Error', e?.message || 'No se pudo cargar la cotización', 'error');
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   // ── Cart totals ───────────────────────────────────────────────────────────
   const totals = useMemo((): CartTotals => {
@@ -368,6 +404,7 @@ const POS: React.FC = () => {
     setPaymentType('Contado');
     setPaymentMethod('Efectivo');
     setDocumentType('factura_fiscal');
+    setCotizacionOrigen(null);
     setCashReceived(0);
     setMixtoEfectivo(0);
     setThirdAgeMode(false);
@@ -445,6 +482,7 @@ const POS: React.FC = () => {
         isv: totals.isv,
         descuento: totals.descuento,
         clientMutationId,
+        ...(cotizacionOrigen ? { codCotizacion: cotizacionOrigen } : {}),
         detalles: buildCommercialDetails(),
       };
 
@@ -626,6 +664,17 @@ const POS: React.FC = () => {
           <Sparkles size={13} /> IA
         </button>
       </div>
+
+      {cotizacionOrigen && (
+        <div className="shrink-0 border-b border-indigo-100 bg-indigo-50 px-4 py-2 text-sm text-indigo-800 md:px-6 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <Package size={15} className="text-indigo-600" />
+            Convirtiendo cotización <strong>{cotizacionOrigen}</strong> — cobra para generar la venta.
+          </span>
+          <button type="button" onClick={() => { setCart([]); setCotizacionOrigen(null); }}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Cancelar</button>
+        </div>
+      )}
 
       {/* ── Mobile tab bar ── */}
       {!isLoading && (!hasAssignedCashRegister || !activeArqueo) && (

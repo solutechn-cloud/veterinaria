@@ -6,6 +6,8 @@ import {
   VentaPayload,
   Cotizacion,
   CotizacionPayload,
+  CotizacionResumen,
+  VentaResumen,
   DetalleVenta,
   Arqueo,
   LabelTemplate,
@@ -363,6 +365,8 @@ export const SalesService = {
   updateVenta: (id: string, data: VentaPayload) => request<{codVenta: string}>(`/ventas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getDetallesVenta: (id: string) => request<DetalleVenta[]>(`/ventas/${id}/detalles`),
   anularVenta: (id: string) => request(`/ventas/${id}/anular`, { method: 'PUT' }),
+  buscar: (desde: string, hasta: string, q?: string) =>
+    request<VentaResumen[]>(`/ventas/buscar?desde=${desde}&hasta=${hasta}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
 };
 
 export const QuoteService = {
@@ -370,6 +374,10 @@ export const QuoteService = {
     request<{ codigo: string; codCotizacion?: string }>('/cotizaciones', { method: 'POST', body: JSON.stringify(data) }),
   get: (id: string) => request<Cotizacion>(`/cotizaciones/${id}`),
   getDetalles: (id: string) => request<DetalleVenta[]>(`/cotizaciones/${id}/detalles`),
+  list: (desde: string, hasta: string, estado?: string, q?: string) =>
+    request<CotizacionResumen[]>(`/cotizaciones?desde=${desde}&hasta=${hasta}${estado ? `&estado=${estado}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+  updateEstado: (id: string, estado: string) =>
+    request(`/cotizaciones/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
 };
 
 

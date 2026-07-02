@@ -178,9 +178,10 @@ export interface VentaPayload {
   detalles: Partial<DetalleVenta>[];
   fecha?: string;
   clientMutationId?: string;
+  codCotizacion?: string;
 }
 
-export interface CotizacionPayload extends Omit<VentaPayload, 'tipoDocumento' | 'documentoFiscal'> {
+export interface CotizacionPayload extends Omit<VentaPayload, 'tipoDocumento' | 'documentoFiscal' | 'codCotizacion'> {
   validoHasta?: string;
   observaciones?: string;
 }
@@ -191,6 +192,35 @@ export interface Cotizacion extends Omit<Venta, 'codVenta' | 'tipoDocumento'> {
   tipoDocumento: 'cotizacion';
   validoHasta?: string;
   observaciones?: string;
+  ventaCodigo?: string;
+}
+
+export type CotizacionEstado = 'Emitida' | 'Aceptada' | 'Vencida' | 'Convertida';
+
+export interface CotizacionResumen {
+  codigo: string;
+  fecha: string;
+  total: number;
+  estado: CotizacionEstado;
+  tipoCompra?: string;
+  validoHasta?: string;
+  ventaCodigo?: string;
+  identidadCliente?: string;
+  nombreCliente?: string;
+}
+
+export interface VentaResumen {
+  codVenta: string;
+  numeroFactura?: string;
+  numeroDocumento?: string;
+  tipoDocumento?: DocumentoComercialTipo;
+  documentoFiscal?: boolean;
+  fecha: string;
+  total: number;
+  estado: string;
+  tipoCompra?: string;
+  identidadCliente?: string;
+  nombreCliente?: string;
 }
 
 export interface DetalleVenta {

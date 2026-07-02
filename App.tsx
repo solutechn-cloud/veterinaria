@@ -12,6 +12,7 @@ import Layout from './components/Layout';
 // Páginas existentes reutilizadas
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
+import Historial from './pages/Historial';
 import Clients from './pages/Clients';
 import Providers from './pages/Providers';
 import CashRegister from './pages/CashRegister';
@@ -66,6 +67,11 @@ const App: React.FC = () => {
           <Route path="/pos" element={
             <ProtectedRoute requiredPermission="VER_POS">
               <Layout><POS /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/historial" element={
+            <ProtectedRoute requiredPermission="VER_POS">
+              <Layout><Historial /></Layout>
             </ProtectedRoute>
           } />
           <Route path="/clients" element={

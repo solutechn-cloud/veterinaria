@@ -179,6 +179,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       name: 'Comercial', icon: <ShoppingCart size={20} />, permission: 'VER_POS',
       subItems: [
         { name: 'Punto de Venta', path: '/pos', icon: <ShoppingCart size={18} />, permission: 'VER_POS' },
+        { name: 'Historial', path: '/historial', icon: <FileText size={18} />, permission: 'VER_POS' },
         { name: 'Tutores', path: '/clients', icon: <Users size={18} />, permission: 'VER_CLIENTES' },
         { name: 'Servicios', path: '/servicios-veterinarios', icon: <Stethoscope size={18} />, permission: 'VER_SERVICIOS_VET' },
       ]
