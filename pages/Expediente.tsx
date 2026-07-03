@@ -100,12 +100,46 @@ function quoteLineTax(item: MedicationItem) {
   return price * qty * rate;
 }
 
+// Busca la cotización "Emitida" (pendiente de cobro) abierta HOY para el cliente
+// y le agrega las líneas; si no existe, crea una nueva. Así consulta (servicios)
+// y receta (productos) de una misma visita quedan en UNA sola cotización.
+async function pushClinicalQuote(patient: Paciente, detalles: any[], observaciones: string) {
+  if (!detalles.length) return null;
+  const clienteId = patient.id_tutor || (patient as any).tutorId;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  try {
+    const abiertas = await QuoteService.list(hoy, hoy, 'Emitida').catch(() => []);
+    const abierta = (abiertas || [])
+      .filter(c => String(c.identidadCliente || '') === String(clienteId))
+      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0];
+    if (abierta) {
+      const r = await QuoteService.appendDetalles(abierta.codigo, { detalles });
+      return (r && (r.codigo || r.codCotizacion)) || abierta.codigo;
+    }
+  } catch { /* si falla la búsqueda, se crea una nueva abajo */ }
+
+  const subtotal = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1), 0);
+  const isv = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1) * (TAX_RATES[item.tipoIsv || 'exento'] || 0), 0);
+  const result = await QuoteService.create({
+    identidadCliente: clienteId,
+    tipoCompra: 'Contado',
+    total: subtotal + isv,
+    isv,
+    descuento: 0,
+    detalles,
+    observaciones,
+    clientMutationId: `visita-${patient.id_paciente}-${hoy}-${Date.now()}`,
+  } as any);
+  return result.codigo || result.codCotizacion || null;
+}
+
 async function createMedicationQuoteFromPayload(patient: Paciente, payload: Record<string, any>, eventId?: number) {
   const rows = (Array.isArray(payload.medicamentos) ? payload.medicamentos : []) as MedicationItem[];
   const billable = rows.filter(row => row.id_medicamento && row.id_presentacion && Number(row.precioVenta || 0) > 0);
   if (!billable.length) return null;
 
-  const detalles: Partial<DetalleVenta>[] = billable.map(row => ({
+  const detalles: any[] = billable.map(row => ({
     tipoProducto: 'MEDICAMENTO',
     id_medicamento: row.id_medicamento,
     id_presentacion: row.id_presentacion,
@@ -114,19 +148,7 @@ async function createMedicationQuoteFromPayload(patient: Paciente, payload: Reco
     precioVenta: Number(row.precioVenta || 0),
     tipoIsv: row.tipoIsv || 'exento',
   }));
-  const subtotal = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1), 0);
-  const isv = billable.reduce((sum, item) => sum + quoteLineTax(item), 0);
-  const result = await QuoteService.create({
-    identidadCliente: patient.id_tutor || (patient as any).tutorId,
-    tipoCompra: 'Contado',
-    total: subtotal + isv,
-    isv,
-    descuento: 0,
-    detalles,
-    observaciones: `Medicamentos indicados para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`,
-    clientMutationId: `rx-${patient.id_paciente}-${eventId || Date.now()}`,
-  } as any);
-  return result.codigo || result.codCotizacion || null;
+  return pushClinicalQuote(patient, detalles, `Medicamentos indicados para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
 }
 
 async function createServiceQuoteFromPayload(patient: Paciente, payload: Record<string, any>, eventId?: number) {
@@ -142,19 +164,7 @@ async function createServiceQuoteFromPayload(patient: Paciente, payload: Record<
     precioVenta: Number(row.precio || 0),
     tipoIsv: row.tipoIsv || 'exento',
   }));
-  const subtotal = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1), 0);
-  const isv = billable.reduce((sum, row) => sum + Number(row.precio || 0) * Number(row.cantidad || 1) * (TAX_RATES[row.tipoIsv || 'exento'] || 0), 0);
-  const result = await QuoteService.create({
-    identidadCliente: patient.id_tutor || (patient as any).tutorId,
-    tipoCompra: 'Contado',
-    total: subtotal + isv,
-    isv,
-    descuento: 0,
-    detalles,
-    observaciones: `Servicios de consulta para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`,
-    clientMutationId: `svc-${patient.id_paciente}-${eventId || Date.now()}`,
-  } as any);
-  return result.codigo || result.codCotizacion || null;
+  return pushClinicalQuote(patient, detalles, `Servicios de consulta para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
 }
 
 export default function Expediente() {
@@ -385,7 +395,7 @@ export default function Expediente() {
       const hasta = hoy.toISOString().slice(0, 10);
       const desdeD = new Date(hoy); desdeD.setDate(desdeD.getDate() - 180);
       const desde = desdeD.toISOString().slice(0, 10);
-      const list = await QuoteService.list(desde, hasta, 'Pendiente');
+      const list = await QuoteService.list(desde, hasta, 'Emitida');
       const propias = (list || [])
         .filter(c => String(c.identidadCliente || '') === String(clienteId))
         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
