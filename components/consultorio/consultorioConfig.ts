@@ -77,16 +77,16 @@ export function fieldsFor(tipo: ConsultorioTipo): FieldDef[] {
   const byType: Record<string, FieldDef[]> = {
     consulta: [
       { key: 'motivo', label: 'Motivo', type: 'select', options: ['Consulta general', 'Urgencia', 'Control', 'Revisión postoperatoria', 'Otro'] },
-      { key: 'subjetivo', label: 'S: Subjetivo / anamnesis', type: 'textarea', wide: true },
-      { key: 'objetivo', label: 'O: Objetivo / examen', type: 'textarea', wide: true },
-      { key: 'evaluacion', label: 'A: Evaluación / diagnóstico', type: 'textarea', wide: true },
-      { key: 'plan', label: 'P: Plan terapéutico/diagnóstico', type: 'textarea', wide: true },
       { key: 'peso', label: 'Peso kg', type: 'number' },
       { key: 'temperatura', label: 'Temperatura C', type: 'number' },
       { key: 'frecuencia_cardiaca', label: 'Frecuencia cardiaca', type: 'number' },
       { key: 'frecuencia_respiratoria', label: 'Frecuencia respiratoria', type: 'number' },
       { key: 'condicion_corporal', label: 'Condición corporal' },
-      { key: 'proximo_control', label: 'Próximo control', type: 'date' },
+      { key: 'subjetivo', label: 'S: Subjetivo / anamnesis', type: 'textarea', wide: true },
+      { key: 'objetivo', label: 'O: Objetivo / examen', type: 'textarea', wide: true },
+      { key: 'evaluacion', label: 'A: Evaluación / diagnóstico', type: 'textarea', wide: true },
+      { key: 'plan', label: 'P: Plan terapéutico/diagnóstico', type: 'textarea', wide: true },
+      { key: 'proximo_control', label: 'Próximo control', type: 'date', helper: 'Al guardar con esta fecha se crea automáticamente una cita en la agenda general.' },
     ],
     vacuna: [
       { key: 'nombre_vacuna', label: 'Vacuna', placeholder: 'Rabia, múltiple, triple felina...' },

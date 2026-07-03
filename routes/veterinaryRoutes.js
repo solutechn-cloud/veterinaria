@@ -1501,7 +1501,11 @@ router.get('/consultorio/pacientes/:id/timeline', authenticateToken, async (req,
             pool.query(`
                 SELECT id_consulta AS id, 'consulta' AS tipo, COALESCE(NULLIF(motivo,''),'Consulta clínica') AS titulo,
                        fecha AS fecha_evento, estado, evaluacion AS resumen, plan AS detalle,
-                       json_build_object('subjetivo', subjetivo, 'objetivo', objetivo, 'evaluacion', evaluacion, 'plan', plan, 'peso', peso, 'temperatura', temperatura) AS payload,
+                       json_build_object(
+                           'motivo', motivo, 'subjetivo', subjetivo, 'objetivo', objetivo, 'evaluacion', evaluacion, 'plan', plan,
+                           'peso', peso, 'temperatura', temperatura, 'frecuencia_cardiaca', frecuencia_cardiaca,
+                           'frecuencia_respiratoria', frecuencia_respiratoria, 'condicion_corporal', condicion_corporal
+                       ) AS payload,
                        'consulta' AS source
                 FROM consultas
                 WHERE tenant_id=$1 AND id_paciente=$2 AND estado <> 'Anulada'

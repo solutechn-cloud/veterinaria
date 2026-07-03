@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useParams, useNavigate } = ReactRouterDOM as any;
-import { ConsultorioService, MedicamentosService, QuoteService, VacunasService } from '../services/api';
+import { CitasService, ConsultasService, ConsultorioService, MedicamentosService, QuoteService, VacunasService } from '../services/api';
 import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Medicamento, Paciente, PresentacionVenta } from '../types';
 import {
   ChevronLeft, ChevronRight, PawPrint,
@@ -45,6 +45,27 @@ const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { s
 
 function toDateOnly(v?: string) {
   return (v || nowLocal()).slice(0, 10);
+}
+
+// El timeline combinado (/consultorio/pacientes/:id/timeline) alias-ea el PK real
+// a "id" para todas las fuentes y mezcla dos sistemas: los registros genéricos
+// (paciente_eventos_clinicos, source "evento") y las consultas antiguas de la
+// tabla dedicada "consultas" (source "consulta"), que tienen su propio PUT
+// /consultas/:id. Vacunas/citas/recordatorios tienen sus propios flujos y no se
+// editan por aquí. id_evento/id_consulta son BIGSERIAL, así que pg los devuelve
+// como string, no como number.
+function getEditableSource(item: ConsultorioEvento): 'evento' | 'consulta' | null {
+  if (!item.source || item.source === 'evento') return 'evento';
+  if (item.source === 'consulta') return 'consulta';
+  return null;
+}
+
+function getEventoId(item: ConsultorioEvento): number | null {
+  if (!getEditableSource(item)) return null;
+  const raw = item.id_evento ?? item.id;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 function professionalName(value?: ProfessionalValue | string | null) {
@@ -103,6 +124,8 @@ export default function Expediente() {
   const [loadingRecord, setLoadingRecord] = useState(false);
   const [modal, setModal] = useState<EventForm | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingSource, setEditingSource] = useState<'evento' | 'consulta' | null>(null);
+  const [initialProximoControl, setInitialProximoControl] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
 
   const patient = detail?.paciente;
@@ -153,6 +176,8 @@ export default function Expediente() {
     if (!patient) return;
     const mod = moduleFor(tipo);
     setEditingId(null);
+    setEditingSource(null);
+    setInitialProximoControl('');
     setModal({
       tipo,
       fecha_evento: nowLocal(),
@@ -166,8 +191,12 @@ export default function Expediente() {
   };
 
   const openEdit = (item: ConsultorioEvento) => {
-    if (!patient || !item?.id_evento) return;
-    setEditingId(item.id_evento);
+    const eventoId = getEventoId(item);
+    const source = getEditableSource(item);
+    if (!patient || !eventoId || !source) return;
+    setEditingId(eventoId);
+    setEditingSource(source);
+    setInitialProximoControl(item.payload?.proximo_control || '');
     setModal({
       tipo: item.tipo,
       fecha_evento: toLocalInput(item.fecha_evento),
@@ -181,7 +210,8 @@ export default function Expediente() {
   };
 
   const deleteEvent = async (item: ConsultorioEvento) => {
-    if (!patient || !item?.id_evento) return;
+    const eventoId = getEventoId(item);
+    if (!patient || !eventoId || getEditableSource(item) !== 'evento') return;
     const r = await Swal.fire({
       title: '¿Eliminar este registro?',
       text: 'Esta acción no se puede deshacer.',
@@ -190,7 +220,7 @@ export default function Expediente() {
     });
     if (!r.isConfirmed) return;
     try {
-      await ConsultorioService.deleteEvento(item.id_evento);
+      await ConsultorioService.deleteEvento(eventoId);
       await loadPatient(patient.id_paciente, active, page, q);
       Swal.fire({ icon: 'success', title: 'Registro eliminado', timer: 1200, showConfirmButton: false });
     } catch (err: any) {
@@ -215,9 +245,20 @@ export default function Expediente() {
       enviar_correo: modal.enviar_correo,
     };
     const editing = editingId;
+    // Las consultas legado (tabla "consultas") solo aceptan el motivo/SOAP/vitales;
+    // no tienen proximo_control, así que la creación de cita no aplica al editarlas.
+    const proximoControlChanged = modal.tipo === 'consulta' && editingSource !== 'consulta'
+      && !!payload.proximo_control && payload.proximo_control !== initialProximoControl;
     try {
       let quoteCode: string | null = null;
-      if (editing) {
+      if (editing && editingSource === 'consulta') {
+        await ConsultasService.update(editing, {
+          motivo: payload.motivo, subjetivo: payload.subjetivo, objetivo: payload.objetivo,
+          evaluacion: payload.evaluacion, plan: payload.plan, peso: payload.peso,
+          temperatura: payload.temperatura, frecuencia_cardiaca: payload.frecuencia_cardiaca,
+          frecuencia_respiratoria: payload.frecuencia_respiratoria, condicion_corporal: payload.condicion_corporal,
+        });
+      } else if (editing) {
         await ConsultorioService.updateEvento(editing, data);
       } else if (modal.tipo === 'vacuna') {
         const result = await VacunasService.aplicar({
@@ -243,16 +284,39 @@ export default function Expediente() {
           quoteCode = await createMedicationQuoteFromPayload(patient, payload, created.id_evento);
         }
       }
+      let citaCreada = false;
+      let citaError = '';
+      if (proximoControlChanged) {
+        try {
+          await CitasService.create({
+            id_paciente: patient.id_paciente,
+            id_tutor: patient.id_tutor,
+            fecha_inicio: `${payload.proximo_control}T09:00:00`,
+            fecha_fin: `${payload.proximo_control}T09:30:00`,
+            motivo: `Próximo control: ${payload.motivo || 'Consulta'}`,
+          } as any);
+          citaCreada = true;
+        } catch (citaErr: any) {
+          citaError = citaErr.message || 'Cree la cita manualmente desde la Agenda.';
+        }
+      }
       setModal(null);
       setEditingId(null);
+      setEditingSource(null);
       await loadPatient(patient.id_paciente, active, editing ? page : 0, q);
-      Swal.fire({
-        icon: 'success',
-        title: editing ? 'Registro actualizado' : 'Registro guardado',
-        text: quoteCode ? `Cotizacion pendiente generada: ${quoteCode}` : undefined,
-        timer: quoteCode ? undefined : 1300,
-        showConfirmButton: Boolean(quoteCode),
-      });
+      if (citaError) {
+        await Swal.fire('Registro guardado, pero no se pudo crear la cita', citaError, 'warning');
+      } else {
+        Swal.fire({
+          icon: 'success',
+          title: editing ? 'Registro actualizado' : 'Registro guardado',
+          text: quoteCode
+            ? `Cotizacion pendiente generada: ${quoteCode}`
+            : citaCreada ? 'Se creó una cita para el próximo control en la agenda general.' : undefined,
+          timer: (quoteCode || citaCreada) ? undefined : 1300,
+          showConfirmButton: Boolean(quoteCode || citaCreada),
+        });
+      }
     } catch (err: any) {
       Swal.fire('Error', err.message || 'No se pudo guardar el registro clínico', 'error');
     }
@@ -324,7 +388,7 @@ export default function Expediente() {
       )}
 
       {modal && patient && (
-        <EventModal form={modal} patient={patient} editing={!!editingId} setForm={setModal} onClose={() => { setModal(null); setEditingId(null); }} onSubmit={saveEvent} />
+        <EventModal form={modal} patient={patient} editing={!!editingId} legacyConsulta={editingSource === 'consulta'} setForm={setModal} onClose={() => { setModal(null); setEditingId(null); setEditingSource(null); }} onSubmit={saveEvent} />
       )}
       {exportOpen && patient && (
         <ClinicalHistoryExportModal patient={patient} onClose={() => setExportOpen(false)} />
@@ -445,6 +509,8 @@ function TimelineCard({ item, patient, onEdit, onDelete }: {
   const chips = Object.entries(payload).filter(([, v]) => v !== null && v !== undefined && displayPayloadValue(v).trim() !== '').slice(0, 6);
   const attachments = Array.isArray(item.adjuntos) ? item.adjuntos as ClinicalAttachment[] : [];
   const canPrintSingle = item.tipo === 'formula';
+  const eventoId = getEventoId(item);
+  const canDelete = eventoId != null && getEditableSource(item) === 'evento';
   const printThis = async () => {
     if (!patient) return;
     try {
@@ -473,12 +539,12 @@ function TimelineCard({ item, patient, onEdit, onDelete }: {
               <Printer size={13} /> Imprimir
             </button>
           )}
-          {item.id_evento && onEdit && (
+          {eventoId && onEdit && (
             <button type="button" onClick={() => onEdit(item)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" title="Editar">
               <Pencil size={13} /> Editar
             </button>
           )}
-          {item.id_evento && onDelete && (
+          {canDelete && onDelete && (
             <button type="button" onClick={() => onDelete(item)} className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50" title="Eliminar">
               <Trash2 size={13} /> Eliminar
             </button>
@@ -498,14 +564,15 @@ function TimelineCard({ item, patient, onEdit, onDelete }: {
   );
 }
 
-function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
-  form: EventForm; patient: Paciente; editing?: boolean; setForm: (f: EventForm) => void; onClose: () => void; onSubmit: (e: React.FormEvent) => void;
+function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, onSubmit }: {
+  form: EventForm; patient: Paciente; editing?: boolean; legacyConsulta?: boolean; setForm: (f: EventForm) => void; onClose: () => void; onSubmit: (e: React.FormEvent) => void;
 }) {
   const mod = moduleFor(form.tipo);
   const Icon = mod.icon;
   const fields = fieldsFor(form.tipo);
   const visibleFields = form.tipo === 'vacuna' ? [] : form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico') : fields;
   const hasFileField = form.tipo === 'vacuna' || form.tipo === 'laboratorio' || visibleFields.some(field => field.type === 'file');
+  const fieldByKey = (key: string) => fields.find(f => f.key === key);
   const updatePayload = (key: string, value: any) => setForm({ ...form, payload: { ...form.payload, [key]: value } });
   const updateAttachments = (adjuntos: ClinicalAttachment[]) => setForm({ ...form, adjuntos });
   return (
@@ -516,6 +583,12 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
         </div>
         <div className="p-6 space-y-5">
+          {legacyConsulta && (
+            <p className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
+              Esta consulta es de un registro anterior: la fecha de la consulta no se puede modificar (puedes editar motivo, signos vitales y notas SOAP).
+            </p>
+          )}
+          {!legacyConsulta && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <Label label="Fecha y hora">
               <input type="datetime-local" value={form.fecha_evento} onChange={e => setForm({ ...form, fecha_evento: e.target.value })} className={INPUT_CLASS} />
@@ -528,6 +601,7 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
               <span className="text-sm font-semibold text-slate-700">Enviar correo al tutor</span>
             </label>
           </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {form.tipo === 'laboratorio' && (
               <LaboratoryTestsEditor
@@ -566,7 +640,7 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
                 </span>
               </label>
             )}
-            {visibleFields.map(field => (
+            {form.tipo !== 'consulta' && visibleFields.map(field => (
               <Field
                 key={field.key}
                 field={field}
@@ -579,6 +653,18 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
               />
             ))}
           </div>
+          {form.tipo === 'consulta' && (
+            <ConsultaFields
+              fieldByKey={fieldByKey}
+              payload={form.payload}
+              onChange={updatePayload}
+              patientId={patient.id_paciente}
+              tipo={form.tipo}
+              attachments={form.adjuntos}
+              onAttachmentsChange={updateAttachments}
+              showProximoControl={!legacyConsulta}
+            />
+          )}
           {!hasFileField && (
             <AttachmentUploader
               label="Adjuntos del expediente"
@@ -744,6 +830,62 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
       <Label label="Observaciones" wide>
         <textarea value={payload.observaciones || ''} onChange={e => onChange({ observaciones: e.target.value })} placeholder="Observaciones" className={`${INPUT_CLASS} min-h-[100px]`} />
       </Label>
+    </div>
+  );
+}
+
+function ConsultaFields({ fieldByKey, payload, onChange, patientId, tipo, attachments, onAttachmentsChange, showProximoControl = true }: {
+  fieldByKey: (key: string) => FieldDef | undefined;
+  payload: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+  patientId: number;
+  tipo: ConsultorioTipo;
+  attachments: ClinicalAttachment[];
+  onAttachmentsChange: (items: ClinicalAttachment[]) => void;
+  showProximoControl?: boolean;
+}) {
+  const renderField = (key: string) => {
+    const field = fieldByKey(key);
+    if (!field) return null;
+    return (
+      <Field
+        key={key}
+        field={field}
+        value={payload[key] || ''}
+        onChange={v => onChange(key, v)}
+        patientId={patientId}
+        tipo={tipo}
+        attachments={attachments}
+        onAttachmentsChange={onAttachmentsChange}
+      />
+    );
+  };
+  return (
+    <div className="space-y-5 md:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {renderField('motivo')}
+        {renderField('peso')}
+        {renderField('temperatura')}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {renderField('frecuencia_cardiaca')}
+        {renderField('frecuencia_respiratoria')}
+        {renderField('condicion_corporal')}
+      </div>
+      <div className="grid grid-cols-1 gap-5">
+        {renderField('subjetivo')}
+        {renderField('objetivo')}
+        {renderField('evaluacion')}
+        {renderField('plan')}
+      </div>
+      {showProximoControl && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            {renderField('proximo_control')}
+            <p className="mt-1.5 text-xs text-slate-400">Al guardar con esta fecha se crea automáticamente una cita en la agenda general.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
