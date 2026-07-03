@@ -1135,13 +1135,81 @@ router.post('/servicios-veterinarios', authenticateToken, async (req, res) => {
 });
 
 router.put('/servicios-veterinarios/:id', authenticateToken, async (req, res) => {
+    const id = asInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'id inválido' });
+    const b = req.body || {};
+    const nuevoPrecio = safeMoney(b.precio, 0);
+    const client = await pool.connect();
     try {
-        const id = asInt(req.params.id);
-        const b = req.body || {};
-        await pool.query(`
+        await client.query('BEGIN');
+        const actual = await client.query(
+            'SELECT precio FROM servicios_veterinarios WHERE id_servicio=$1 AND tenant_id=$2 FOR UPDATE',
+            [id, req.tenantId]
+        );
+        if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Servicio no encontrado' });
+        }
+        const precioAnterior = Number(actual.rows[0].precio);
+        await client.query(`
             UPDATE servicios_veterinarios SET codigo=$1,nombre=$2,categoria=$3,descripcion=$4,duracion_minutos=$5,precio=$6,tipo_isv=$7,requiere_paciente=$8,activo=$9
             WHERE id_servicio=$10 AND tenant_id=$11
-        `, [b.codigo || null, b.nombre, b.categoria || 'Consulta', b.descripcion || null, b.duracion_minutos || 30, b.precio || 0, b.tipo_isv || 'exento', b.requiere_paciente !== false, b.activo !== false, id, req.tenantId]);
+        `, [b.codigo || null, b.nombre, b.categoria || 'Consulta', b.descripcion || null, b.duracion_minutos || 30, nuevoPrecio, b.tipo_isv || 'exento', b.requiere_paciente !== false, b.activo !== false, id, req.tenantId]);
+        if (precioAnterior !== nuevoPrecio) {
+            await client.query(`
+                INSERT INTO servicios_precio_historial (tenant_id, id_servicio, precio_anterior, precio_nuevo, cambiado_por)
+                VALUES ($1,$2,$3,$4,$5)
+            `, [req.tenantId, id, precioAnterior, nuevoPrecio, req.user?.codUsuario || null]);
+        }
+        await client.query('COMMIT');
+        res.json({ ok: true });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        handleDbError(res, e);
+    } finally {
+        client.release();
+    }
+});
+
+router.get('/servicios-veterinarios/:id/precio-historial', authenticateToken, async (req, res) => {
+    try {
+        const id = asInt(req.params.id);
+        if (!id) return res.status(400).json({ error: 'id inválido' });
+        const { rows } = await pool.query(`
+            SELECT h.id, h.precio_anterior, h.precio_nuevo, h.created_at, u.usuario AS cambiado_por
+            FROM servicios_precio_historial h
+            LEFT JOIN usuarios u ON u.codUsuario = h.cambiado_por
+            WHERE h.id_servicio=$1 AND h.tenant_id=$2
+            ORDER BY h.created_at DESC
+        `, [id, req.tenantId]);
+        res.json(rows);
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.put('/servicios-veterinarios/:id/reactivar', authenticateToken, async (req, res) => {
+    try {
+        const id = asInt(req.params.id);
+        if (!id) return res.status(400).json({ error: 'id inválido' });
+        const { rows } = await pool.query(`
+            UPDATE servicios_veterinarios SET activo=true
+            WHERE id_servicio=$1 AND tenant_id=$2
+            RETURNING id_servicio
+        `, [id, req.tenantId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Servicio no encontrado' });
+        res.json({ ok: true });
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.put('/servicios-veterinarios/:id/anular', authenticateToken, async (req, res) => {
+    try {
+        const id = asInt(req.params.id);
+        if (!id) return res.status(400).json({ error: 'id inválido' });
+        const { rows } = await pool.query(`
+            UPDATE servicios_veterinarios SET activo=false
+            WHERE id_servicio=$1 AND tenant_id=$2
+            RETURNING id_servicio
+        `, [id, req.tenantId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Servicio no encontrado' });
         res.json({ ok: true });
     } catch (e) { handleDbError(res, e); }
 });

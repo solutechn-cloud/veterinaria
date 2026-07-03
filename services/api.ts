@@ -370,6 +370,9 @@ export const ServiciosVeterinariosService = {
   },
   create: (data: Partial<ServicioVeterinario>) => request<ServicioVeterinario>('/servicios-veterinarios', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: number, data: Partial<ServicioVeterinario>) => request(`/servicios-veterinarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  anular: (id: number) => request(`/servicios-veterinarios/${id}/anular`, { method: 'PUT' }),
+  reactivar: (id: number) => request(`/servicios-veterinarios/${id}/reactivar`, { method: 'PUT' }),
+  getPrecioHistorial: (id: number) => request<{ id: number; precio_anterior: number; precio_nuevo: number; created_at: string; cambiado_por: string | null }[]>(`/servicios-veterinarios/${id}/precio-historial`),
 };
 
 export const SalesService = {
