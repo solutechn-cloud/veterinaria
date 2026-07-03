@@ -3,10 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { AIService, ClientService } from '../services/api';
 import { Cliente } from '../types';
 import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useAuth } from '../context/AuthContext';
 import { Bot, Search, PlusCircle, Users, Edit2, Trash2, X, RefreshCw, Mail, Phone, MapPin, UserCheck } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const Clients: React.FC = () => {
+  const { hasPlanFeature } = useAuth();
+  const hasAIPlan = hasPlanFeature('ia_basica') || hasPlanFeature('ia_avanzada');
   const [clients, setClients] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -200,10 +203,12 @@ const Clients: React.FC = () => {
                     <td className="p-4 text-sm text-blue-600">{c.sin_correo ? <span className="text-slate-400">Sin email</span> : (c.correo || '-')}</td>
                     <td className="p-4 text-center">
                       <div className="flex justify-center gap-2">
-                        <button onClick={() => handleAIAnalyze(c.identidad)} disabled={clientAILoading === c.identidad} title="Análisis IA" className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-all border border-indigo-100 flex items-center gap-1">
-                          {clientAILoading === c.identidad ? <span className="inline-block w-2.5 h-2.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/> : <Bot size={12} />}
-                          IA
-                        </button>
+                        {hasAIPlan && (
+                          <button onClick={() => handleAIAnalyze(c.identidad)} disabled={clientAILoading === c.identidad} title="Análisis IA" className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-all border border-indigo-100 flex items-center gap-1">
+                            {clientAILoading === c.identidad ? <span className="inline-block w-2.5 h-2.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/> : <Bot size={12} />}
+                            IA
+                          </button>
+                        )}
                         <button onClick={() => openEditModal(c)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 size={16}/></button>
                         <button onClick={() => handleDelete(c.identidad)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16}/></button>
                       </div>

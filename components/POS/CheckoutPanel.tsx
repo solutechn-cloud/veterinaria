@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   User, UserPlus, ChevronDown, Banknote, CreditCard, Blend,
   RefreshCw, ShoppingCart, Percent, DollarSign, CheckCircle, Search, X, Star, FileText,
+  ReceiptText, FileX,
 } from 'lucide-react';
 import { Cliente, LoyaltyPreview, VentaDocumentoTipo } from '../../types';
 import { CartTotals, PaymentMethod, DiscountType } from './types';
@@ -124,8 +125,36 @@ export default function CheckoutPanel({
           </div>
           <h3 className="font-black text-sm text-slate-800">Cobrar</h3>
           {cartLength > 0 && (
-            <span className="ml-auto text-[10px] font-bold text-slate-400">{cartLength} ítem{cartLength !== 1 ? 's' : ''}</span>
+            <span className="text-[10px] font-bold text-slate-400">{cartLength} ítem{cartLength !== 1 ? 's' : ''}</span>
           )}
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onDocumentTypeChange('factura_fiscal')}
+              title="Cobrar con factura fiscal (consume correlativo CAI)"
+              aria-pressed={documentType === 'factura_fiscal'}
+              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                documentType === 'factura_fiscal'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
+              }`}
+            >
+              <ReceiptText size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onDocumentTypeChange('factura_no_fiscal')}
+              title="Cobrar sin factura fiscal (no consume CAI)"
+              aria-pressed={documentType === 'factura_no_fiscal'}
+              className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                documentType === 'factura_no_fiscal'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
+              }`}
+            >
+              <FileX size={12} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -243,36 +272,6 @@ export default function CheckoutPanel({
             >
               3a Edad
             </button>
-          </div>
-
-          {/* Documento comercial */}
-          <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-            <div className="flex items-center gap-2">
-              <FileText size={13} className="text-slate-400" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Documento de venta</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-white p-1">
-              {([
-                { id: 'factura_fiscal' as const, label: 'Fiscal SAR' },
-                { id: 'factura_no_fiscal' as const, label: 'No fiscal' },
-              ]).map(option => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => onDocumentTypeChange(option.id)}
-                  className={`rounded-lg px-2 py-2 text-[11px] font-bold transition-all ${
-                    documentType === option.id
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[9px] leading-relaxed text-slate-400">
-              La factura fiscal consume correlativo CAI. La no fiscal registra la venta sin rango SAR.
-            </p>
           </div>
 
           {/* Descuento */}

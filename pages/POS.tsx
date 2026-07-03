@@ -3,7 +3,7 @@ import { InventoryService, ClientService, SalesService, MedicamentosService, Cas
 import { printSaleInvoice, downloadSaleInvoicePDF, printQuote, downloadQuotePDF } from '../services/DocumentService';
 import { ProductoFarmacia, Cliente, VentaPayload, CotizacionPayload, PresentacionVenta, LoyaltyPreview, VentaDocumentoTipo } from '../types';
 import {
-  AlertTriangle, Lock, RefreshCw, ShoppingCart, Sparkles,
+  AlertTriangle, Lock, RefreshCw, ShoppingCart,
   LayoutGrid, Clock, TrendingUp, Package,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -18,7 +18,6 @@ import CartPanel         from '../components/POS/CartPanel';
 import CheckoutPanel     from '../components/POS/CheckoutPanel';
 import PresentacionModal from '../components/POS/PresentacionModal';
 import CrossBranchModal  from '../components/POS/CrossBranchModal';
-import AIAssistantPanel  from '../components/POS/AIAssistantPanel';
 import QuickClientModal  from '../components/POS/QuickClientModal';
 import HoldPanel         from '../components/POS/HoldPanel';
 import * as ReactRouterDOM from 'react-router-dom';
@@ -53,7 +52,6 @@ const POS: React.FC = () => {
   const [searchTerm, setSearchTerm]           = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [mobileTab, setMobileTab]             = useState<'CATALOG' | 'CART' | 'CHECKOUT'>('CATALOG');
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [showQuickClient, setShowQuickClient] = useState(false);
   const [showHoldPanel, setShowHoldPanel]     = useState(false);
 
@@ -411,7 +409,6 @@ const POS: React.FC = () => {
     setPendingCrossBranch(null);
     setModal({ product: {} as ProductoFarmacia, visible: false, selectedId: null });
     setCrossModal({ visible: false, product: null, branches: [], loading: false });
-    setShowAIAssistant(false);
     setShowQuickClient(false);
     setShowHoldPanel(false);
     setLoyaltyPreview(null);
@@ -618,12 +615,6 @@ const POS: React.FC = () => {
     }
   }, [openCrossModal]);
 
-  const handleViewAIProduct = useCallback((codigo: string) => {
-    setSearchTerm(codigo);
-    setSelectedCategory('Todos');
-    setMobileTab('CATALOG');
-  }, []);
-
   // ── Locked states ─────────────────────────────────────────────────────────
   // ── Main POS ───────────────────────────────────────────────────────────────
   return (
@@ -656,13 +647,6 @@ const POS: React.FC = () => {
           <span><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">F8</kbd> Cobrar</span>
           <span><kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">Esc</kbd> Limpiar</span>
         </div>
-        {/* AI button */}
-        <button
-          onClick={() => setShowAIAssistant(true)}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shrink-0"
-        >
-          <Sparkles size={13} /> IA
-        </button>
       </div>
 
       {cotizacionOrigen && (
@@ -819,12 +803,6 @@ const POS: React.FC = () => {
         modal={crossModal}
         onClose={() => setCrossModal(m => ({ ...m, visible: false }))}
         onBillFromBranch={handleBillFromBranch}
-      />
-      <AIAssistantPanel
-        visible={showAIAssistant}
-        onClose={() => setShowAIAssistant(false)}
-        onViewProduct={handleViewAIProduct}
-        idSucursal={user?.id_sucursal}
       />
       <QuickClientModal
         visible={showQuickClient}
