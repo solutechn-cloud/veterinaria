@@ -5,6 +5,7 @@ const { HashRouter, Routes, Route, Navigate } = ReactRouterDOM as any;
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import OfflineBanner from './components/OfflineBanner';
+import PwaUpdatePrompt from './components/PwaUpdatePrompt';
 import CameraPermissionBanner from './components/CameraPermissionBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -53,6 +54,7 @@ const App: React.FC = () => {
     <ThemeProvider>
     <AuthProvider>
       <OfflineBanner />
+      <PwaUpdatePrompt />
       <CameraPermissionBanner />
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>

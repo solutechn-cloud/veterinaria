@@ -8,7 +8,12 @@ export default defineConfig({
     tailwindcss(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // "prompt": el SW nuevo queda en espera y la app muestra un banner
+      // "Nueva version disponible"; se aplica solo cuando el usuario confirma.
+      registerType: 'prompt',
+      // El registro lo maneja el hook useRegisterSW (components/PwaUpdatePrompt),
+      // por eso no auto-inyectamos el script de registro.
+      injectRegister: false,
       includeAssets: [
         'icons/icon-192.png',
         'icons/icon-512.png',
@@ -62,10 +67,9 @@ export default defineConfig({
         // /veticloud.png pero no se precachea para no inflar la instalacion.
         globIgnores: ['**/veticloud.png'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        // El nuevo service worker toma control de inmediato y borra las cachés
-        // viejas, para que un deploy nuevo no siga sirviendo modulos anteriores.
-        skipWaiting: true,
-        clientsClaim: true,
+        // En modo "prompt" el SW nuevo NO hace skipWaiting automatico: espera a
+        // que el usuario confirme desde el banner. Al activarse, limpia las
+        // cachES obsoletas para no seguir sirviendo modulos viejos.
         cleanupOutdatedCaches: true,
         // /api/* is intentionally excluded from service-worker caching — the app
         // manages its own tenant-scoped offline cache via IndexedDB (offlineDB).
