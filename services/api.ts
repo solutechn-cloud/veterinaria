@@ -245,7 +245,7 @@ export const InventoryService = {
 
 export const ClientService = {
   getAll: () => request<Cliente[]>('/clientes'),
-  create: (data: Cliente) => request('/clientes', { method: 'POST', body: JSON.stringify(data) }),
+  create: (data: Cliente) => request<{ message: string; identidad: string }>('/clientes', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Cliente>) => request(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) => request(`/clientes/${id}`, { method: 'DELETE' }),
 };

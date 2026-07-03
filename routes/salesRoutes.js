@@ -89,7 +89,7 @@ router.post('/clientes', authenticateToken, async (req, res) => {
                 console.error('[salesRoutes] welcome email error:', err.message)
             );
         }
-        res.status(201).json({ message: 'OK' });
+        res.status(201).json({ message: 'OK', identidad });
     } catch(e) {
         if (e.statusCode) return res.status(e.statusCode).json({ error: e.message, code: e.code });
         handleDbError(res, e);
