@@ -352,7 +352,7 @@ function SearchPanel({ search, setSearch, loading, results, onSearch, onOpen }: 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Buscar por tutor, teléfono, correo, mascota, especie, raza o microchip" className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-teal-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Buscar por tutor, teléfono, correo, mascota, especie, raza o código paciente" className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
           <button onClick={onSearch} className="rounded-2xl bg-slate-900 px-6 py-4 text-sm font-semibold text-white">{loading ? 'Buscando...' : 'Buscar'}</button>
         </div>
@@ -409,7 +409,7 @@ function PatientSidebar({ patient, conteos, active, onChange }: { patient: any; 
           <Info label="Tutor" value={patient.tutorNombre} />
           <Info label="Teléfono" value={patient.tutorTelefono} />
           <Info label="Correo" value={patient.tutorCorreo || (patient.tutorSinCorreo ? 'Sin correo' : 'No registrado')} />
-          <Info label="Microchip" value={patient.microchip} />
+          <Info label="Código paciente" value={patient.microchip} />
         </div>
         {(patient.alergias || patient.condiciones_cronicas) && (
           <div className="mt-4 rounded-xl bg-amber-50 border border-amber-100 p-3 text-xs text-amber-800">

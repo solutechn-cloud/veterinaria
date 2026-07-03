@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ClientService, PacientesService } from '../services/api';
 import { Cliente, Paciente } from '../types';
-import { AlertTriangle, ChevronLeft, ChevronRight, ImagePlus, Plus, RefreshCw, Search, UserPlus, Weight } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, ImagePlus, Plus, RefreshCw, Search, UserPlus, Weight, X } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const PAGE_SIZE = 24;
@@ -98,6 +98,10 @@ export default function Pacientes() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.id_tutor) {
+      Swal.fire('Falta el tutor', 'Busca y selecciona un tutor para el paciente.', 'warning');
+      return;
+    }
     try {
       if (editing) await PacientesService.update(editing.id_paciente, form);
       else await PacientesService.create(form);
@@ -126,7 +130,7 @@ export default function Pacientes() {
         <div className="p-4 border-b border-slate-100 grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="relative md:col-span-2">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={filters.q} onChange={e => setFilters({ ...filters, q: e.target.value })} onKeyDown={e => e.key === 'Enter' && applyFilters()} placeholder="Mascota, tutor, telefono o microchip" className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-teal-200" />
+            <input value={filters.q} onChange={e => setFilters({ ...filters, q: e.target.value })} onKeyDown={e => e.key === 'Enter' && applyFilters()} placeholder="Mascota, tutor, telefono o codigo paciente" className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-teal-200" />
           </div>
           <select value={filters.especie} onChange={e => setFilters({ ...filters, especie: e.target.value })} className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 text-sm">
             <option value="">Todas las especies</option>
@@ -171,7 +175,7 @@ export default function Pacientes() {
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-xl bg-white p-3 border border-slate-100"><Weight size={13} className="text-slate-400 mb-1" />{p.peso_actual ? `${p.peso_actual} kg` : 'Sin peso'}</div>
-                <div className="rounded-xl bg-white p-3 border border-slate-100">{p.microchip || 'Sin microchip'}</div>
+                <div className="rounded-xl bg-white p-3 border border-slate-100">{p.microchip || 'Sin codigo'}</div>
                 <div className="rounded-xl bg-white p-3 border border-slate-100">{p.totalConsultas || 0} consultas</div>
               </div>
               {(p.alergias || p.condiciones_cronicas) && (
@@ -209,12 +213,12 @@ export default function Pacientes() {
                 </label>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Field label="Tutor">
-                  <select required value={form.id_tutor || ''} onChange={e => setForm({ ...form, id_tutor: e.target.value })} className={inputClass}>
-                    <option value="">Seleccione tutor</option>
-                    {clientOptions.map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone || c.email || c.id}</option>)}
-                  </select>
-                </Field>
+                <div>
+                  <span className="text-sm font-semibold text-indigo-900/70">Tutor</span>
+                  <div className="mt-2">
+                    <TutorPicker options={clientOptions} value={form.id_tutor || ''} onChange={id => setForm({ ...form, id_tutor: id })} />
+                  </div>
+                </div>
                 <Text label="Nombre" required value={form.nombre || ''} onChange={v => setForm({ ...form, nombre: v })} />
                 <Text label="Especie" required value={form.especie || ''} onChange={v => setForm({ ...form, especie: v })} />
                 <Text label="Raza" value={form.raza || ''} onChange={v => setForm({ ...form, raza: v })} />
@@ -226,7 +230,7 @@ export default function Pacientes() {
                 <Text label="Color" value={form.color || ''} onChange={v => setForm({ ...form, color: v })} />
                 <Field label="Peso actual kg"><input type="number" step="0.001" value={form.peso_actual || ''} onChange={e => setForm({ ...form, peso_actual: e.target.value ? Number(e.target.value) : undefined })} className={inputClass} /></Field>
                 <Field label="Nacimiento"><input type="date" value={form.fecha_nacimiento || ''} onChange={e => setForm({ ...form, fecha_nacimiento: e.target.value })} className={inputClass} /></Field>
-                <Text label="Microchip" value={form.microchip || ''} onChange={v => setForm({ ...form, microchip: v })} />
+                <Text label="Codigo paciente" value={form.microchip || ''} onChange={v => setForm({ ...form, microchip: v })} />
                 <Text label="Estado reproductivo" value={form.estado_reproductivo || ''} onChange={v => setForm({ ...form, estado_reproductivo: v })} />
               </div>
               <TextArea label="Alergias" value={form.alergias || ''} onChange={v => setForm({ ...form, alergias: v })} />
@@ -253,4 +257,94 @@ function Text({ label, value, onChange, required }: { label: string; value: stri
 
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return <label className="block text-sm font-semibold text-indigo-900/70">{label}<textarea value={value} onChange={e => onChange(e.target.value)} className="mt-2 w-full p-3 rounded-xl border bg-white min-h-[82px] outline-none focus:ring-2 focus:ring-indigo-200" /></label>;
+}
+
+interface TutorOption { id: string; name: string; phone: string; email: string; }
+
+function TutorPicker({ options, value, onChange }: { options: TutorOption[]; value: string; onChange: (id: string) => void }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 8);
+    return options
+      .filter(o => o.name.toLowerCase().includes(q) || o.id.toLowerCase().includes(q) || o.phone.toLowerCase().includes(q) || o.email.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [options, query]);
+
+  const select = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onChange(id);
+    setQuery('');
+    setOpen(false);
+  };
+
+  const showCard = !!selected && !open;
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      {showCard ? (
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+          <div className="h-9 w-9 shrink-0 rounded-lg bg-indigo-100 text-indigo-700 grid place-items-center text-xs font-bold">{initials(selected!.name)}</div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-slate-800">{selected!.name}</p>
+            <p className="truncate text-xs text-slate-400">{selected!.phone || selected!.email || selected!.id}</p>
+          </div>
+          <button type="button" onClick={() => { setQuery(''); setOpen(true); }} className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50">Cambiar</button>
+        </div>
+      ) : (
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onFocus={() => setOpen(true)}
+            placeholder="Buscar tutor por nombre, identidad o telefono..."
+            className={`${inputClass} pl-9`}
+          />
+          {selected && (
+            <button type="button" onClick={() => setOpen(false)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      )}
+      {open && (
+        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+          {results.length === 0 ? (
+            <p className="p-3 text-sm text-slate-400">Sin tutores que coincidan.</p>
+          ) : results.map(o => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={e => select(o.id, e)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50"
+            >
+              <div className="h-7 w-7 shrink-0 rounded-lg bg-slate-100 text-slate-600 grid place-items-center text-[10px] font-bold">{initials(o.name)}</div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">{o.name}</p>
+                <p className="truncate text-xs text-slate-400">{o.phone || o.email || o.id}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

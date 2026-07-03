@@ -203,7 +203,7 @@ function drawPdfPatientSummary(doc: any, patient: any, company: Partial<EmpresaC
   doc.text([patient.especie, patient.raza, patient.sexo].filter(Boolean).join('  ·  ') || 'Datos de especie no registrados', x + 120, y + 54);
   drawMiniField(doc, 'Edad', ageText(patient.fecha_nacimiento), x + 120, y + 78);
   drawMiniField(doc, 'Peso', patient.peso_actual ? `${patient.peso_actual} kg` : 'N/D', x + 235, y + 78);
-  drawMiniField(doc, 'Microchip', patient.microchip || 'N/D', x + 350, y + 78);
+  drawMiniField(doc, 'Codigo paciente', patient.microchip || 'N/D', x + 350, y + 78);
   drawMiniField(doc, 'Estado reproductivo', patient.estado_reproductivo || 'N/D', x + 120, y + 117);
   drawMiniField(doc, 'Color', patient.color || 'N/D', x + 300, y + 117);
   drawPdfInfoBlock(doc, 'Tutor principal', [
@@ -332,7 +332,7 @@ function buildPrintHtml(patient: any, report: ReportData, range: { desde?: strin
     <section class="content">
       <section class="section patient-card">${imageOrInitial(patient.foto_base64, patient.nombre || 'P', 'pet')}
         <div><h2>${escapeHtml(patient.nombre || 'Paciente sin nombre')}</h2><div class="muted">${escapeHtml([patient.especie, patient.raza, patient.sexo].filter(Boolean).join(' · ') || 'Datos generales no registrados')}</div>
-          <div class="grid">${printField('Edad', ageText(patient.fecha_nacimiento))}${printField('Peso', patient.peso_actual ? `${patient.peso_actual} kg` : 'N/D')}${printField('Microchip', patient.microchip || 'N/D')}${printField('Color', patient.color || 'N/D')}${printField('Estado reproductivo', patient.estado_reproductivo || 'N/D')}${printField('Estado', patient.estado || 'Activo')}</div>
+          <div class="grid">${printField('Edad', ageText(patient.fecha_nacimiento))}${printField('Peso', patient.peso_actual ? `${patient.peso_actual} kg` : 'N/D')}${printField('Codigo paciente', patient.microchip || 'N/D')}${printField('Color', patient.color || 'N/D')}${printField('Estado reproductivo', patient.estado_reproductivo || 'N/D')}${printField('Estado', patient.estado || 'Activo')}</div>
         </div>
       </section>
       <section class="section two">
