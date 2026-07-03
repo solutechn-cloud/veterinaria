@@ -8,8 +8,14 @@ require('dotenv').config();
 // before pg-pool attaches its own 'error' listener during connect().
 // Genuine fatal errors still exit.
 process.on('uncaughtException', (err) => {
-    if (err.code === 'ECONNRESET' || err.code === 'EPIPE' || err.code === 'ECONNREFUSED') {
-        console.error('[DB] Error de conexión (recuperable):', err.code, '-', err.message);
+    const msg = err && err.message ? String(err.message) : '';
+    const recoverableCode = err && (err.code === 'ECONNRESET' || err.code === 'EPIPE' || err.code === 'ECONNREFUSED');
+    // pg lanza un Error SIN .code ("Connection terminated unexpectedly") cuando
+    // Postgres/Render cierra un socket inactivo. El pool abre una conexión nueva
+    // en la siguiente query, así que esto NO debe tumbar el proceso.
+    const recoverablePg = /connection terminated|terminating connection|server closed the connection|connection reset/i.test(msg);
+    if (recoverableCode || recoverablePg) {
+        console.error('[DB] Error de conexión (recuperable):', err.code || 'PG_DISCONNECT', '-', msg);
         return;
     }
     console.error('[FATAL] Excepción no manejada:', err);
