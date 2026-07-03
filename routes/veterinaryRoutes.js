@@ -2,10 +2,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, handleDbError, withTenantContext } = require('../config/db');
+const { pool, generateNextId, handleDbError, withTenantContext, getLocalTimestamp } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const { uploadFile, getSignedImageUrl } = require('../services/r2Storage');
+const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
 
 const SIGNED_URL_TTL = Number(process.env.R2_SIGNED_URL_TTL_SECONDS || 3600);
 const CLINICAL_ATTACHMENT_MAX_BYTES = Number(process.env.CLINICAL_ATTACHMENT_MAX_BYTES || 8 * 1024 * 1024);
@@ -30,6 +31,20 @@ function asInt(value) {
 function cleanText(value, max = 500) {
     if (value == null) return null;
     return String(value).trim().substring(0, max) || null;
+}
+
+function safeMoney(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function safeQuantity(value, fallback = 1) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function normalizeTax(value) {
+    return TIPOS_ISV_VALIDOS.has(String(value || '')) ? String(value) : 'exento';
 }
 
 function cleanFilename(value) {
@@ -394,7 +409,7 @@ router.post('/pacientes', authenticateToken, async (req, res) => {
     try {
         const b = req.body || {};
         if (!b.id_tutor || !b.nombre || !b.especie) return res.status(400).json({ error: 'id_tutor, nombre y especie son requeridos' });
-        const id = await withTenantContext(req.tenantId, async (client) => {
+        const result = await withTenantContext(req.tenantId, async (client) => {
             const tutor = await client.query('SELECT identidad FROM clientes WHERE identidad = $1 AND tenant_id = $2', [b.id_tutor, req.tenantId]);
             if (!tutor.rows.length) throw Object.assign(new Error('Tutor no encontrado'), { statusCode: 404 });
             const result = await client.query(`
@@ -935,38 +950,138 @@ router.get('/vacunas/aplicadas', authenticateToken, async (req, res) => {
     } catch (e) { handleDbError(res, e); }
 });
 
+async function loadVaccineChargeInfo(client, tenantId, body) {
+    if (!body.id_medicamento) {
+        return {
+            nombre: cleanText(body.nombre_vacuna, 220) || 'Vacuna aplicada',
+            presentacion: null,
+            precio: safeMoney(body.precio_unitario ?? body.precioVenta ?? body.precio_venta),
+            tipoIsv: normalizeTax(body.tipo_isv),
+        };
+    }
+    const params = [tenantId, body.id_medicamento];
+    let presentationJoin = 'LEFT JOIN presentaciones_venta pv ON FALSE';
+    if (body.id_presentacion) {
+        params.push(asInt(body.id_presentacion));
+        presentationJoin = `LEFT JOIN presentaciones_venta pv
+            ON pv.id_medicamento=m.codigo AND pv.tenant_id=m.tenant_id AND pv.id_presentacion=$3`;
+    }
+    const { rows } = await client.query(`
+        SELECT
+            COALESCE(NULLIF(m.nombre_comercial,''), m.nombre_generico, m.codigo) AS nombre,
+            m.tipo_isv,
+            pv.nombre AS presentacion,
+            pv.precio_venta
+        FROM medicamentos m
+        ${presentationJoin}
+        WHERE m.tenant_id=$1 AND m.codigo=$2
+        LIMIT 1
+    `, params);
+    const row = rows[0] || {};
+    return {
+        nombre: cleanText(body.nombre_vacuna, 220) || row.nombre || body.id_medicamento,
+        presentacion: row.presentacion || cleanText(body.presentacion, 120),
+        precio: safeMoney(body.precio_unitario ?? body.precioVenta ?? body.precio_venta, safeMoney(row.precio_venta)),
+        tipoIsv: normalizeTax(body.tipo_isv || row.tipo_isv),
+    };
+}
+
+async function createVaccinePendingQuote(client, req, body, vaccineId) {
+    if (!body.generar_cotizacion && !body.generar_cargo && !body.preparar_cobro) return null;
+    const patient = await client.query(`
+        SELECT p.id_tutor, p.nombre AS paciente,
+               COALESCE(NULLIF(TRIM(cli.nombre || ' ' || COALESCE(cli.apellido,'')), ''), cli.nombre) AS tutor
+        FROM pacientes p
+        LEFT JOIN clientes cli ON cli.identidad=p.id_tutor AND cli.tenant_id=p.tenant_id
+        WHERE p.id_paciente=$1 AND p.tenant_id=$2
+        LIMIT 1
+    `, [body.id_paciente, req.tenantId]);
+    const info = patient.rows[0];
+    if (!info?.id_tutor) {
+        throw Object.assign(new Error('El paciente no tiene tutor asignado para crear la cotizacion pendiente'), { statusCode: 400 });
+    }
+
+    const charge = await loadVaccineChargeInfo(client, req.tenantId, body);
+    const cantidad = safeQuantity(body.cantidad, 1);
+    const tipoIsv = charge.tipoIsv;
+    const { subExento, subGravado, isvLinea } = calcularIsvLinea(charge.precio, cantidad, tipoIsv);
+    const total = safeMoney(body.total, (charge.precio * cantidad) + isvLinea);
+    const codigo = await generateNextId('cotizaciones', 'codigo', 'COT', client);
+    const producto = `Vacuna aplicada: ${charge.nombre}${charge.presentacion ? ` - ${charge.presentacion}` : ''}`;
+
+    await client.query(
+        `INSERT INTO cotizaciones
+         (codigo, fecha, cod_vendedor, identidad_cliente, total, estado, tipo_compra,
+          isv, descuento, valido_hasta, observaciones, client_mutation_id, tenant_id)
+         VALUES ($1,$2,$3,$4,$5,'Emitida','Contado',$6,0,$7,$8,$9,$10)`,
+        [
+            codigo,
+            getLocalTimestamp(),
+            req.user?.codUsuario || req.user?.usuario || null,
+            info.id_tutor,
+            total,
+            isvLinea,
+            body.valido_hasta || null,
+            body.observaciones_cotizacion || `Cargo pendiente por vacunacion de ${info.paciente}. Registro clinico VAC-${vaccineId}.`,
+            body.clientMutationId || `vacuna-${vaccineId}`,
+            req.tenantId,
+        ]
+    );
+    await client.query(
+        `INSERT INTO detalle_cotizacion
+         (codigo_cotizacion, producto, cantidad, precio_unitario, tipo_producto,
+          id_medicamento, id_presentacion, id_servicio, tipo_isv,
+          subtotal_exento, subtotal_gravado, isv_linea, tenant_id)
+         VALUES ($1,$2,$3,$4,'SERVICIO',NULL,NULL,NULL,$5,$6,$7,$8,$9)`,
+        [codigo, producto, cantidad, charge.precio, tipoIsv, subExento, subGravado, isvLinea, req.tenantId]
+    );
+    return codigo;
+}
+
 router.post('/vacunas/aplicar', authenticateToken, async (req, res) => {
     try {
         const b = req.body || {};
         if (!b.id_paciente || !b.nombre_vacuna) return res.status(400).json({ error: 'id_paciente y nombre_vacuna son requeridos' });
-        const id = await withTenantContext(req.tenantId, async (client) => {
+        const result = await withTenantContext(req.tenantId, async (client) => {
+            const cantidadAplicada = safeQuantity(b.cantidad, 1);
+            let cantidadInventario = cantidadAplicada;
+            if (b.id_medicamento && b.id_presentacion) {
+                const pres = await client.query(`
+                    SELECT factor_conversion
+                    FROM presentaciones_venta
+                    WHERE tenant_id=$1 AND id_medicamento=$2 AND id_presentacion=$3 AND activo = true
+                    LIMIT 1
+                `, [req.tenantId, b.id_medicamento, asInt(b.id_presentacion)]);
+                cantidadInventario = cantidadAplicada * safeQuantity(pres.rows[0]?.factor_conversion, 1);
+            }
             let loteId = b.id_lote || null;
             if (b.id_medicamento && !loteId) {
                 const lote = await client.query(`
                     SELECT id_lote FROM lotes_medicamento
-                    WHERE tenant_id=$1 AND id_medicamento=$2 AND estado='Activo' AND cantidad_actual > 0
+                    WHERE tenant_id=$1 AND id_medicamento=$2 AND estado='Activo' AND cantidad_actual >= $3
                     ORDER BY fecha_vencimiento ASC LIMIT 1
-                `, [req.tenantId, b.id_medicamento]);
+                `, [req.tenantId, b.id_medicamento, cantidadInventario]);
                 loteId = lote.rows[0]?.id_lote || null;
             }
             if (b.id_medicamento && loteId) {
                 const upd = await client.query(`
                     UPDATE lotes_medicamento
-                    SET cantidad_actual = cantidad_actual - 1
-                    WHERE tenant_id=$1 AND id_lote=$2 AND cantidad_actual >= 1
+                    SET cantidad_actual = cantidad_actual - $3
+                    WHERE tenant_id=$1 AND id_lote=$2 AND cantidad_actual >= $3
                     RETURNING id_lote
-                `, [req.tenantId, loteId]);
+                `, [req.tenantId, loteId, cantidadInventario]);
                 if (!upd.rows.length) throw Object.assign(new Error('Stock insuficiente para aplicar vacuna'), { statusCode: 400 });
                 await client.query(`
                     INSERT INTO kardex_inventario (tipo_producto,cod_medicamento,id_lote,tipo_movimiento,cantidad,referencia_doc,registrado_por,observaciones,tenant_id)
-                    VALUES ('MEDICAMENTO',$1,$2,'Vacunacion',1,$3,$4,$5,$6)
-                `, [b.id_medicamento, loteId, `VAC-${b.id_paciente}`, req.user?.codUsuario || req.user?.usuario || null, b.nombre_vacuna, req.tenantId]);
+                    VALUES ('MEDICAMENTO',$1,$2,'Vacunacion',$3,$4,$5,$6,$7)
+                `, [b.id_medicamento, loteId, cantidadInventario, `VAC-${b.id_paciente}`, req.user?.codUsuario || req.user?.usuario || null, b.nombre_vacuna, req.tenantId]);
             }
             const r = await client.query(`
                 INSERT INTO vacunas_aplicadas (tenant_id,id_paciente,id_protocolo,id_medicamento,id_lote,nombre_vacuna,fecha_aplicacion,proxima_dosis,veterinario,notas)
                 VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,CURRENT_DATE),$8,$9,$10)
                 RETURNING id_vacuna_aplicada
             `, [req.tenantId, b.id_paciente, b.id_protocolo || null, b.id_medicamento || null, loteId, b.nombre_vacuna, b.fecha_aplicacion || null, b.proxima_dosis || null, b.veterinario || req.user?.codUsuario || null, b.notas || null]);
+            const vacunaId = r.rows[0].id_vacuna_aplicada;
             if (b.proxima_dosis) {
                 const patient = await client.query(`
                     SELECT p.id_tutor, cli.correo, cli.nombre AS tutor, p.nombre AS paciente
@@ -979,12 +1094,13 @@ router.post('/vacunas/aplicar', authenticateToken, async (req, res) => {
                         INSERT INTO recordatorios (tenant_id,tipo,referencia_tabla,referencia_id,id_tutor,id_paciente,correo_destino,asunto,cuerpo,fecha_programada)
                         VALUES ($1,'vacuna_proxima','vacunas_aplicadas',$2,$3,$4,$5,$6,$7,($8::date - INTERVAL '7 days'))
                         ON CONFLICT (tenant_id,tipo,referencia_tabla,referencia_id,fecha_programada) DO NOTHING
-                    `, [req.tenantId, r.rows[0].id_vacuna_aplicada, info.id_tutor, b.id_paciente, info.correo, `Proxima vacuna de ${info.paciente}`, `Hola ${info.tutor || ''}, ${info.paciente} tiene una proxima dosis de ${b.nombre_vacuna} programada para ${b.proxima_dosis}.`, b.proxima_dosis]);
+                    `, [req.tenantId, vacunaId, info.id_tutor, b.id_paciente, info.correo, `Proxima vacuna de ${info.paciente}`, `Hola ${info.tutor || ''}, ${info.paciente} tiene una proxima dosis de ${b.nombre_vacuna} programada para ${b.proxima_dosis}.`, b.proxima_dosis]);
                 }
             }
-            return r.rows[0].id_vacuna_aplicada;
+            const codigoCotizacion = await createVaccinePendingQuote(client, req, b, vacunaId);
+            return { id_vacuna_aplicada: vacunaId, codigo_cotizacion: codigoCotizacion };
         });
-        res.status(201).json({ id_vacuna_aplicada: id });
+        res.status(201).json(result);
     } catch (e) {
         if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
         handleDbError(res, e);

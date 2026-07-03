@@ -7,9 +7,12 @@ export type MedicationItem = {
   id: string;
   medicamento?: string;
   id_medicamento?: string;
+  id_presentacion?: number;
   presentacion?: string;
   cantidad?: number;
   frecuencia?: string;
+  precioVenta?: number;
+  tipoIsv?: 'exento' | '15' | '18';
 };
 
 type MedicationItemsEditorProps = {
@@ -18,49 +21,67 @@ type MedicationItemsEditorProps = {
 };
 
 const nombreProducto = (p: Medicamento) => p.nombre_comercial || p.nombre_generico || p.codigo;
+const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { style: 'currency', currency: 'HNL' });
 
 export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsEditorProps) {
   const rows = value.length ? value : [newMedicationRow()];
-
-  // Inventario para el buscador (se carga una vez; si el rol no tiene acceso,
-  // la lista queda vacía y el campo sigue funcionando como texto libre).
   const [productos, setProductos] = useState<Medicamento[]>([]);
   const [presCache, setPresCache] = useState<Record<string, PresentacionVenta[]>>({});
   const [openRow, setOpenRow] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    MedicamentosService.getAll({}).then(list => { if (alive) setProductos(list || []); }).catch(() => {});
+    MedicamentosService.getAll({ estado_catalogo: 'Listo para venta' } as any)
+      .then(list => { if (alive) setProductos(list || []); })
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
-
-  const loadPres = (codigo?: string) => {
-    if (!codigo || presCache[codigo]) return;
-    MedicamentosService.getPresentaciones(codigo)
-      .then(list => setPresCache(prev => ({ ...prev, [codigo]: list || [] })))
-      .catch(() => {});
-  };
-
-  // Precarga las presentaciones de las filas que ya tienen un producto asociado
-  // (p.ej. al editar una receta guardada).
-  useEffect(() => {
-    rows.forEach(r => { if (r.id_medicamento) loadPres(r.id_medicamento); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
 
   const updateRow = (id: string, patch: Partial<MedicationItem>) => {
     onChange(rows.map(row => row.id === id ? { ...row, ...patch } : row));
   };
 
-  const addRow = () => onChange([...rows, newMedicationRow()]);
-
-  const removeRow = (id: string) => {
-    onChange(rows.length === 1 ? [newMedicationRow()] : rows.filter(row => row.id !== id));
+  const loadPres = async (codigo?: string) => {
+    if (!codigo) return [];
+    if (presCache[codigo]) return presCache[codigo];
+    try {
+      const list = await MedicamentosService.getPresentaciones(codigo);
+      setPresCache(prev => ({ ...prev, [codigo]: list || [] }));
+      return list || [];
+    } catch {
+      return [];
+    }
   };
 
-  const selectProducto = (rowId: string, p: Medicamento) => {
-    updateRow(rowId, { medicamento: nombreProducto(p), id_medicamento: p.codigo, presentacion: '' });
-    loadPres(p.codigo);
+  useEffect(() => {
+    rows.forEach(row => { if (row.id_medicamento) void loadPres(row.id_medicamento); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const addRow = () => onChange([...rows, newMedicationRow()]);
+  const removeRow = (id: string) => onChange(rows.length === 1 ? [newMedicationRow()] : rows.filter(row => row.id !== id));
+
+  const selectPresentation = (rowId: string, presentaciones: PresentacionVenta[], idValue: string) => {
+    const selected = presentaciones.find(p => String(p.id_presentacion) === idValue);
+    updateRow(rowId, {
+      id_presentacion: selected?.id_presentacion,
+      presentacion: selected?.nombre || '',
+      precioVenta: selected ? Number(selected.precio_venta || 0) : undefined,
+    });
+  };
+
+  const selectProducto = async (rowId: string, p: Medicamento) => {
+    const presentaciones = await loadPres(p.codigo);
+    const vendibles = presentaciones.filter(item => item.activo !== false && item.es_unidad_venta !== false);
+    const first = vendibles[0] || presentaciones[0];
+    updateRow(rowId, {
+      medicamento: nombreProducto(p),
+      id_medicamento: p.codigo,
+      id_presentacion: first?.id_presentacion,
+      presentacion: first?.nombre || '',
+      precioVenta: first ? Number(first.precio_venta || 0) : undefined,
+      tipoIsv: p.tipo_isv || 'exento',
+    });
     setOpenRow(null);
   };
 
@@ -75,7 +96,7 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
     return base.slice(0, 8);
   };
 
-  const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200';
+  const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200';
 
   return (
     <div className="md:col-span-2 rounded-2xl border border-violet-200 bg-violet-50/20 p-3">
@@ -89,6 +110,7 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
         {rows.map(row => {
           const opciones = sugerencias(row.medicamento);
           const presentaciones = row.id_medicamento ? (presCache[row.id_medicamento] || []) : [];
+          const selectedPresentation = presentaciones.find(p => p.id_presentacion === row.id_presentacion);
           return (
             <article key={row.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
@@ -100,15 +122,24 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
                   <Trash2 size={14} /> Eliminar
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_1fr_90px]">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_90px_120px]">
                 <FieldShell label="Medicamento">
                   <div className="relative">
                     <input
                       value={row.medicamento || ''}
-                      onChange={event => { updateRow(row.id, { medicamento: event.target.value, id_medicamento: undefined }); setOpenRow(row.id); }}
+                      onChange={event => {
+                        updateRow(row.id, {
+                          medicamento: event.target.value,
+                          id_medicamento: undefined,
+                          id_presentacion: undefined,
+                          presentacion: '',
+                          precioVenta: undefined,
+                        });
+                        setOpenRow(row.id);
+                      }}
                       onFocus={() => setOpenRow(row.id)}
                       onBlur={() => setTimeout(() => setOpenRow(prev => (prev === row.id ? null : prev)), 150)}
-                      placeholder="Buscar por nombre o código, o escribir…"
+                      placeholder="Buscar por nombre o codigo, o escribir..."
                       className={inputCls}
                       autoComplete="off"
                     />
@@ -118,7 +149,7 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
                           <li key={p.codigo}>
                             <button
                               type="button"
-                              onMouseDown={event => { event.preventDefault(); selectProducto(row.id, p); }}
+                              onMouseDown={event => { event.preventDefault(); void selectProducto(row.id, p); }}
                               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-indigo-50"
                             >
                               <span className="truncate text-slate-700">{nombreProducto(p)}</span>
@@ -130,18 +161,29 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
                     )}
                   </div>
                 </FieldShell>
-                <FieldShell label="Presentación">
-                  <input
-                    value={row.presentacion || ''}
-                    onChange={event => updateRow(row.id, { presentacion: event.target.value })}
-                    list={`pres-${row.id}`}
-                    placeholder={presentaciones.length ? 'Elige o escribe…' : 'Tableta, jarabe, ampolla...'}
-                    className={inputCls}
-                    autoComplete="off"
-                  />
-                  <datalist id={`pres-${row.id}`}>
-                    {presentaciones.map(p => <option key={p.id_presentacion} value={p.nombre} />)}
-                  </datalist>
+                <FieldShell label="Presentacion">
+                  {presentaciones.length > 0 ? (
+                    <select
+                      value={row.id_presentacion || ''}
+                      onChange={event => selectPresentation(row.id, presentaciones, event.target.value)}
+                      className={inputCls}
+                    >
+                      <option value="">Seleccione presentacion</option>
+                      {presentaciones.filter(p => p.activo !== false).map(p => (
+                        <option key={p.id_presentacion} value={p.id_presentacion}>
+                          {p.nombre} - {money(Number(p.precio_venta || 0))}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={row.presentacion || ''}
+                      onChange={event => updateRow(row.id, { presentacion: event.target.value })}
+                      placeholder="Tableta, jarabe, ampolla..."
+                      className={inputCls}
+                      autoComplete="off"
+                    />
+                  )}
                 </FieldShell>
                 <FieldShell label="Cantidad">
                   <input
@@ -152,14 +194,30 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
                     className={inputCls}
                   />
                 </FieldShell>
+                <FieldShell label="Precio">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={row.precioVenta ?? ''}
+                    onChange={event => updateRow(row.id, { precioVenta: event.target.value ? Number(event.target.value) : undefined })}
+                    placeholder="0.00"
+                    className={inputCls}
+                  />
+                </FieldShell>
               </div>
+              {selectedPresentation && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Esta presentacion quedara lista para una cotizacion pendiente en recepcion.
+                </p>
+              )}
               <div className="mt-4">
-                <FieldShell label="Frecuencia (cada cuánto se debe tomar)">
+                <FieldShell label="Frecuencia / indicaciones">
                   <textarea
                     value={row.frecuencia || ''}
                     onChange={event => updateRow(row.id, { frecuencia: event.target.value })}
-                    placeholder="Ej. 1 tableta cada 12 horas por 7 días, vía oral"
-                    className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200"
+                    placeholder="Ej. 1 tableta cada 12 horas por 7 dias, via oral"
+                    className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200"
                   />
                 </FieldShell>
               </div>

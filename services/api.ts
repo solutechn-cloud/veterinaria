@@ -305,8 +305,20 @@ export const VacunasService = {
     const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString() : '';
     return request<VacunaAplicada[]>(`/vacunas/aplicadas${qs}`);
   },
-  aplicar: (data: Partial<VacunaAplicada> & { id_paciente: number; nombre_vacuna: string }) =>
-    request<{ id_vacuna_aplicada: number }>('/vacunas/aplicar', { method: 'POST', body: JSON.stringify(data) }),
+  aplicar: (data: Partial<VacunaAplicada> & {
+    id_paciente: number;
+    nombre_vacuna: string;
+    id_presentacion?: number | string | null;
+    cantidad?: number;
+    precio_unitario?: number;
+    tipo_isv?: 'exento' | '15' | '18';
+    generar_cotizacion?: boolean;
+    generar_cargo?: boolean;
+    preparar_cobro?: boolean;
+    observaciones_cotizacion?: string;
+    valido_hasta?: string | null;
+  }) =>
+    request<{ id_vacuna_aplicada: number; codigo_cotizacion?: string | null }>('/vacunas/aplicar', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export const RecordatoriosService = {

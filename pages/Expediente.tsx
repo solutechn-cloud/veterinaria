@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useParams, useNavigate } = ReactRouterDOM as any;
-import { ConsultorioService } from '../services/api';
-import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, Paciente } from '../types';
+import { ConsultorioService, MedicamentosService, QuoteService, VacunasService } from '../services/api';
+import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Medicamento, Paciente, PresentacionVenta } from '../types';
 import {
   ChevronLeft, ChevronRight, PawPrint,
   FileDown, Plus, Printer, RefreshCw, Search, Send,
@@ -12,8 +12,8 @@ import Swal from 'sweetalert2';
 import { ClinicalHistoryExportModal, printClinicalEvent } from '../components/consultorio/ClinicalHistoryExportModal';
 import { AttachmentList, AttachmentUploader, type ClinicalAttachment } from '../components/consultorio/ClinicalAttachments';
 import { LaboratoryTestsEditor } from '../components/consultorio/LaboratoryTestsEditor';
-import { MedicationItemsEditor } from '../components/consultorio/MedicationItemsEditor';
-import { ProfessionalSelect } from '../components/consultorio/ProfessionalSelect';
+import { MedicationItemsEditor, type MedicationItem } from '../components/consultorio/MedicationItemsEditor';
+import { ProfessionalSelect, type ProfessionalValue } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
 const PAGE_SIZE = 20;
@@ -37,6 +37,56 @@ function toLocalInput(v?: string): string {
   if (isNaN(d.getTime())) return nowLocal();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const TAX_RATES: Record<string, number> = { exento: 0, '15': 0.15, '18': 0.18 };
+const productName = (m: Medicamento) => m.nombre_comercial || m.nombre_generico || m.codigo;
+const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { style: 'currency', currency: 'HNL' });
+
+function toDateOnly(v?: string) {
+  return (v || nowLocal()).slice(0, 10);
+}
+
+function professionalName(value?: ProfessionalValue | string | null) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value.nombre || value.usuario || '';
+}
+
+function quoteLineTax(item: MedicationItem) {
+  const qty = Number(item.cantidad || 1);
+  const price = Number(item.precioVenta || 0);
+  const rate = TAX_RATES[item.tipoIsv || 'exento'] || 0;
+  return price * qty * rate;
+}
+
+async function createMedicationQuoteFromPayload(patient: Paciente, payload: Record<string, any>, eventId?: number) {
+  const rows = (Array.isArray(payload.medicamentos) ? payload.medicamentos : []) as MedicationItem[];
+  const billable = rows.filter(row => row.id_medicamento && row.id_presentacion && Number(row.precioVenta || 0) > 0);
+  if (!billable.length) return null;
+
+  const detalles: Partial<DetalleVenta>[] = billable.map(row => ({
+    tipoProducto: 'MEDICAMENTO',
+    id_medicamento: row.id_medicamento,
+    id_presentacion: row.id_presentacion,
+    descripcionProducto: [row.medicamento, row.presentacion].filter(Boolean).join(' - '),
+    cantidad: Number(row.cantidad || 1),
+    precioVenta: Number(row.precioVenta || 0),
+    tipoIsv: row.tipoIsv || 'exento',
+  }));
+  const subtotal = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1), 0);
+  const isv = billable.reduce((sum, item) => sum + quoteLineTax(item), 0);
+  const result = await QuoteService.create({
+    identidadCliente: patient.id_tutor || (patient as any).tutorId,
+    tipoCompra: 'Contado',
+    total: subtotal + isv,
+    isv,
+    descuento: 0,
+    detalles,
+    observaciones: `Medicamentos indicados para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`,
+    clientMutationId: `rx-${patient.id_paciente}-${eventId || Date.now()}`,
+  } as any);
+  return result.codigo || result.codCotizacion || null;
 }
 
 export default function Expediente() {
@@ -166,12 +216,43 @@ export default function Expediente() {
     };
     const editing = editingId;
     try {
-      if (editing) await ConsultorioService.updateEvento(editing, data);
-      else await ConsultorioService.createEvento(patient.id_paciente, data);
+      let quoteCode: string | null = null;
+      if (editing) {
+        await ConsultorioService.updateEvento(editing, data);
+      } else if (modal.tipo === 'vacuna') {
+        const result = await VacunasService.aplicar({
+          id_paciente: patient.id_paciente,
+          nombre_vacuna: payload.nombre_vacuna || modal.titulo || 'Vacuna',
+          id_medicamento: payload.id_medicamento || undefined,
+          id_presentacion: payload.id_presentacion || undefined,
+          cantidad: Number(payload.cantidad || 1),
+          precio_unitario: Number(payload.precio_unitario || 0),
+          tipo_isv: payload.tipo_isv || 'exento',
+          fecha_aplicacion: payload.fecha_aplicacion || toDateOnly(modal.fecha_evento),
+          proxima_dosis: payload.proxima_dosis || undefined,
+          veterinario: professionalName(payload.veterinario) || undefined,
+          notas: payload.observaciones || payload.notas || detalle || undefined,
+          presentacion: payload.presentacion || undefined,
+          generar_cotizacion: Boolean(payload.generar_cotizacion),
+          observaciones_cotizacion: payload.observaciones_cotizacion || undefined,
+        } as any);
+        quoteCode = result.codigo_cotizacion || null;
+      } else {
+        const created = await ConsultorioService.createEvento(patient.id_paciente, data);
+        if (modal.tipo === 'formula' && payload.generar_cotizacion) {
+          quoteCode = await createMedicationQuoteFromPayload(patient, payload, created.id_evento);
+        }
+      }
       setModal(null);
       setEditingId(null);
       await loadPatient(patient.id_paciente, active, editing ? page : 0, q);
-      Swal.fire({ icon: 'success', title: editing ? 'Registro actualizado' : 'Registro guardado', timer: 1300, showConfirmButton: false });
+      Swal.fire({
+        icon: 'success',
+        title: editing ? 'Registro actualizado' : 'Registro guardado',
+        text: quoteCode ? `Cotizacion pendiente generada: ${quoteCode}` : undefined,
+        timer: quoteCode ? undefined : 1300,
+        showConfirmButton: Boolean(quoteCode),
+      });
     } catch (err: any) {
       Swal.fire('Error', err.message || 'No se pudo guardar el registro clínico', 'error');
     }
@@ -423,8 +504,8 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
   const mod = moduleFor(form.tipo);
   const Icon = mod.icon;
   const fields = fieldsFor(form.tipo);
-  const visibleFields = form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico') : fields;
-  const hasFileField = form.tipo === 'laboratorio' || visibleFields.some(field => field.type === 'file');
+  const visibleFields = form.tipo === 'vacuna' ? [] : form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico') : fields;
+  const hasFileField = form.tipo === 'vacuna' || form.tipo === 'laboratorio' || visibleFields.some(field => field.type === 'file');
   const updatePayload = (key: string, value: any) => setForm({ ...form, payload: { ...form.payload, [key]: value } });
   const updateAttachments = (adjuntos: ClinicalAttachment[]) => setForm({ ...form, adjuntos });
   return (
@@ -458,11 +539,32 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
                 onAttachmentsChange={updateAttachments}
               />
             )}
+            {form.tipo === 'vacuna' && (
+              <VaccineApplicationEditor
+                patient={patient}
+                payload={form.payload}
+                onChange={patch => setForm({ ...form, payload: { ...form.payload, ...patch } })}
+              />
+            )}
             {form.tipo === 'formula' && (
               <MedicationItemsEditor
                 value={Array.isArray(form.payload.medicamentos) ? form.payload.medicamentos : []}
                 onChange={value => updatePayload('medicamentos', value)}
               />
+            )}
+            {form.tipo === 'formula' && (
+              <label className="md:col-span-2 flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm font-normal text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={!!form.payload.generar_cotizacion}
+                  onChange={e => updatePayload('generar_cotizacion', e.target.checked)}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="block font-medium text-slate-800">Preparar cobro pendiente en recepcion</span>
+                  <span className="text-xs text-slate-500">Los medicamentos seleccionados del inventario quedaran en una cotizacion para que caja los cobre al tutor.</span>
+                </span>
+              </label>
             )}
             {visibleFields.map(field => (
               <Field
@@ -495,6 +597,153 @@ function EventModal({ form, patient, editing, setForm, onClose, onSubmit }: {
           <button className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 font-semibold text-white shadow-lg shadow-indigo-600/20"><Plus size={16} /> Guardar registro</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function VaccineApplicationEditor({ patient, payload, onChange }: {
+  patient: Paciente;
+  payload: Record<string, any>;
+  onChange: (patch: Record<string, any>) => void;
+}) {
+  const [productos, setProductos] = useState<Medicamento[]>([]);
+  const [presentaciones, setPresentaciones] = useState<PresentacionVenta[]>([]);
+  const vaccineProducts = useMemo(() => {
+    const vacunas = productos.filter(m => (m.tipo_producto || '').toLowerCase() === 'vacuna');
+    return vacunas.length ? vacunas : productos;
+  }, [productos]);
+
+  useEffect(() => {
+    let alive = true;
+    MedicamentosService.getAll({ estado_catalogo: 'Listo para venta' } as any)
+      .then(list => { if (alive) setProductos(list || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    const patch: Record<string, any> = {};
+    if (!payload.fecha_aplicacion) patch.fecha_aplicacion = toDateOnly();
+    if (!payload.cantidad) patch.cantidad = 1;
+    if (!payload.tipo_isv) patch.tipo_isv = 'exento';
+    if (payload.generar_cotizacion === undefined) patch.generar_cotizacion = true;
+    if (Object.keys(patch).length) onChange(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectMedicine = async (codigo: string) => {
+    if (!codigo) {
+      setPresentaciones([]);
+      onChange({
+        id_medicamento: undefined,
+        id_presentacion: undefined,
+        presentacion: '',
+        precio_unitario: undefined,
+      });
+      return;
+    }
+
+    const product = productos.find(m => m.codigo === codigo);
+    const list = await MedicamentosService.getPresentaciones(codigo).catch(() => []);
+    const vendibles = (list || []).filter(item => item.activo !== false && item.es_unidad_venta !== false);
+    const first = vendibles[0] || list?.[0];
+    setPresentaciones(list || []);
+    onChange({
+      id_medicamento: codigo,
+      nombre_vacuna: product ? productName(product) : payload.nombre_vacuna,
+      tipo_isv: product?.tipo_isv || 'exento',
+      id_presentacion: first?.id_presentacion,
+      presentacion: first?.nombre || '',
+      precio_unitario: first ? Number(first.precio_venta || 0) : undefined,
+    });
+  };
+
+  const selectPresentation = (value: string) => {
+    const selected = presentaciones.find(p => String(p.id_presentacion) === value);
+    onChange({
+      id_presentacion: selected?.id_presentacion,
+      presentacion: selected?.nombre || '',
+      precio_unitario: selected ? Number(selected.precio_venta || 0) : payload.precio_unitario,
+    });
+  };
+
+  return (
+    <div className="md:col-span-2 grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="md:col-span-2 rounded-2xl border border-teal-100 bg-teal-50/60 p-4">
+        <p className="text-sm font-medium text-slate-800">Paciente seleccionado</p>
+        <p className="mt-1 text-sm text-slate-600">
+          {patient.nombre} - {patient.especie || 'Sin especie'} {patient.tutorNombre ? `- Tutor: ${patient.tutorNombre}` : ''}
+        </p>
+      </div>
+
+      <Label label="Vacuna de inventario">
+        <select value={payload.id_medicamento || ''} onChange={e => void selectMedicine(e.target.value)} className={INPUT_CLASS}>
+          <option value="">No descontar inventario</option>
+          {vaccineProducts.map(item => <option key={item.codigo} value={item.codigo}>{productName(item)} - {item.codigo}</option>)}
+        </select>
+      </Label>
+
+      <Label label="Presentacion">
+        {presentaciones.length > 0 ? (
+          <select value={payload.id_presentacion || ''} onChange={e => selectPresentation(e.target.value)} className={INPUT_CLASS}>
+            <option value="">Seleccione presentacion</option>
+            {presentaciones.filter(item => item.activo !== false).map(item => (
+              <option key={item.id_presentacion} value={item.id_presentacion}>{item.nombre} - {money(Number(item.precio_venta || 0))}</option>
+            ))}
+          </select>
+        ) : (
+          <input value={payload.presentacion || ''} onChange={e => onChange({ presentacion: e.target.value })} placeholder="Manual si no esta en inventario" className={INPUT_CLASS} />
+        )}
+      </Label>
+
+      <Label label="Vacuna">
+        <input required value={payload.nombre_vacuna || ''} onChange={e => onChange({ nombre_vacuna: e.target.value })} placeholder="Rabia, multiple, triple felina..." className={INPUT_CLASS} />
+      </Label>
+
+      <Label label="Fecha aplicacion">
+        <input type="date" value={payload.fecha_aplicacion || toDateOnly()} onChange={e => onChange({ fecha_aplicacion: e.target.value })} className={INPUT_CLASS} />
+      </Label>
+
+      <Label label="Veterinario que aplica">
+        <ProfessionalSelect value={payload.veterinario} onChange={veterinario => onChange({ veterinario })} />
+      </Label>
+
+      <Label label="Proxima vacunacion">
+        <input type="date" value={payload.proxima_dosis || ''} onChange={e => onChange({ proxima_dosis: e.target.value })} className={INPUT_CLASS} />
+      </Label>
+
+      <div className="grid grid-cols-3 gap-3 md:col-span-2">
+        <Label label="Cantidad">
+          <input type="number" min="1" value={payload.cantidad || 1} onChange={e => onChange({ cantidad: Number(e.target.value || 1) })} className={INPUT_CLASS} />
+        </Label>
+        <Label label="Precio">
+          <input type="number" min="0" step="0.01" value={payload.precio_unitario ?? ''} onChange={e => onChange({ precio_unitario: e.target.value ? Number(e.target.value) : undefined })} className={INPUT_CLASS} />
+        </Label>
+        <Label label="ISV">
+          <select value={payload.tipo_isv || 'exento'} onChange={e => onChange({ tipo_isv: e.target.value })} className={INPUT_CLASS}>
+            <option value="exento">Exento</option>
+            <option value="15">15%</option>
+            <option value="18">18%</option>
+          </select>
+        </Label>
+      </div>
+
+      <label className="md:col-span-2 flex items-start gap-3 rounded-2xl border border-teal-100 bg-teal-50/60 p-4 text-sm font-normal text-slate-700">
+        <input
+          type="checkbox"
+          checked={payload.generar_cotizacion !== false}
+          onChange={e => onChange({ generar_cotizacion: e.target.checked })}
+          className="mt-1 h-4 w-4"
+        />
+        <span>
+          <span className="block font-medium text-slate-800">Preparar cobro pendiente en recepcion</span>
+          <span className="text-xs text-slate-500">La vacuna aplicada quedara en una cotizacion para que caja la cobre al salir del consultorio.</span>
+        </span>
+      </label>
+
+      <Label label="Observaciones" wide>
+        <textarea value={payload.observaciones || ''} onChange={e => onChange({ observaciones: e.target.value })} placeholder="Observaciones" className={`${INPUT_CLASS} min-h-[100px]`} />
+      </Label>
     </div>
   );
 }
