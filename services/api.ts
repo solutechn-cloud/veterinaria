@@ -307,7 +307,18 @@ export const VacunasService = {
   },
   aplicar: (data: Partial<VacunaAplicada> & {
     id_paciente: number;
-    nombre_vacuna: string;
+    nombre_vacuna?: string;
+    vacunas?: Array<Partial<VacunaAplicada> & {
+      nombre_vacuna: string;
+      id_presentacion?: number | string | null;
+      presentacion?: string;
+      cantidad?: number;
+      precio_unitario?: number;
+      tipo_isv?: 'exento' | '15' | '18';
+      generar_cotizacion?: boolean;
+      generar_cargo?: boolean;
+      preparar_cobro?: boolean;
+    }>;
     id_presentacion?: number | string | null;
     cantidad?: number;
     precio_unitario?: number;
@@ -318,7 +329,7 @@ export const VacunasService = {
     observaciones_cotizacion?: string;
     valido_hasta?: string | null;
   }) =>
-    request<{ id_vacuna_aplicada: number; codigo_cotizacion?: string | null }>('/vacunas/aplicar', { method: 'POST', body: JSON.stringify(data) }),
+    request<{ id_vacuna_aplicada: number; ids_vacunas_aplicadas?: number[]; codigo_cotizacion?: string | null }>('/vacunas/aplicar', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export const RecordatoriosService = {
@@ -391,6 +402,8 @@ export const QuoteService = {
     request<{ codigo: string; codCotizacion?: string }>('/cotizaciones', { method: 'POST', body: JSON.stringify(data) }),
   get: (id: string) => request<Cotizacion>(`/cotizaciones/${id}`),
   getDetalles: (id: string) => request<DetalleVenta[]>(`/cotizaciones/${id}/detalles`),
+  appendDetalles: (id: string, data: { detalles: any[] }) =>
+    request<{ codigo: string; codCotizacion?: string; total: number; isv: number }>(`/cotizaciones/${id}/detalles`, { method: 'POST', body: JSON.stringify(data) }),
   list: (desde: string, hasta: string, estado?: string, q?: string) =>
     request<CotizacionResumen[]>(`/cotizaciones?desde=${desde}&hasta=${hasta}${estado ? `&estado=${estado}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   updateEstado: (id: string, estado: string) =>

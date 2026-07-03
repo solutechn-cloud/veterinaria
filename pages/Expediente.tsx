@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useParams, useNavigate } = ReactRouterDOM as any;
-import { CitasService, ConsultasService, ConsultorioService, MedicamentosService, QuoteService, VacunasService } from '../services/api';
-import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Medicamento, Paciente, PresentacionVenta } from '../types';
+import { CitasService, ConsultasService, ConsultorioService, QuoteService, VacunasService } from '../services/api';
+import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Paciente } from '../types';
 import {
   ChevronLeft, ChevronRight, PawPrint,
   FileDown, Plus, Printer, RefreshCw, Search, Send,
@@ -14,6 +14,7 @@ import { AttachmentList, AttachmentUploader, type ClinicalAttachment } from '../
 import { LaboratoryTestsEditor } from '../components/consultorio/LaboratoryTestsEditor';
 import { MedicationItemsEditor, type MedicationItem } from '../components/consultorio/MedicationItemsEditor';
 import { ServiceItemsEditor, type ServiceItem } from '../components/consultorio/ServiceItemsEditor';
+import { VaccineItemsEditor, type VaccineCartItem } from '../components/consultorio/VaccineItemsEditor';
 import { ProfessionalSelect, type ProfessionalValue } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
@@ -41,7 +42,6 @@ function toLocalInput(v?: string): string {
 }
 
 const TAX_RATES: Record<string, number> = { exento: 0, '15': 0.15, '18': 0.18 };
-const productName = (m: Medicamento) => m.nombre_comercial || m.nombre_generico || m.codigo;
 const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { style: 'currency', currency: 'HNL' });
 
 function toDateOnly(v?: string) {
@@ -73,6 +73,24 @@ function professionalName(value?: ProfessionalValue | string | null) {
   if (!value) return '';
   if (typeof value === 'string') return value;
   return value.nombre || value.usuario || '';
+}
+
+function normalizeVaccinePayloadItems(payload: Record<string, any>): VaccineCartItem[] {
+  const items = Array.isArray(payload.vacunas) ? payload.vacunas : [];
+  if (items.length) return items;
+  if (!payload.nombre_vacuna) return [];
+  return [{
+    id: 'legacy-vaccine',
+    nombre_vacuna: payload.nombre_vacuna,
+    id_medicamento: payload.id_medicamento,
+    id_presentacion: payload.id_presentacion,
+    presentacion: payload.presentacion,
+    cantidad: Number(payload.cantidad || 1),
+    precio_unitario: Number(payload.precio_unitario || 0),
+    tipo_isv: payload.tipo_isv || 'exento',
+    proxima_dosis: payload.proxima_dosis,
+    notas: payload.observaciones || payload.notas,
+  }];
 }
 
 function quoteLineTax(item: MedicationItem) {
@@ -290,21 +308,26 @@ export default function Expediente() {
       } else if (editing) {
         await ConsultorioService.updateEvento(editing, data);
       } else if (modal.tipo === 'vacuna') {
+        const vaccineItems = normalizeVaccinePayloadItems(payload).filter(item => (item.nombre_vacuna || '').trim());
+        if (!vaccineItems.length) throw new Error('Agregue al menos una vacuna al carrito.');
         const result = await VacunasService.aplicar({
           id_paciente: patient.id_paciente,
-          nombre_vacuna: payload.nombre_vacuna || modal.titulo || 'Vacuna',
-          id_medicamento: payload.id_medicamento || undefined,
-          id_presentacion: payload.id_presentacion || undefined,
-          cantidad: Number(payload.cantidad || 1),
-          precio_unitario: Number(payload.precio_unitario || 0),
-          tipo_isv: payload.tipo_isv || 'exento',
           fecha_aplicacion: payload.fecha_aplicacion || toDateOnly(modal.fecha_evento),
-          proxima_dosis: payload.proxima_dosis || undefined,
           veterinario: professionalName(payload.veterinario) || undefined,
           notas: payload.observaciones || payload.notas || detalle || undefined,
-          presentacion: payload.presentacion || undefined,
           generar_cotizacion: Boolean(payload.generar_cotizacion),
           observaciones_cotizacion: payload.observaciones_cotizacion || undefined,
+          vacunas: vaccineItems.map(item => ({
+            nombre_vacuna: (item.nombre_vacuna || '').trim(),
+            id_medicamento: item.id_medicamento || undefined,
+            id_presentacion: item.id_presentacion || undefined,
+            presentacion: item.presentacion || undefined,
+            cantidad: Number(item.cantidad || 1),
+            precio_unitario: Number(item.precio_unitario || 0),
+            tipo_isv: item.tipo_isv || 'exento',
+            proxima_dosis: item.proxima_dosis || undefined,
+            notas: item.notas || payload.observaciones || payload.notas || undefined,
+          })),
         } as any);
         quoteCode = result.codigo_cotizacion || null;
       } else {
@@ -751,66 +774,14 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
   payload: Record<string, any>;
   onChange: (patch: Record<string, any>) => void;
 }) {
-  const [productos, setProductos] = useState<Medicamento[]>([]);
-  const [presentaciones, setPresentaciones] = useState<PresentacionVenta[]>([]);
-  const vaccineProducts = useMemo(() => {
-    const vacunas = productos.filter(m => (m.tipo_producto || '').toLowerCase() === 'vacuna');
-    return vacunas.length ? vacunas : productos;
-  }, [productos]);
-
-  useEffect(() => {
-    let alive = true;
-    MedicamentosService.getAll({ estado_catalogo: 'Listo para venta' } as any)
-      .then(list => { if (alive) setProductos(list || []); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-
   useEffect(() => {
     const patch: Record<string, any> = {};
     if (!payload.fecha_aplicacion) patch.fecha_aplicacion = toDateOnly();
-    if (!payload.cantidad) patch.cantidad = 1;
-    if (!payload.tipo_isv) patch.tipo_isv = 'exento';
     if (payload.generar_cotizacion === undefined) patch.generar_cotizacion = true;
+    if (!Array.isArray(payload.vacunas)) patch.vacunas = normalizeVaccinePayloadItems(payload);
     if (Object.keys(patch).length) onChange(patch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const selectMedicine = async (codigo: string) => {
-    if (!codigo) {
-      setPresentaciones([]);
-      onChange({
-        id_medicamento: undefined,
-        id_presentacion: undefined,
-        presentacion: '',
-        precio_unitario: undefined,
-      });
-      return;
-    }
-
-    const product = productos.find(m => m.codigo === codigo);
-    const list = await MedicamentosService.getPresentaciones(codigo).catch(() => []);
-    const vendibles = (list || []).filter(item => item.activo !== false && item.es_unidad_venta !== false);
-    const first = vendibles[0] || list?.[0];
-    setPresentaciones(list || []);
-    onChange({
-      id_medicamento: codigo,
-      nombre_vacuna: product ? productName(product) : payload.nombre_vacuna,
-      tipo_isv: product?.tipo_isv || 'exento',
-      id_presentacion: first?.id_presentacion,
-      presentacion: first?.nombre || '',
-      precio_unitario: first ? Number(first.precio_venta || 0) : undefined,
-    });
-  };
-
-  const selectPresentation = (value: string) => {
-    const selected = presentaciones.find(p => String(p.id_presentacion) === value);
-    onChange({
-      id_presentacion: selected?.id_presentacion,
-      presentacion: selected?.nombre || '',
-      precio_unitario: selected ? Number(selected.precio_venta || 0) : payload.precio_unitario,
-    });
-  };
 
   return (
     <div className="md:col-span-2 grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -821,30 +792,6 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
         </p>
       </div>
 
-      <Label label="Vacuna de inventario">
-        <select value={payload.id_medicamento || ''} onChange={e => void selectMedicine(e.target.value)} className={INPUT_CLASS}>
-          <option value="">No descontar inventario</option>
-          {vaccineProducts.map(item => <option key={item.codigo} value={item.codigo}>{productName(item)} - {item.codigo}</option>)}
-        </select>
-      </Label>
-
-      <Label label="Presentacion">
-        {presentaciones.length > 0 ? (
-          <select value={payload.id_presentacion || ''} onChange={e => selectPresentation(e.target.value)} className={INPUT_CLASS}>
-            <option value="">Seleccione presentacion</option>
-            {presentaciones.filter(item => item.activo !== false).map(item => (
-              <option key={item.id_presentacion} value={item.id_presentacion}>{item.nombre} - {money(Number(item.precio_venta || 0))}</option>
-            ))}
-          </select>
-        ) : (
-          <input value={payload.presentacion || ''} onChange={e => onChange({ presentacion: e.target.value })} placeholder="Manual si no esta en inventario" className={INPUT_CLASS} />
-        )}
-      </Label>
-
-      <Label label="Vacuna">
-        <input required value={payload.nombre_vacuna || ''} onChange={e => onChange({ nombre_vacuna: e.target.value })} placeholder="Rabia, multiple, triple felina..." className={INPUT_CLASS} />
-      </Label>
-
       <Label label="Fecha aplicacion">
         <input type="date" value={payload.fecha_aplicacion || toDateOnly()} onChange={e => onChange({ fecha_aplicacion: e.target.value })} className={INPUT_CLASS} />
       </Label>
@@ -852,26 +799,6 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
       <Label label="Veterinario que aplica">
         <ProfessionalSelect value={payload.veterinario} onChange={veterinario => onChange({ veterinario })} />
       </Label>
-
-      <Label label="Proxima vacunacion">
-        <input type="date" value={payload.proxima_dosis || ''} onChange={e => onChange({ proxima_dosis: e.target.value })} className={INPUT_CLASS} />
-      </Label>
-
-      <div className="grid grid-cols-3 gap-3 md:col-span-2">
-        <Label label="Cantidad">
-          <input type="number" min="1" value={payload.cantidad || 1} onChange={e => onChange({ cantidad: Number(e.target.value || 1) })} className={INPUT_CLASS} />
-        </Label>
-        <Label label="Precio">
-          <input type="number" min="0" step="0.01" value={payload.precio_unitario ?? ''} onChange={e => onChange({ precio_unitario: e.target.value ? Number(e.target.value) : undefined })} className={INPUT_CLASS} />
-        </Label>
-        <Label label="ISV">
-          <select value={payload.tipo_isv || 'exento'} onChange={e => onChange({ tipo_isv: e.target.value })} className={INPUT_CLASS}>
-            <option value="exento">Exento</option>
-            <option value="15">15%</option>
-            <option value="18">18%</option>
-          </select>
-        </Label>
-      </div>
 
       <label className="md:col-span-2 flex items-start gap-3 rounded-2xl border border-teal-100 bg-teal-50/60 p-4 text-sm font-normal text-slate-700">
         <input
@@ -885,6 +812,11 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
           <span className="text-xs text-slate-500">La vacuna aplicada quedara en una cotizacion para que caja la cobre al salir del consultorio.</span>
         </span>
       </label>
+
+      <VaccineItemsEditor
+        value={Array.isArray(payload.vacunas) ? payload.vacunas : []}
+        onChange={vacunas => onChange({ vacunas })}
+      />
 
       <Label label="Observaciones" wide>
         <textarea value={payload.observaciones || ''} onChange={e => onChange({ observaciones: e.target.value })} placeholder="Observaciones" className={`${INPUT_CLASS} min-h-[100px]`} />

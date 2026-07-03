@@ -409,6 +409,74 @@ router.post('/cotizaciones', authenticateToken, async (req, res) => {
     } finally { client.release(); }
 });
 
+// Agrega líneas a una cotización existente (aún no convertida) y recalcula el
+// total/ISV. Lo usa el consultorio para que consulta (servicios) y receta
+// (productos) de una misma visita queden en UNA sola cotización.
+router.post('/cotizaciones/:id/detalles', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { detalles } = req.body;
+        if (!Array.isArray(detalles) || detalles.length === 0) {
+            return res.status(400).json({ error: 'detalles debe ser un arreglo con al menos un ítem' });
+        }
+        for (const item of detalles) {
+            if (item.tipoIsv && !TIPOS_ISV_VALIDOS.has(item.tipoIsv)) {
+                return res.status(400).json({ error: `tipoIsv inválido: ${item.tipoIsv}` });
+            }
+        }
+
+        await client.query('BEGIN');
+        const cot = await client.query(
+            `SELECT codigo, estado, descuento FROM cotizaciones WHERE codigo = $1 AND tenant_id = $2 FOR UPDATE`,
+            [req.params.id, req.tenantId]
+        );
+        if (!cot.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Cotización no encontrada' }); }
+        if (cot.rows[0].estado === 'Convertida') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'La cotización ya fue convertida en venta' }); }
+
+        for (const item of detalles) {
+            const tipoIsv = item.tipoIsv || 'exento';
+            const { subExento, subGravado, isvLinea } = calcularIsvLinea(item.precioVenta, item.cantidad, tipoIsv);
+            await client.query(
+                `INSERT INTO detalle_cotizacion
+                 (codigo_cotizacion, producto, cantidad, precio_unitario, tipo_producto,
+                  id_medicamento, id_presentacion, id_servicio, tipo_isv,
+                  subtotal_exento, subtotal_gravado, isv_linea, tenant_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+                [
+                    req.params.id,
+                    item.descripcionProducto || item.id_medicamento || item.id_servicio || 'Producto',
+                    item.cantidad, item.precioVenta, item.tipoProducto || 'MEDICAMENTO',
+                    item.id_medicamento || null, item.id_presentacion || null, item.id_servicio || null,
+                    tipoIsv, subExento, subGravado, isvLinea, req.tenantId,
+                ]
+            );
+        }
+
+        const agg = await client.query(
+            `SELECT COALESCE(SUM(subtotal_exento + subtotal_gravado), 0) AS base,
+                    COALESCE(SUM(isv_linea), 0) AS isv
+             FROM detalle_cotizacion WHERE codigo_cotizacion = $1 AND tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        const base = Number(agg.rows[0].base || 0);
+        const isvTot = Number(agg.rows[0].isv || 0);
+        const descuento = Number(cot.rows[0].descuento || 0);
+        const total = base + isvTot - descuento;
+        await client.query(
+            `UPDATE cotizaciones SET total = $1, isv = $2, fecha_actualizacion = NOW()
+             WHERE codigo = $3 AND tenant_id = $4`,
+            [total, isvTot, req.params.id, req.tenantId]
+        );
+
+        await client.query('COMMIT');
+        res.json({ codigo: req.params.id, codCotizacion: req.params.id, total, isv: isvTot });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });
+        handleDbError(res, err);
+    } finally { client.release(); }
+});
+
 const COTIZACION_ESTADOS = new Set(['Emitida', 'Aceptada', 'Vencida', 'Convertida']);
 router.patch('/cotizaciones/:id/estado', authenticateToken, async (req, res) => {
     try {
