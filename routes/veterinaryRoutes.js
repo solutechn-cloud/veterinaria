@@ -1493,7 +1493,7 @@ router.get('/consultorio/pacientes/:id/timeline', authenticateToken, async (req,
         const { tipo, q, limit = 40, offset = 0 } = req.query;
         const [events, consultations, vaccines, appointments, reminders] = await Promise.all([
             pool.query(`
-                SELECT id_evento AS id, tipo, titulo, fecha_evento, estado, resumen, detalle, payload, adjuntos, 'evento' AS source
+                SELECT id_evento AS id, id_evento, tipo, titulo, fecha_evento, estado, resumen, detalle, payload, adjuntos, 'evento' AS source
                 FROM paciente_eventos_clinicos
                 WHERE tenant_id=$1 AND id_paciente=$2 AND estado <> 'Anulado'
                 ORDER BY fecha_evento DESC LIMIT 250
