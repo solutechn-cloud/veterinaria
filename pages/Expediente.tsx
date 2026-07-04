@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 const { useParams, useNavigate } = ReactRouterDOM as any;
-import { CitasService, ConsultasService, ConsultorioService, QuoteService, VacunasService } from '../services/api';
-import { ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Paciente } from '../types';
+import { CitasService, ClientService, ConsultasService, ConsultorioService, QuoteService, VacunasService } from '../services/api';
+import { Cliente, ConsultorioBusquedaItem, ConsultorioEvento, ConsultorioPacienteDetalle, ConsultorioTipo, DetalleVenta, Paciente } from '../types';
 import {
   ChevronLeft, ChevronRight, PawPrint,
   FileDown, Plus, Printer, RefreshCw, Search, Send,
@@ -17,6 +17,7 @@ import { MedicationItemsEditor, type MedicationItem } from '../components/consul
 import { ServiceItemsEditor, type ServiceItem } from '../components/consultorio/ServiceItemsEditor';
 import { VaccineItemsEditor, type VaccineCartItem } from '../components/consultorio/VaccineItemsEditor';
 import { DesparasitacionItemsEditor, type DesparasitacionItem } from '../components/consultorio/DesparasitacionItemsEditor';
+import { CLINICAL_DOC_LABEL_TO_ID, printClinicalDocumentTemplate } from '../components/consultorio/clinicalDocumentTemplates';
 import { ProfessionalSelect, type ProfessionalValue } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
@@ -618,13 +619,20 @@ function TimelineCard({ item, patient, onEdit, onDelete }: {
   const payload = item.payload || {};
   const chips = Object.entries(payload).filter(([, v]) => v !== null && v !== undefined && displayPayloadValue(v).trim() !== '').slice(0, 6);
   const attachments = Array.isArray(item.adjuntos) ? item.adjuntos as ClinicalAttachment[] : [];
-  const canPrintSingle = item.tipo === 'formula';
+  const docTemplateId = item.tipo === 'documento' ? CLINICAL_DOC_LABEL_TO_ID[payload.tipo_documento] : undefined;
+  const canPrintSingle = item.tipo === 'formula' || !!docTemplateId;
   const eventoId = getEventoId(item);
   const canDelete = eventoId != null && getEditableSource(item) === 'evento';
   const printThis = async () => {
     if (!patient) return;
     try {
-      await printClinicalEvent(patient, item);
+      if (docTemplateId) {
+        const clientes = await ClientService.getAll().catch(() => [] as Cliente[]);
+        const cliente = clientes.find(c => c.identidad === patient.id_tutor) || null;
+        await printClinicalDocumentTemplate(docTemplateId, patient, cliente, payload);
+      } else {
+        await printClinicalEvent(patient, item);
+      }
     } catch (err: any) {
       Swal.fire('No se pudo imprimir', err.message || 'Intente de nuevo.', 'error');
     }
@@ -680,7 +688,10 @@ function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, 
   const mod = moduleFor(form.tipo);
   const Icon = mod.icon;
   const fields = fieldsFor(form.tipo);
-  const visibleFields = form.tipo === 'vacuna' ? [] : form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico') : fields;
+  const docTemplateId = form.tipo === 'documento' ? CLINICAL_DOC_LABEL_TO_ID[form.payload.tipo_documento] : undefined;
+  const visibleFields = form.tipo === 'vacuna' ? [] : form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico')
+    : docTemplateId ? fields.filter(field => field.key === 'tipo_documento' || field.key === 'archivo_documento')
+    : fields;
   const hasFileField = form.tipo === 'vacuna' || form.tipo === 'laboratorio' || visibleFields.some(field => field.type === 'file');
   const fieldByKey = (key: string) => fields.find(f => f.key === key);
   const updatePayload = (key: string, value: any) => setForm({ ...form, payload: { ...form.payload, [key]: value } });
@@ -745,6 +756,9 @@ function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, 
                 cobroPendiente={!!form.payload.generar_cotizacion}
                 onCobroPendienteChange={v => updatePayload('generar_cotizacion', v)}
               />
+            )}
+            {form.tipo === 'documento' && (
+              <DocumentTemplateBlock patient={patient} payload={form.payload} onChange={updatePayload} />
             )}
             {form.tipo !== 'consulta' && visibleFields.map(field => (
               <Field
@@ -845,6 +859,91 @@ function VaccineApplicationEditor({ patient, payload, onChange }: {
       <Label label="Observaciones" wide>
         <textarea value={payload.observaciones || ''} onChange={e => onChange({ observaciones: e.target.value })} placeholder="Observaciones" className={`${INPUT_CLASS} min-h-[100px]`} />
       </Label>
+    </div>
+  );
+}
+
+function DocumentTemplateBlock({ patient, payload, onChange }: {
+  patient: Paciente;
+  payload: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+}) {
+  const { user } = useAuth();
+  const [printing, setPrinting] = useState(false);
+  const templateId = CLINICAL_DOC_LABEL_TO_ID[payload.tipo_documento];
+
+  useEffect(() => {
+    if (templateId && !payload.medico_nombre && user?.nombreEmpleado) {
+      onChange('medico_nombre', user.nombreEmpleado);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId]);
+
+  if (!templateId) return null;
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const clientes = await ClientService.getAll().catch(() => [] as Cliente[]);
+      const cliente = clientes.find(c => c.identidad === patient.id_tutor) || null;
+      await printClinicalDocumentTemplate(templateId, patient, cliente, {
+        medico_nombre: payload.medico_nombre,
+        diagnostico: payload.diagnostico,
+        tratamiento: payload.tratamiento,
+        notas_dr: payload.notas_dr,
+        motivo_hospitalizacion: payload.motivo_hospitalizacion,
+        procedimiento_menor: payload.procedimiento_menor,
+        procedimiento_mayor: payload.procedimiento_mayor,
+      });
+    } catch (err: any) {
+      Swal.fire('No se pudo imprimir', err.message || 'Intente de nuevo.', 'error');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  return (
+    <div className="md:col-span-2 grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-slate-700">
+        Los datos del paciente y del tutor se completan automáticamente desde el expediente. Solo complete la información clínica que no
+        está registrada; la firma queda en blanco para que el tutor/responsable firme al imprimir.
+      </div>
+      {templateId === 'alta_voluntaria' && (
+        <>
+          <Label label="Médico veterinario">
+            <input value={payload.medico_nombre || ''} onChange={e => onChange('medico_nombre', e.target.value)} className={INPUT_CLASS} />
+          </Label>
+          <Label label="Diagnóstico">
+            <input value={payload.diagnostico || ''} onChange={e => onChange('diagnostico', e.target.value)} className={INPUT_CLASS} />
+          </Label>
+          <Label label="Tratamiento y/o exámenes recomendados" wide>
+            <textarea value={payload.tratamiento || ''} onChange={e => onChange('tratamiento', e.target.value)} className={`${INPUT_CLASS} min-h-[80px]`} />
+          </Label>
+          <Label label="Notas del Dr." wide>
+            <textarea value={payload.notas_dr || ''} onChange={e => onChange('notas_dr', e.target.value)} className={`${INPUT_CLASS} min-h-[80px]`} />
+          </Label>
+        </>
+      )}
+      {templateId === 'autorizacion_sedacion' && (
+        <>
+          <Label label="Procedimiento menor">
+            <input value={payload.procedimiento_menor || ''} onChange={e => onChange('procedimiento_menor', e.target.value)} className={INPUT_CLASS} placeholder="Ej. sutura, limpieza dental..." />
+          </Label>
+          <Label label="Procedimiento mayor">
+            <input value={payload.procedimiento_mayor || ''} onChange={e => onChange('procedimiento_mayor', e.target.value)} className={INPUT_CLASS} placeholder="Ej. esterilización, cirugía..." />
+          </Label>
+        </>
+      )}
+      {templateId === 'consentimiento_hospitalizacion' && (
+        <Label label="Motivo de la hospitalización" wide>
+          <textarea value={payload.motivo_hospitalizacion || ''} onChange={e => onChange('motivo_hospitalizacion', e.target.value)} className={`${INPUT_CLASS} min-h-[80px]`} />
+        </Label>
+      )}
+      <div className="md:col-span-2">
+        <button type="button" onClick={handlePrint} disabled={printing} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-60">
+          <Printer size={16} /> {printing ? 'Generando...' : 'Vista previa e imprimir'}
+        </button>
+      </div>
     </div>
   );
 }
