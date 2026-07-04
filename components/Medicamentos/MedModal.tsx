@@ -243,6 +243,14 @@ export default function MedModal({ show, editingId, form, formas, categorias, vi
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult]   = useState<AIMedicationAnalysisResult | null>(null);
 
+  // El análisis de imágenes con IA es asíncrono (handleAddImages) y puede tardar
+  // varios segundos. Si el usuario edita el formulario mientras espera, el "form"
+  // capturado por el closure de handleAddImages queda desactualizado. formRef
+  // siempre apunta al valor más reciente para no pisar esas ediciones al aplicar
+  // las sugerencias de la IA.
+  const formRef = useRef(form);
+  formRef.current = form;
+
   if (!show) return null;
 
   const set = (patch: Partial<Medicamento>) => onChange({ ...form, ...patch });
@@ -277,23 +285,24 @@ export default function MedModal({ show, editingId, form, formas, categorias, vi
       setAiResult(result);
 
       const f = result.fields;
+      const latest = formRef.current;
       const patch: Partial<Medicamento> = {};
       const tryStr = (key: keyof typeof f, target: keyof Medicamento, skip?: boolean) => {
         const fld = f[key] as AIFieldSuggestion<any>;
         if (!skip && fld?.confidence >= 0.45 && fld.value != null && fld.value !== '')
           (patch as any)[target] = String(fld.value);
       };
-      tryStr('nombre_generico',        'nombre_generico',         !!form.nombre_generico);
-      tryStr('nombre_comercial',       'nombre_comercial',        !!form.nombre_comercial);
-      tryStr('concentracion',          'concentracion',           !!form.concentracion);
-      tryStr('laboratorio',            'laboratorio',             !!form.laboratorio);
-      tryStr('pais_origen',            'pais_origen',             !!form.pais_origen);
-      tryStr('registro_sanitario',     'registro_sanitario',      !!form.registro_sanitario);
-      tryStr('codigo_ean13',           'codigo_ean13',            !!form.codigo_ean13);
-      tryStr('indicaciones',           'indicaciones',            !!form.indicaciones);
-      tryStr('advertencias',           'advertencias',            !!form.advertencias);
-      tryStr('contraindicaciones',     'contraindicaciones',      !!form.contraindicaciones);
-      tryStr('clase_controlado',       'clase_controlado',        !!form.clase_controlado);
+      tryStr('nombre_generico',        'nombre_generico',         !!latest.nombre_generico);
+      tryStr('nombre_comercial',       'nombre_comercial',        !!latest.nombre_comercial);
+      tryStr('concentracion',          'concentracion',           !!latest.concentracion);
+      tryStr('laboratorio',            'laboratorio',             !!latest.laboratorio);
+      tryStr('pais_origen',            'pais_origen',             !!latest.pais_origen);
+      tryStr('registro_sanitario',     'registro_sanitario',      !!latest.registro_sanitario);
+      tryStr('codigo_ean13',           'codigo_ean13',            !!latest.codigo_ean13);
+      tryStr('indicaciones',           'indicaciones',            !!latest.indicaciones);
+      tryStr('advertencias',           'advertencias',            !!latest.advertencias);
+      tryStr('contraindicaciones',     'contraindicaciones',      !!latest.contraindicaciones);
+      tryStr('clase_controlado',       'clase_controlado',        !!latest.clase_controlado);
       tryStr('via_administracion',     'via_administracion');
       tryStr('condicion_almacenamiento','condicion_almacenamiento');
 
@@ -307,7 +316,7 @@ export default function MedModal({ show, editingId, form, formas, categorias, vi
       if (f.requiere_receta?.confidence >= 0.45) patch.requiere_receta = Boolean(f.requiere_receta.value);
       if (f.es_controlado?.confidence  >= 0.45)  patch.es_controlado   = Boolean(f.es_controlado.value);
 
-      if (Object.keys(patch).length > 0) set(patch);
+      if (Object.keys(patch).length > 0) onChange({ ...latest, ...patch });
     } catch (err: any) {
       alert(err.message || 'No se pudo analizar la imagen con IA.');
     } finally {

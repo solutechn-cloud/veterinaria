@@ -275,7 +275,7 @@ const POS: React.FC = () => {
 
   // ── Barcode search ────────────────────────────────────────────────────────
   const handleBarcodeSearch = useCallback((code: string) => {
-    const p = products.find(pr => pr.codigo === code);
+    const p = products.find(pr => pr.codigoBarras === code) || products.find(pr => pr.codigo === code);
     if (!p) {
       Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: `Código "${code}" no encontrado`, showConfirmButton: false, timer: 1800 });
       return;

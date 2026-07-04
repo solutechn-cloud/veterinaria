@@ -101,7 +101,6 @@ export function fieldsFor(tipo: ConsultorioTipo): FieldDef[] {
     ],
     desparasitacion: [
       { key: 'tipo', label: 'Tipo', type: 'select', options: ['Interna', 'Externa', 'Mixta'] },
-      { key: 'producto', label: 'Producto' },
       { key: 'dosis', label: 'Dosis' },
       { key: 'ultima_desparasitacion', label: 'Última desparasitación', type: 'date' },
       { key: 'proximo_control', label: 'Próximo control', type: 'date' },
@@ -169,7 +168,12 @@ export function fieldsFor(tipo: ConsultorioTipo): FieldDef[] {
       { key: 'mensaje', label: 'Mensaje para enviar al tutor', type: 'textarea', wide: true },
     ],
     documento: [
-      { key: 'tipo_documento', label: 'Tipo de documento', type: 'select', options: ['Consentimiento informado', 'Autorización de procedimiento', 'Alta médica', 'Otro'] },
+      {
+        key: 'tipo_documento',
+        label: 'Tipo de documento',
+        type: 'select',
+        options: ['Alta voluntaria', 'Autorización de eutanasia', 'Autorización de sedación/cirugía', 'Consentimiento informado de hospitalización', 'Otro'],
+      },
       { key: 'nombre_documento', label: 'Nombre del documento' },
       { key: 'requiere_firma', label: 'Requiere firma', type: 'select', options: ['Sí', 'No'] },
       { key: 'contenido', label: 'Contenido', type: 'textarea', wide: true },

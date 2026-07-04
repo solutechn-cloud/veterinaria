@@ -47,13 +47,9 @@ export default function PresModal({ show, editingId, form, costoBaseUnitario, me
               <FieldLabel>Precio Venta (L)</FieldLabel>
               <input type="number" min="0" step="0.01" className={inp} value={form.precio_venta ?? 0} onChange={e => set({ precio_venta: Number(e.target.value) })} />
             </div>
-            <div>
+            <div className="col-span-2">
               <FieldLabel>Precio 3a Edad (L)</FieldLabel>
               <input type="number" min="0" step="0.01" className={inp} value={form.precio_tercera_edad || ''} onChange={e => set({ precio_tercera_edad: Number(e.target.value) })} placeholder="Opcional" />
-            </div>
-            <div>
-              <FieldLabel>Código de Barras</FieldLabel>
-              <input className={inp} value={form.codigo_barras_presentacion || ''} onChange={e => set({ codigo_barras_presentacion: e.target.value })} />
             </div>
           </div>
 

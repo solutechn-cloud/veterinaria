@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MedicamentosService, CatalogoService, InventoryService, AIService } from '../services/api';
 import { Medicamento, PresentacionVenta, LoteMedicamento, ImagenMedicamento, CategoriaTerapeutica, FormaFarmaceutica, ViaAdministracion, AIMedicationImagePayload } from '../types';
-import { Search, Plus, Pill, AlertTriangle, RefreshCw, Filter, Boxes } from 'lucide-react';
+import { Search, Plus, Pill, AlertTriangle, RefreshCw, Filter, Boxes, ChevronLeft, ChevronRight } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import { MainTab, DetailTab, blankMed, blankPres, blankLote, inpSm, btnPrimary, btnSecondary, LoteFormData } from '../components/Medicamentos/shared';
@@ -12,6 +12,8 @@ import DetailPanel      from '../components/Medicamentos/DetailPanel';
 import MedModal         from '../components/Medicamentos/MedModal';
 import PresModal        from '../components/Medicamentos/PresModal';
 import LoteModal        from '../components/Medicamentos/LoteModal';
+
+const PAGE_SIZE = 25;
 
 export default function Medicamentos() {
   const [mainTab, setMainTab] = useState<MainTab>('MEDICAMENTOS');
@@ -32,6 +34,7 @@ export default function Medicamentos() {
   const [filterReceta, setFilterReceta]       = useState('');
   const [filterControlado, setFilterControlado] = useState('');
   const [filterEstadoCatalogo, setFilterEstadoCatalogo] = useState('');
+  const [page, setPage] = useState(0);
 
   const [showMedModal, setShowMedModal] = useState(false);
   const [editingMed, setEditingMed]     = useState<string | null>(null);
@@ -65,7 +68,8 @@ export default function Medicamentos() {
     setCategorias(cats); setFormas(frms); setVias(vs); setProveedores(provs);
   }, []);
 
-  const loadMedicamentos = useCallback(async () => {
+  const loadMedicamentos = useCallback(async (pageOverride?: number) => {
+    const targetPage = pageOverride !== undefined ? pageOverride : page;
     setLoading(true);
     try {
       const params: any = {};
@@ -75,11 +79,13 @@ export default function Medicamentos() {
       if (filterReceta !== '')    params.requiere_receta = filterReceta === 'true';
       if (filterControlado !== '') params.es_controlado  = filterControlado === 'true';
       if (filterEstadoCatalogo) params.estado_catalogo = filterEstadoCatalogo;
+      params.limit = PAGE_SIZE;
+      params.offset = targetPage * PAGE_SIZE;
       const data = await MedicamentosService.getAll(params);
       setMedicamentos(data);
       return data;
     } finally { setLoading(false); }
-  }, [search, filterCat, filterIsv, filterReceta, filterControlado, filterEstadoCatalogo]);
+  }, [search, filterCat, filterIsv, filterReceta, filterControlado, filterEstadoCatalogo, page]);
 
   const loadLotesAll = useCallback(async () => {
     setLoading(true);
@@ -457,8 +463,10 @@ export default function Medicamentos() {
     setSelectedMed(m); setDetailTab('RESUMEN');
   };
 
-  const clearFilters = () => { setSearch(''); setFilterCat(''); setFilterIsv(''); setFilterReceta(''); setFilterControlado(''); setFilterEstadoCatalogo(''); };
+  const clearFilters = () => { setSearch(''); setFilterCat(''); setFilterIsv(''); setFilterReceta(''); setFilterControlado(''); setFilterEstadoCatalogo(''); setPage(0); };
   const hasFilters   = !!(search || filterCat || filterIsv || filterReceta || filterControlado || filterEstadoCatalogo);
+  const applyFilters = () => { setPage(0); loadMedicamentos(0); };
+  const changePage   = (newPage: number) => { setPage(newPage); loadMedicamentos(newPage); };
 
   /* ── Render ──────────────────────────────────────────────── */
   return (
@@ -470,11 +478,11 @@ export default function Medicamentos() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold text-slate-800">Inventario Clínico</h1>
-              <p className="text-xs text-slate-400 mt-0.5">{medicamentos.length} registros cargados</p>
+              <p className="text-xs text-slate-400 mt-0.5">Página {page + 1} · {medicamentos.length} registros mostrados</p>
             </div>
             {mainTab === 'MEDICAMENTOS' && (
               <div className="flex items-center gap-2">
-                <button onClick={loadMedicamentos} className={btnSecondary} title="Recargar">
+                <button onClick={() => loadMedicamentos()} className={btnSecondary} title="Recargar">
                   <RefreshCw className="w-4 h-4" />
                 </button>
                 <button onClick={openNewMed} className={btnPrimary}>
@@ -506,28 +514,28 @@ export default function Medicamentos() {
             <div className="relative flex-1 min-w-[180px] max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input className={`${inpSm} pl-8 w-full`} placeholder="Buscar por nombre, código…" value={search}
-                onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadMedicamentos()} />
+                onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && applyFilters()} />
             </div>
-            <select className={inpSm} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+            <select className={inpSm} value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(0); }}>
               <option value="">Categoría</option>
               {categorias.map(c => <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>)}
             </select>
-            <select className={inpSm} value={filterIsv} onChange={e => setFilterIsv(e.target.value)}>
+            <select className={inpSm} value={filterIsv} onChange={e => { setFilterIsv(e.target.value); setPage(0); }}>
               <option value="">ISV</option><option value="exento">Exento</option><option value="15">15%</option><option value="18">18%</option>
             </select>
-            <select className={inpSm} value={filterReceta} onChange={e => setFilterReceta(e.target.value)}>
+            <select className={inpSm} value={filterReceta} onChange={e => { setFilterReceta(e.target.value); setPage(0); }}>
               <option value="">Receta</option><option value="true">Con receta</option><option value="false">Sin receta</option>
             </select>
-            <select className={inpSm} value={filterControlado} onChange={e => setFilterControlado(e.target.value)}>
+            <select className={inpSm} value={filterControlado} onChange={e => { setFilterControlado(e.target.value); setPage(0); }}>
               <option value="">Control</option><option value="true">Controlado</option><option value="false">No controlado</option>
             </select>
-            <select className={inpSm} value={filterEstadoCatalogo} onChange={e => setFilterEstadoCatalogo(e.target.value)}>
+            <select className={inpSm} value={filterEstadoCatalogo} onChange={e => { setFilterEstadoCatalogo(e.target.value); setPage(0); }}>
               <option value="">Estado</option>
               <option value="Borrador">Borrador</option>
               <option value="Sin stock">Sin stock</option>
               <option value="Listo para venta">Listo para venta</option>
             </select>
-            <button onClick={loadMedicamentos} className={btnPrimary + ' py-1.5'}>
+            <button onClick={applyFilters} className={btnPrimary + ' py-1.5'}>
               <Search className="w-3.5 h-3.5" />Filtrar
             </button>
             {hasFilters && (
@@ -540,8 +548,23 @@ export default function Medicamentos() {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <div className="flex-1 overflow-auto p-6">
             {mainTab === 'MEDICAMENTOS' && !selectedMed && (
-              <MedicamentosTable loading={loading} medicamentos={medicamentos} selectedMed={selectedMed}
-                onSelect={selectMed} onEdit={openEditMed} onToggleActivo={toggleActivo} />
+              <>
+                <MedicamentosTable loading={loading} medicamentos={medicamentos} selectedMed={selectedMed}
+                  onSelect={selectMed} onEdit={openEditMed} onToggleActivo={toggleActivo} />
+                <div className="flex items-center justify-between px-1 py-3 text-sm">
+                  <span className="text-slate-500">Página {page + 1} · mostrando {medicamentos.length} productos</span>
+                  <div className="flex gap-2">
+                    <button disabled={page === 0 || loading} onClick={() => changePage(page - 1)}
+                      className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50">
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button disabled={medicamentos.length < PAGE_SIZE || loading} onClick={() => changePage(page + 1)}
+                      className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50">
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
             {mainTab === 'MEDICAMENTOS' && selectedMed && (
               <DetailPanel

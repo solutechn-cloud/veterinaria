@@ -7,6 +7,7 @@ const emailService = require('../services/emailService');
 const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
 const { asignarLotesFefo } = require('../services/sales/fefo');
 const { buildTutorIdentity } = require('../services/sales/tutorIdentity');
+const { upsertVisitaCotizacion } = require('../services/sales/cotizacionVisita');
 
 function httpError(statusCode, message, code) {
     const err = new Error(message);
@@ -470,6 +471,43 @@ router.post('/cotizaciones/:id/detalles', authenticateToken, async (req, res) =>
 
         await client.query('COMMIT');
         res.json({ codigo: req.params.id, codCotizacion: req.params.id, total, isv: isvTot });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });
+        handleDbError(res, err);
+    } finally { client.release(); }
+});
+
+// Agrega ítems a la cotización ("prefactura") abierta de HOY para un
+// paciente, o crea una si no existe. Punto de entrada único para que
+// cualquier sección del expediente clínico (consulta, receta, vacunas,
+// desparasitaciones, etc.) consolide su cargo en UNA sola cotización por
+// paciente/día en vez de crear una por sección.
+router.post('/cotizaciones/visita', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { idPaciente, identidadCliente, detalles, observaciones } = req.body;
+        if (!Array.isArray(detalles) || detalles.length === 0) {
+            return res.status(400).json({ error: 'detalles debe ser un arreglo con al menos un ítem' });
+        }
+        for (const item of detalles) {
+            if (item.tipoIsv && !TIPOS_ISV_VALIDOS.has(item.tipoIsv)) {
+                return res.status(400).json({ error: `tipoIsv inválido: ${item.tipoIsv}` });
+            }
+        }
+
+        await client.query('BEGIN');
+        const result = await upsertVisitaCotizacion({
+            client,
+            tenantId: req.tenantId,
+            idPaciente: Number(idPaciente),
+            identidadCliente,
+            codVendedor: req.user?.codUsuario || req.user?.usuario || null,
+            items: detalles,
+            observaciones,
+        });
+        await client.query('COMMIT');
+        res.json({ codigo: result.codigo, codCotizacion: result.codigo, total: result.total, creado: result.creado });
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });

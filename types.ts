@@ -624,6 +624,7 @@ export interface Sucursal {
 
 export interface ProductoFarmacia {
   codigo: string;
+  codigoBarras?: string;
   tipoProducto?: 'MEDICAMENTO' | 'SERVICIO';
   nombreGenerico: string;
   nombreComercial?: string;

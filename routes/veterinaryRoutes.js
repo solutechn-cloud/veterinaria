@@ -2,11 +2,12 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, handleDbError, withTenantContext, getLocalTimestamp } = require('../config/db');
+const { pool, handleDbError, withTenantContext } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const { uploadFile, getSignedImageUrl } = require('../services/r2Storage');
-const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
+const { TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
+const { upsertVisitaCotizacion } = require('../services/sales/cotizacionVisita');
 
 const SIGNED_URL_TTL = Number(process.env.R2_SIGNED_URL_TTL_SECONDS || 3600);
 const CLINICAL_ATTACHMENT_MAX_BYTES = Number(process.env.CLINICAL_ATTACHMENT_MAX_BYTES || 8 * 1024 * 1024);
@@ -1028,51 +1029,33 @@ async function createVaccinePendingQuote(client, req, body, appliedItems) {
         throw Object.assign(new Error('El paciente no tiene tutor asignado para crear la cotizacion pendiente'), { statusCode: 400 });
     }
 
-    const detailRows = [];
+    const detalles = [];
+    const ids = [];
     for (const item of quoteItems) {
         const charge = await loadVaccineChargeInfo(client, req.tenantId, item);
         const cantidad = safeQuantity(item.cantidad, 1);
-        const tipoIsv = charge.tipoIsv;
-        const { subExento, subGravado, isvLinea } = calcularIsvLinea(charge.precio, cantidad, tipoIsv);
-        const producto = `Vacuna aplicada: ${charge.nombre}${charge.presentacion ? ` - ${charge.presentacion}` : ''}`;
-        detailRows.push({ item, charge, cantidad, tipoIsv, subExento, subGravado, isvLinea, producto });
+        detalles.push({
+            descripcionProducto: `Vacuna aplicada: ${charge.nombre}${charge.presentacion ? ` - ${charge.presentacion}` : ''}`,
+            cantidad,
+            precioVenta: charge.precio,
+            tipoProducto: 'SERVICIO',
+            tipoIsv: charge.tipoIsv,
+        });
+        if (item.id_vacuna_aplicada || item.vacunaId) ids.push(item.id_vacuna_aplicada || item.vacunaId);
     }
-
-    const isvTotal = detailRows.reduce((sum, row) => sum + row.isvLinea, 0);
-    const total = detailRows.reduce((sum, row) => sum + (row.charge.precio * row.cantidad) + row.isvLinea, 0);
-    const ids = detailRows.map(row => row.item.id_vacuna_aplicada || row.item.vacunaId).filter(Boolean);
-    const codigo = await generateNextId('cotizaciones', 'codigo', 'COT', client);
     const registroRef = ids.length ? `VAC-${ids.join(', VAC-')}` : 'vacunacion';
 
-    await client.query(
-        `INSERT INTO cotizaciones
-         (codigo, fecha, cod_vendedor, identidad_cliente, total, estado, tipo_compra,
-          isv, descuento, valido_hasta, observaciones, client_mutation_id, tenant_id)
-         VALUES ($1,$2,$3,$4,$5,'Emitida','Contado',$6,0,$7,$8,$9,$10)`,
-        [
-            codigo,
-            getLocalTimestamp(),
-            req.user?.codUsuario || req.user?.usuario || null,
-            info.id_tutor,
-            total,
-            isvTotal,
-            body.valido_hasta || null,
-            body.observaciones_cotizacion || `Cargo pendiente por vacunacion de ${info.paciente}. Registros clinicos ${registroRef}.`,
-            body.clientMutationId || `vacunas-${ids.join('-') || Date.now()}`,
-            req.tenantId,
-        ]
-    );
-    for (const row of detailRows) {
-        await client.query(
-            `INSERT INTO detalle_cotizacion
-             (codigo_cotizacion, producto, cantidad, precio_unitario, tipo_producto,
-              id_medicamento, id_presentacion, id_servicio, tipo_isv,
-              subtotal_exento, subtotal_gravado, isv_linea, tenant_id)
-             VALUES ($1,$2,$3,$4,'SERVICIO',NULL,NULL,NULL,$5,$6,$7,$8,$9)`,
-            [codigo, row.producto, row.cantidad, row.charge.precio, row.tipoIsv, row.subExento, row.subGravado, row.isvLinea, req.tenantId]
-        );
-    }
-    return codigo;
+    const idPaciente = Number(body.id_paciente || quoteItems[0]?.id_paciente);
+    const result = await upsertVisitaCotizacion({
+        client,
+        tenantId: req.tenantId,
+        idPaciente,
+        identidadCliente: info.id_tutor,
+        codVendedor: req.user?.codUsuario || req.user?.usuario || null,
+        items: detalles,
+        observaciones: body.observaciones_cotizacion || `Cargo pendiente por vacunacion de ${info.paciente}. Registros clinicos ${registroRef}.`,
+    });
+    return result.codigo;
 }
 
 async function applyVaccineItem(client, req, body) {
