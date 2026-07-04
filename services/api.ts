@@ -389,7 +389,7 @@ export const ServiciosVeterinariosService = {
 export const SalesService = {
   getVentasDiDaily: (fecha?: string) => request<Venta[]>(`/ventas/historial${fecha ? `?fecha=${fecha}` : ''}`),
   getVenta: (id: string) => request<Venta>(`/ventas/${id}`),
-  createVenta: (data: VentaPayload) => request<{codVenta: string; numeroFactura?: string | null; tipoDocumento?: string}>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
+  createVenta: (data: VentaPayload) => request<{codVenta: string; numeroFactura?: string | null; numeroNoFiscal?: string | null; tipoDocumento?: string}>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
   updateVenta: (id: string, data: VentaPayload) => request<{codVenta: string}>(`/ventas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getDetallesVenta: (id: string) => request<DetalleVenta[]>(`/ventas/${id}/detalles`),
   anularVenta: (id: string) => request(`/ventas/${id}/anular`, { method: 'PUT' }),

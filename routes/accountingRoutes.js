@@ -43,6 +43,7 @@ router.get('/audit/transactions', authenticateToken, async (req, res) => {
             SELECT
                 v.codVenta      AS id,
                 v.numero_factura AS "numeroFactura",
+                v.numero_no_fiscal AS "numeroNoFiscal",
                 v.total         AS monto,
                 v.estado,
                 v.tipoCompra    AS categoria,

@@ -17,6 +17,7 @@ const AUDIT_PAGE_SIZE = 50;
 interface VentaAudit {
   id: string;
   numeroFactura?: string;
+  numeroNoFiscal?: string;
   monto: number;
   estado: string;
   categoria: string;
@@ -147,7 +148,8 @@ const Accounting: React.FC = () => {
   const filteredVentas = ventas.filter(v =>
     v.cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     v.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.numeroFactura?.toLowerCase().includes(searchTerm.toLowerCase())
+    v.numeroFactura?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    v.numeroNoFiscal?.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const auditTotalPages = Math.max(Math.ceil(auditTotal / AUDIT_PAGE_SIZE), 1);
 
@@ -348,7 +350,7 @@ const Accounting: React.FC = () => {
                   </tr>
                 ) : filteredVentas.map(v => (
                   <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.estado === 'Anulada' ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3 font-mono text-slate-600">{v.numeroFactura || v.id}</td>
+                    <td className="px-4 py-3 font-mono text-slate-600">{v.numeroFactura || v.numeroNoFiscal || v.id}</td>
                     <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate">{v.cliente}</td>
                     <td className="px-4 py-3 text-slate-500 max-w-[140px] truncate">{v.vendedor || '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{v.idCaja}</td>

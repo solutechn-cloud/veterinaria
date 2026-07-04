@@ -492,7 +492,7 @@ const POS: React.FC = () => {
 
       const response = await SalesService.createVenta(payload);
       const codVenta = response?.codVenta || '';
-      const numeroDocumento = response?.numeroFactura || codVenta;
+      const numeroDocumento = response?.numeroFactura || response?.numeroNoFiscal || codVenta;
       const documentLabel = documentType === 'factura_fiscal' ? 'Factura fiscal' : 'Factura no fiscal';
       setSessionSales(s => s + 1);
       resetPOS();
