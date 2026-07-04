@@ -472,6 +472,53 @@ async function generateFacturaCorrelativo(tenantId, client = pool) {
 }
 
 /**
+ * Genera el siguiente número de factura interna (no fiscal), en una
+ * secuencia propia y totalmente independiente del correlativo CAI
+ * (factura_correlativo_actual). Así, emitir facturas internas nunca
+ * consume ni salta números de la numeración fiscal autorizada.
+ * Formato: NF-<correlativo 8 dígitos>, ej. NF-00000005.
+ *
+ * Usa pg_advisory_xact_lock + FOR UPDATE para serializar concurrencia,
+ * igual que generateFacturaCorrelativo.
+ */
+async function generateNoFiscalCorrelativo(tenantId, client = pool) {
+    if (!tenantId) return null;
+    const lockId = _advisoryLockId('NOFISCALNUM', 'configuracion', tenantId);
+
+    const usingPool = client === pool;
+    let txClient = client;
+    if (usingPool) {
+        txClient = await pool.connect();
+        await txClient.query('BEGIN');
+    }
+
+    try {
+        await txClient.query('SELECT pg_advisory_xact_lock($1)', [lockId]);
+
+        const result = await txClient.query(
+            `SELECT no_fiscal_correlativo_actual
+             FROM configuracion WHERE tenant_id = $1 FOR UPDATE`,
+            [tenantId]
+        );
+        const numero = Number(result.rows[0]?.no_fiscal_correlativo_actual) || 1;
+        const numeroNoFiscal = `NF-${String(numero).padStart(8, '0')}`;
+
+        await txClient.query(
+            `UPDATE configuracion SET no_fiscal_correlativo_actual = $1 WHERE tenant_id = $2`,
+            [numero + 1, tenantId]
+        );
+
+        if (usingPool) await txClient.query('COMMIT');
+        return numeroNoFiscal;
+    } catch (err) {
+        if (usingPool) await txClient.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        if (usingPool) txClient.release();
+    }
+}
+
+/**
  * Recalcula y actualiza el balance del arqueo activo de una caja.
  * Excluye depósitos KrediYa (van al banco, no a caja física).
  */
@@ -594,4 +641,4 @@ async function tenantQuery(tenantId, text, values = []) {
     return withTenantContext(tenantId, (client) => client.query(text, values));
 }
 
-module.exports = { pool, getPoolStats, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass, getCurrentRequestContext };
+module.exports = { pool, getPoolStats, generateNextId, generateFacturaCorrelativo, generateNoFiscalCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta, withTenantContext, tenantQuery, setRequestTenant, withRequestTenant, setRequestBypass, withRequestBypass, getCurrentRequestContext };

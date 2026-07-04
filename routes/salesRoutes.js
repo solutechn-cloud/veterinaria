@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { pool, generateNextId, generateFacturaCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta } = require('../config/db');
+const { pool, generateNextId, generateFacturaCorrelativo, generateNoFiscalCorrelativo, handleDbError, updateArqueoBalance, getLocalTimestamp, anularVenta } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const { calcularIsvLinea, TIPOS_ISV_VALIDOS } = require('../services/sales/tax');
@@ -149,7 +149,7 @@ router.get('/ventas/historial', authenticateToken, async (req, res) => {
 
         const result = await pool.query(`
             SELECT v.codVenta as "codVenta", v.numero_factura as "numeroFactura",
-                   COALESCE(v.numero_factura, v.codVenta) as "numeroDocumento",
+                   COALESCE(v.numero_factura, v.numero_no_fiscal, v.codVenta) as "numeroDocumento",
                    COALESCE(v.tipo_documento, 'factura_fiscal') as "tipoDocumento",
                    (COALESCE(v.tipo_documento, 'factura_fiscal') = 'factura_fiscal') as "documentoFiscal",
                    v.fecha, v.total, v.estado,
@@ -177,11 +177,11 @@ router.get('/ventas/buscar', authenticateToken, async (req, res) => {
         let filtro = '';
         if (q) {
             params.push(`%${q}%`);
-            filtro = ` AND (v.codVenta ILIKE $4 OR v.numero_factura ILIKE $4 OR v.identidadCliente ILIKE $4 OR (c.nombre || ' ' || COALESCE(c.apellido,'')) ILIKE $4)`;
+            filtro = ` AND (v.codVenta ILIKE $4 OR v.numero_factura ILIKE $4 OR v.numero_no_fiscal ILIKE $4 OR v.identidadCliente ILIKE $4 OR (c.nombre || ' ' || COALESCE(c.apellido,'')) ILIKE $4)`;
         }
         const result = await pool.query(`
             SELECT v.codVenta as "codVenta", v.numero_factura as "numeroFactura",
-                   COALESCE(v.numero_factura, v.codVenta) as "numeroDocumento",
+                   COALESCE(v.numero_factura, v.numero_no_fiscal, v.codVenta) as "numeroDocumento",
                    COALESCE(v.tipo_documento, 'factura_fiscal') as "tipoDocumento",
                    (COALESCE(v.tipo_documento, 'factura_fiscal') = 'factura_fiscal') as "documentoFiscal",
                    v.fecha, v.total, v.estado, v.tipoCompra as "tipoCompra",
@@ -204,7 +204,7 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
         const r = await pool.query(`
             SELECT
                 v.codVenta as "codVenta", v.numero_factura as "numeroFactura",
-                COALESCE(v.numero_factura, v.codVenta) as "numeroDocumento",
+                COALESCE(v.numero_factura, v.numero_no_fiscal, v.codVenta) as "numeroDocumento",
                 COALESCE(v.tipo_documento, 'factura_fiscal') as "tipoDocumento",
                 (COALESCE(v.tipo_documento, 'factura_fiscal') = 'factura_fiscal') as "documentoFiscal",
                 v.fecha, v.codVendedor as "codVendedor",
@@ -628,14 +628,17 @@ router.post('/ventas', authenticateToken, async (req, res) => {
         const numeroFactura = tipoDocumentoVenta === 'factura_fiscal'
             ? await generateFacturaCorrelativo(req.tenantId, client)
             : null;
+        const numeroNoFiscal = tipoDocumentoVenta !== 'factura_fiscal'
+            ? await generateNoFiscalCorrelativo(req.tenantId, client)
+            : null;
 
         // Insert parent ventas row first so detalleventa FK constraint is satisfied
         await client.query(
             `INSERT INTO ventas
-             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id, numero_factura, tipo_documento)
-             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id, numero_factura, tipo_documento, numero_no_fiscal)
+             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
             [codVenta, hndTime, codUsuario, identidadCliente, total,
-             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null, numeroFactura, tipoDocumentoVenta]
+             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null, numeroFactura, tipoDocumentoVenta, numeroNoFiscal]
         );
 
         for (const item of detalles) {
@@ -791,7 +794,7 @@ router.post('/ventas', authenticateToken, async (req, res) => {
             }
         }
 
-        res.status(201).json({ codVenta, numeroFactura, tipoDocumento: tipoDocumentoVenta });
+        res.status(201).json({ codVenta, numeroFactura, numeroNoFiscal, tipoDocumento: tipoDocumentoVenta });
     } catch (err) {
         await client.query('ROLLBACK');
         if (err.code === '23505' && req.body?.clientMutationId) {
