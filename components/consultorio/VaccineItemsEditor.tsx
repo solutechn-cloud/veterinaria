@@ -21,7 +21,7 @@ type VaccineItemsEditorProps = {
   onChange: (value: VaccineCartItem[]) => void;
 };
 
-const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
+const compactInputCls = 'rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
 const newId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const nombreProducto = (p: Medicamento) => p.nombre_comercial || p.nombre_generico || p.codigo;
 const money = (value?: number) => `L. ${Number(value || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -75,10 +75,7 @@ export function VaccineItemsEditor({ value = [], onChange }: VaccineItemsEditorP
     }
   };
 
-  const productosVacunas = useMemo(() => {
-    const onlyVaccines = productos.filter(isVaccineProduct);
-    return onlyVaccines.length ? onlyVaccines : productos;
-  }, [productos]);
+  const productosVacunas = useMemo(() => productos.filter(isVaccineProduct), [productos]);
 
   const sugerencias = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -222,90 +219,87 @@ export function VaccineItemsEditor({ value = [], onChange }: VaccineItemsEditorP
           <p className="text-sm font-medium text-slate-500">Busca una vacuna arriba o agregala manualmente.</p>
         </div>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center gap-2 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <span className="w-7 shrink-0" />
+            <span className="min-w-[110px] flex-1">Vacuna</span>
+            <span className="w-32 shrink-0">Presentación</span>
+            <span className="w-14 shrink-0 text-center">Cantidad</span>
+            <span className="w-24 shrink-0 text-right">Total</span>
+            <span className="w-[22px] shrink-0" />
+          </div>
           {items.map((item, idx) => {
             const pres = (item.id_medicamento ? presCache[item.id_medicamento] : []) || [];
             const subtotal = Number(item.precio_unitario || 0) * Number(item.cantidad || 0);
-            // Precio e ISV solo aplican a vacunas del inventario; en las manuales
-            // no se piden (el ISV se define al registrar el producto en inventario).
+            // Precio solo aplica a vacunas del inventario (parametrizado en el
+            // catalogo); en las manuales se pide porque no hay referencia.
             const isInventory = !!item.id_medicamento;
             return (
-              <article key={item.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs font-bold text-teal-700">{idx + 1}</span>
-                    <div className="min-w-0">
-                      <input
-                        value={item.nombre_vacuna || ''}
-                        onChange={event => patchItem(item.id, { nombre_vacuna: event.target.value })}
-                        placeholder="Nombre de la vacuna"
-                        className="w-full truncate border-none p-0 text-sm font-semibold text-slate-800 outline-none"
-                      />
-                      {item.id_medicamento && <span className="text-[11px] text-slate-400">Cod: {item.id_medicamento}</span>}
-                    </div>
-                  </div>
+              <article key={item.id} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs font-bold text-teal-700">{idx + 1}</span>
+                  <input
+                    value={item.nombre_vacuna || ''}
+                    onChange={event => patchItem(item.id, { nombre_vacuna: event.target.value })}
+                    placeholder="Nombre de la vacuna"
+                    className="min-w-[110px] flex-1 truncate border-none p-0 text-sm font-semibold text-slate-800 outline-none"
+                  />
+                  {pres.length > 0 ? (
+                    <select
+                      value={item.id_presentacion || ''}
+                      onChange={event => selectPresentacion(item, event.target.value)}
+                      title="Presentación" aria-label="Presentación"
+                      className={`${compactInputCls} w-32 shrink-0 px-2 py-1.5`}
+                    >
+                      <option value="">Seleccione...</option>
+                      {pres.filter(p => p.activo !== false).map(p => (
+                        <option key={p.id_presentacion} value={p.id_presentacion}>{p.nombre}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={item.presentacion || ''}
+                      onChange={event => patchItem(item.id, { presentacion: event.target.value })}
+                      placeholder="Presentación" title="Presentación" aria-label="Presentación"
+                      className={`${compactInputCls} w-32 shrink-0 px-2 py-1.5`}
+                    />
+                  )}
+                  <input
+                    type="number" min="1" value={item.cantidad || 1}
+                    onChange={event => patchItem(item.id, { cantidad: Number(event.target.value || 1) })}
+                    title="Cantidad" aria-label="Cantidad"
+                    className={`${compactInputCls} w-14 shrink-0 px-2 py-1.5 text-center`}
+                  />
+                  {isInventory ? (
+                    <span className="w-24 shrink-0 text-right text-sm font-bold text-slate-700">{money(subtotal)}</span>
+                  ) : (
+                    <input
+                      type="number" min="0" step="0.01" value={item.precio_unitario ?? ''}
+                      onChange={event => patchItem(item.id, { precio_unitario: event.target.value ? Number(event.target.value) : undefined })}
+                      placeholder="0.00" title="Precio" aria-label="Precio"
+                      className={`${compactInputCls} w-24 shrink-0 px-2 py-1.5 text-right`}
+                    />
+                  )}
                   <button type="button" onClick={() => removeItem(item.id)} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600">
-                    <Trash2 size={14} /> Quitar
+                    <Trash2 size={14} />
                   </button>
                 </div>
 
-                <div className={`grid grid-cols-1 gap-3 ${isInventory ? 'md:grid-cols-[1.4fr_88px_120px_120px]' : 'md:grid-cols-[1fr_120px]'}`}>
-                  <label className="block text-xs font-medium text-slate-500">
-                    Presentacion
-                    {pres.length > 0 ? (
-                      <select value={item.id_presentacion || ''} onChange={event => selectPresentacion(item, event.target.value)} className={`${inputCls} mt-1`}>
-                        <option value="">Seleccione...</option>
-                        {pres.filter(p => p.activo !== false).map(p => (
-                          <option key={p.id_presentacion} value={p.id_presentacion}>
-                            {p.nombre} - {money(Number(p.precio_venta || 0))}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input value={item.presentacion || ''} onChange={event => patchItem(item.id, { presentacion: event.target.value })} placeholder="Manual" className={`${inputCls} mt-1`} />
-                    )}
-                  </label>
-
-                  <label className="block text-xs font-medium text-slate-500">
-                    Cantidad
-                    <input type="number" min="1" value={item.cantidad || 1} onChange={event => patchItem(item.id, { cantidad: Number(event.target.value || 1) })} className={`${inputCls} mt-1`} />
-                  </label>
-
-                  {isInventory && (
-                    <label className="block text-xs font-medium text-slate-500">
-                      Precio
-                      <input type="number" min="0" step="0.01" value={item.precio_unitario ?? ''} onChange={event => patchItem(item.id, { precio_unitario: event.target.value ? Number(event.target.value) : undefined })} className={`${inputCls} mt-1`} />
-                    </label>
-                  )}
-
-                  {isInventory && (
-                    <label className="block text-xs font-medium text-slate-500">
-                      ISV
-                      <select value={item.tipo_isv || 'exento'} onChange={event => patchItem(item.id, { tipo_isv: event.target.value as VaccineCartItem['tipo_isv'] })} className={`${inputCls} mt-1`}>
-                        <option value="exento">Exento</option>
-                        <option value="15">15%</option>
-                        <option value="18">18%</option>
-                      </select>
-                    </label>
-                  )}
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[220px_1fr_auto]">
+                <div className="mt-2 grid grid-cols-1 gap-2 pl-9 md:grid-cols-[190px_1fr]">
                   <label className="block text-xs font-medium text-slate-500">
                     Proxima dosis
-                    <input type="date" value={item.proxima_dosis || ''} onChange={event => patchItem(item.id, { proxima_dosis: event.target.value })} className={`${inputCls} mt-1`} />
+                    <input type="date" value={item.proxima_dosis || ''} onChange={event => patchItem(item.id, { proxima_dosis: event.target.value })} className={`${compactInputCls} mt-1 w-full px-2.5 py-1.5`} />
                   </label>
                   <label className="block text-xs font-medium text-slate-500">
                     Notas
-                    <input value={item.notas || ''} onChange={event => patchItem(item.id, { notas: event.target.value })} placeholder="Observacion de esta vacuna" className={`${inputCls} mt-1`} />
+                    <input value={item.notas || ''} onChange={event => patchItem(item.id, { notas: event.target.value })} placeholder="Observacion de esta vacuna" className={`${compactInputCls} mt-1 w-full px-2.5 py-1.5`} />
                   </label>
-                  <div className="flex items-end justify-end pb-2 text-sm font-semibold text-slate-700">{isInventory ? money(subtotal) : ''}</div>
                 </div>
               </article>
             );
           })}
-          <div className="flex justify-end rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            Total estimado: <span className="ml-2 text-teal-700">{money(total)}</span>
+          <div className="flex justify-end rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">
+            Total estimado: <span className="ml-2 text-teal-300">{money(total)}</span>
           </div>
         </div>
       )}

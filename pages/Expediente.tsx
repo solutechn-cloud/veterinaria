@@ -9,12 +9,14 @@ import {
   Users, X, Pencil, Trash2, Receipt,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { useAuth } from '../context/AuthContext';
 import { ClinicalHistoryExportModal, printClinicalEvent } from '../components/consultorio/ClinicalHistoryExportModal';
 import { AttachmentList, AttachmentUploader, type ClinicalAttachment } from '../components/consultorio/ClinicalAttachments';
 import { LaboratoryTestsEditor } from '../components/consultorio/LaboratoryTestsEditor';
 import { MedicationItemsEditor, type MedicationItem } from '../components/consultorio/MedicationItemsEditor';
 import { ServiceItemsEditor, type ServiceItem } from '../components/consultorio/ServiceItemsEditor';
 import { VaccineItemsEditor, type VaccineCartItem } from '../components/consultorio/VaccineItemsEditor';
+import { DesparasitacionItemsEditor, type DesparasitacionItem } from '../components/consultorio/DesparasitacionItemsEditor';
 import { ProfessionalSelect, type ProfessionalValue } from '../components/consultorio/ProfessionalSelect';
 import { FieldDef, MODULES, fieldsFor, fmtDate, initials, moduleFor, nowLocal, patientSubtitle } from '../components/consultorio/consultorioConfig';
 
@@ -41,7 +43,6 @@ function toLocalInput(v?: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const TAX_RATES: Record<string, number> = { exento: 0, '15': 0.15, '18': 0.18 };
 const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { style: 'currency', currency: 'HNL' });
 
 function toDateOnly(v?: string) {
@@ -93,44 +94,14 @@ function normalizeVaccinePayloadItems(payload: Record<string, any>): VaccineCart
   }];
 }
 
-function quoteLineTax(item: MedicationItem) {
-  const qty = Number(item.cantidad || 1);
-  const price = Number(item.precioVenta || 0);
-  const rate = TAX_RATES[item.tipoIsv || 'exento'] || 0;
-  return price * qty * rate;
-}
-
-// Busca la cotización "Emitida" (pendiente de cobro) abierta HOY para el cliente
-// y le agrega las líneas; si no existe, crea una nueva. Así consulta (servicios)
-// y receta (productos) de una misma visita quedan en UNA sola cotización.
-async function pushClinicalQuote(patient: Paciente, detalles: any[], observaciones: string) {
+// Agrega las líneas a la cotización ("prefactura") abierta de HOY para este
+// paciente; si no existe, crea una nueva. Así cualquier cargo generado desde
+// el expediente clínico (servicios de consulta, recetas, vacunas,
+// desparasitaciones, etc.) de una misma visita queda en UNA sola cotización.
+async function pushVisitaQuote(patient: Paciente, detalles: any[], observaciones: string) {
   if (!detalles.length) return null;
   const clienteId = patient.id_tutor || (patient as any).tutorId;
-  const hoy = new Date().toISOString().slice(0, 10);
-
-  try {
-    const abiertas = await QuoteService.list(hoy, hoy, 'Emitida').catch(() => []);
-    const abierta = (abiertas || [])
-      .filter(c => String(c.identidadCliente || '') === String(clienteId))
-      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0];
-    if (abierta) {
-      const r = await QuoteService.appendDetalles(abierta.codigo, { detalles });
-      return (r && (r.codigo || r.codCotizacion)) || abierta.codigo;
-    }
-  } catch { /* si falla la búsqueda, se crea una nueva abajo */ }
-
-  const subtotal = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1), 0);
-  const isv = detalles.reduce((sum, item) => sum + Number(item.precioVenta || 0) * Number(item.cantidad || 1) * (TAX_RATES[item.tipoIsv || 'exento'] || 0), 0);
-  const result = await QuoteService.create({
-    identidadCliente: clienteId,
-    tipoCompra: 'Contado',
-    total: subtotal + isv,
-    isv,
-    descuento: 0,
-    detalles,
-    observaciones,
-    clientMutationId: `visita-${patient.id_paciente}-${hoy}-${Date.now()}`,
-  } as any);
+  const result = await QuoteService.agregarItemsVisita(patient.id_paciente, clienteId, detalles, observaciones);
   return result.codigo || result.codCotizacion || null;
 }
 
@@ -148,7 +119,7 @@ async function createMedicationQuoteFromPayload(patient: Paciente, payload: Reco
     precioVenta: Number(row.precioVenta || 0),
     tipoIsv: row.tipoIsv || 'exento',
   }));
-  return pushClinicalQuote(patient, detalles, `Medicamentos indicados para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
+  return pushVisitaQuote(patient, detalles, `Medicamentos indicados para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
 }
 
 async function createServiceQuoteFromPayload(patient: Paciente, payload: Record<string, any>, eventId?: number) {
@@ -164,12 +135,30 @@ async function createServiceQuoteFromPayload(patient: Paciente, payload: Record<
     precioVenta: Number(row.precio || 0),
     tipoIsv: row.tipoIsv || 'exento',
   }));
-  return pushClinicalQuote(patient, detalles, `Servicios de consulta para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
+  return pushVisitaQuote(patient, detalles, `Servicios de consulta para ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
+}
+
+async function createDesparasitacionQuoteFromPayload(patient: Paciente, payload: Record<string, any>, eventId?: number) {
+  const rows = (Array.isArray(payload.productos) ? payload.productos : []) as DesparasitacionItem[];
+  const billable = rows.filter(row => row.id_medicamento && row.id_presentacion && Number(row.precio || 0) > 0);
+  if (!billable.length) return null;
+
+  const detalles: any[] = billable.map(row => ({
+    tipoProducto: 'MEDICAMENTO',
+    id_medicamento: row.id_medicamento,
+    id_presentacion: row.id_presentacion,
+    descripcionProducto: [row.nombre, row.presentacion].filter(Boolean).join(' - '),
+    cantidad: Number(row.cantidad || 1),
+    precioVenta: Number(row.precio || 0),
+    tipoIsv: row.tipoIsv || 'exento',
+  }));
+  return pushVisitaQuote(patient, detalles, `Desparasitación de ${patient.nombre}${eventId ? ` en registro clinico ${eventId}` : ''}. Pendiente de cobro en recepcion.`);
 }
 
 export default function Expediente() {
   const { idPaciente } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<ConsultorioBusquedaItem[]>([]);
   const [detail, setDetail] = useState<ConsultorioPacienteDetalle | null>(null);
@@ -304,8 +293,13 @@ export default function Expediente() {
     const editing = editingId;
     // Las consultas legado (tabla "consultas") solo aceptan el motivo/SOAP/vitales;
     // no tienen proximo_control, así que la creación de cita no aplica al editarlas.
-    const proximoControlChanged = modal.tipo === 'consulta' && editingSource !== 'consulta'
+    // El mismo campo "proximo_control" existe en consulta y desparasitación.
+    const proximoControlChanged = (modal.tipo === 'consulta' || modal.tipo === 'desparasitacion') && editingSource !== 'consulta'
       && !!payload.proximo_control && payload.proximo_control !== initialProximoControl;
+    const citasAAgendar: Array<{ fecha: string; motivo: string }> = [];
+    if (proximoControlChanged) {
+      citasAAgendar.push({ fecha: payload.proximo_control, motivo: `Próximo control: ${payload.motivo || moduleFor(modal.tipo).label}` });
+    }
     try {
       let quoteCode: string | null = null;
       if (editing && editingSource === 'consulta') {
@@ -320,9 +314,10 @@ export default function Expediente() {
       } else if (modal.tipo === 'vacuna') {
         const vaccineItems = normalizeVaccinePayloadItems(payload).filter(item => (item.nombre_vacuna || '').trim());
         if (!vaccineItems.length) throw new Error('Agregue al menos una vacuna al carrito.');
+        const fechaAplicacion = payload.fecha_aplicacion || toDateOnly(modal.fecha_evento);
         const result = await VacunasService.aplicar({
           id_paciente: patient.id_paciente,
-          fecha_aplicacion: payload.fecha_aplicacion || toDateOnly(modal.fecha_evento),
+          fecha_aplicacion: fechaAplicacion,
           veterinario: professionalName(payload.veterinario) || undefined,
           notas: payload.observaciones || payload.notas || detalle || undefined,
           generar_cotizacion: Boolean(payload.generar_cotizacion),
@@ -340,24 +335,35 @@ export default function Expediente() {
           })),
         } as any);
         quoteCode = result.codigo_cotizacion || null;
+        // Si la aplicación quedó agendada para otro día, se refleja en la agenda general.
+        if (fechaAplicacion && fechaAplicacion !== toDateOnly()) {
+          citasAAgendar.push({ fecha: fechaAplicacion, motivo: `Aplicación de vacuna: ${vaccineItems.map(v => v.nombre_vacuna).filter(Boolean).join(', ')}` });
+        }
+        // Cada próxima dosis programada también queda como cita en la agenda.
+        vaccineItems.forEach(item => {
+          if (item.proxima_dosis) citasAAgendar.push({ fecha: item.proxima_dosis, motivo: `Próxima dosis: ${item.nombre_vacuna}` });
+        });
       } else {
         const created = await ConsultorioService.createEvento(patient.id_paciente, data);
         if (modal.tipo === 'formula' && payload.generar_cotizacion) {
           quoteCode = await createMedicationQuoteFromPayload(patient, payload, created.id_evento);
         } else if (modal.tipo === 'consulta' && payload.generar_cotizacion) {
           quoteCode = await createServiceQuoteFromPayload(patient, payload, created.id_evento);
+        } else if (modal.tipo === 'desparasitacion' && payload.generar_cotizacion) {
+          quoteCode = await createDesparasitacionQuoteFromPayload(patient, payload, created.id_evento);
         }
       }
       let citaCreada = false;
       let citaError = '';
-      if (proximoControlChanged) {
+      for (const cita of citasAAgendar) {
         try {
           await CitasService.create({
             id_paciente: patient.id_paciente,
             id_tutor: patient.id_tutor,
-            fecha_inicio: `${payload.proximo_control}T09:00:00`,
-            fecha_fin: `${payload.proximo_control}T09:30:00`,
-            motivo: `Próximo control: ${payload.motivo || 'Consulta'}`,
+            id_veterinario: user?.codUsuario || undefined,
+            fecha_inicio: `${cita.fecha}T09:00:00`,
+            fecha_fin: `${cita.fecha}T09:30:00`,
+            motivo: cita.motivo,
           } as any);
           citaCreada = true;
         } catch (citaErr: any) {
@@ -732,6 +738,14 @@ function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, 
                 onCobroPendienteChange={v => updatePayload('generar_cotizacion', v)}
               />
             )}
+            {form.tipo === 'desparasitacion' && (
+              <DesparasitacionItemsEditor
+                value={Array.isArray(form.payload.productos) ? form.payload.productos : []}
+                onChange={value => updatePayload('productos', value)}
+                cobroPendiente={!!form.payload.generar_cotizacion}
+                onCobroPendienteChange={v => updatePayload('generar_cotizacion', v)}
+              />
+            )}
             {form.tipo !== 'consulta' && visibleFields.map(field => (
               <Field
                 key={field.key}
@@ -873,6 +887,9 @@ function ConsultaFields({ fieldByKey, payload, onChange, patientId, tipo, attach
         {renderField('frecuencia_respiratoria')}
         {renderField('condicion_corporal')}
       </div>
+      <div className="grid grid-cols-1 gap-5">
+        {renderField('subjetivo')}
+      </div>
       <ServiceItemsEditor
         value={Array.isArray(payload.servicios) ? payload.servicios : []}
         onChange={v => onChange('servicios', v)}
@@ -880,7 +897,6 @@ function ConsultaFields({ fieldByKey, payload, onChange, patientId, tipo, attach
         onCobroPendienteChange={v => onChange('generar_cotizacion', v)}
       />
       <div className="grid grid-cols-1 gap-5">
-        {renderField('subjetivo')}
         {renderField('objetivo')}
         {renderField('evaluacion')}
         {renderField('plan')}

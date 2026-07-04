@@ -264,6 +264,7 @@ function registerRoutes(router) {
                     m.activo,
                     m.fecha_alta,
                     m.tenant_id,
+                    m.tipo_producto,
                     ct.nombre                           AS "categoriaNombre",
                     ff.nombre                           AS "formaNombre",
                     ff.unidad_base                      AS "unidadBase",

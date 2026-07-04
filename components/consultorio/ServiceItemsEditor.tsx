@@ -22,6 +22,7 @@ type ServiceItemsEditorProps = {
 const money = (value?: number) => `L. ${Number(value || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const newId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100';
+const compactInputCls = 'rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100';
 
 export function ServiceItemsEditor({ value = [], onChange, cobroPendiente, onCobroPendienteChange }: ServiceItemsEditorProps) {
   const items = value;
@@ -62,14 +63,19 @@ export function ServiceItemsEditor({ value = [], onChange, cobroPendiente, onCob
   const removeItem = (id: string) => onChange(items.filter(it => it.id !== id));
 
   const addServicio = (s: ServicioVeterinario) => {
-    onChange([...itemsRef.current, {
-      id: newId(),
-      id_servicio: s.id_servicio,
-      nombre: s.nombre,
-      cantidad: 1,
-      precio: Number(s.precio || 0),
-      tipoIsv: s.tipo_isv || 'exento',
-    }]);
+    const existing = itemsRef.current.find(it => it.id_servicio === s.id_servicio);
+    if (existing) {
+      onChange(itemsRef.current.map(it => it.id === existing.id ? { ...it, cantidad: Number(it.cantidad || 0) + 1 } : it));
+    } else {
+      onChange([...itemsRef.current, {
+        id: newId(),
+        id_servicio: s.id_servicio,
+        nombre: s.nombre,
+        cantidad: 1,
+        precio: Number(s.precio || 0),
+        tipoIsv: s.tipo_isv || 'exento',
+      }]);
+    }
     setQuery('');
     setOpen(false);
   };
@@ -116,6 +122,7 @@ export function ServiceItemsEditor({ value = [], onChange, cobroPendiente, onCob
             value={query}
             onChange={e => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
             placeholder="Buscar servicio por nombre, categoría o código..."
             className="w-full bg-transparent text-sm outline-none"
             autoComplete="off"
@@ -168,37 +175,49 @@ export function ServiceItemsEditor({ value = [], onChange, cobroPendiente, onCob
           <p className="text-sm font-medium text-slate-500">Busca un servicio arriba y agrégalo a la consulta.</p>
         </div>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center gap-2 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <span className="w-7 shrink-0" />
+            <span className="min-w-[120px] flex-1">Servicio</span>
+            <span className="w-14 shrink-0 text-center">Cantidad</span>
+            <span className="w-3 shrink-0" />
+            <span className="w-24 shrink-0 text-right">Precio final</span>
+            <span className="w-24 shrink-0" />
+            <span className="w-[22px] shrink-0" />
+          </div>
           {items.map((item, idx) => {
             const subtotal = Number(item.precio || 0) * Number(item.cantidad || 0);
             return (
-              <article key={item.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs font-bold text-teal-600">{idx + 1}</span>
+              <article key={item.id} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs font-bold text-teal-600">{idx + 1}</span>
+                  <input
+                    value={item.nombre || ''}
+                    onChange={e => patchItem(item.id, { nombre: e.target.value })}
+                    placeholder="Nombre del servicio"
+                    className="min-w-[120px] flex-1 truncate border-none p-0 text-sm font-semibold text-slate-800 outline-none"
+                  />
+                  <input
+                    type="number" min="1" value={item.cantidad ?? ''}
+                    onChange={e => patchItem(item.id, { cantidad: e.target.value ? Number(e.target.value) : undefined })}
+                    title="Cantidad" aria-label="Cantidad"
+                    className={`${compactInputCls} w-14 shrink-0 px-2 py-1.5 text-center`}
+                  />
+                  <span className="shrink-0 text-slate-300">×</span>
+                  {item.id_servicio ? (
+                    <span className="w-24 shrink-0 text-right text-sm font-bold text-slate-700">{money(item.precio)}</span>
+                  ) : (
                     <input
-                      value={item.nombre || ''}
-                      onChange={e => patchItem(item.id, { nombre: e.target.value })}
-                      placeholder="Nombre del servicio"
-                      className="w-full truncate border-none p-0 text-sm font-semibold text-slate-800 outline-none"
+                      type="number" min="0" step="0.01" value={item.precio ?? ''}
+                      onChange={e => patchItem(item.id, { precio: e.target.value ? Number(e.target.value) : undefined })}
+                      placeholder="0.00" title="Precio" aria-label="Precio"
+                      className={`${compactInputCls} w-24 shrink-0 px-2 py-1.5 text-right`}
                     />
-                  </div>
+                  )}
+                  <span className="w-24 shrink-0 text-right text-sm font-bold text-slate-700">{money(subtotal)}</span>
                   <button type="button" onClick={() => removeItem(item.id)} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600">
-                    <Trash2 size={14} /> Quitar
+                    <Trash2 size={14} />
                   </button>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[90px_130px_1fr]">
-                  <label className="block text-xs font-medium text-slate-500">
-                    Cantidad
-                    <input type="number" min="1" value={item.cantidad ?? ''} onChange={e => patchItem(item.id, { cantidad: e.target.value ? Number(e.target.value) : undefined })} className={`${inputCls} mt-1`} />
-                  </label>
-                  <label className="block text-xs font-medium text-slate-500">
-                    Precio unit.
-                    <input type="number" min="0" step="0.01" value={item.precio ?? ''} onChange={e => patchItem(item.id, { precio: e.target.value ? Number(e.target.value) : undefined })} placeholder="0.00" className={`${inputCls} mt-1`} />
-                  </label>
-                  <div className="flex items-end justify-end pb-1 text-sm">
-                    <span className="text-slate-500">Subtotal:&nbsp;</span><span className="font-bold text-slate-700">{money(subtotal)}</span>
-                  </div>
                 </div>
               </article>
             );

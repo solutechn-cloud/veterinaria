@@ -3,8 +3,8 @@ import { CitasService, PacientesService } from '../services/api';
 import { AgendaVeterinario, Cita, EstadoCita, Paciente, TipoCita } from '../types';
 import { useAuth } from '../context/AuthContext';
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, Clock,
-  Mail, Plus, RefreshCw, Search, UserRound, X,
+  CheckCircle2, ChevronLeft, ChevronRight, Clock, Columns3,
+  Mail, Plus, RefreshCw, Rows3, Search, UserRound, X,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -71,6 +71,7 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
   const [vetFilter, setVetFilter] = useState(personal ? user?.codUsuario || '' : '');
   const [showModal, setShowModal] = useState(false);
   const [reserveOnly, setReserveOnly] = useState(false);
+  const [orientation, setOrientation] = useState<'equipo-filas' | 'equipo-columnas'>('equipo-filas');
   const [form, setForm] = useState<Partial<Cita>>({
     estado: 'Programada',
     fecha_inicio: toLocalInput(),
@@ -119,10 +120,12 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
 
   const schedulerVets = useMemo(() => {
     const source = personal ? vets.filter(v => v.id_veterinario === (user?.codUsuario || vetFilter)) : vets;
-    const rows = source.length ? source : [{ id_veterinario: 'sin-asignar', nombre: 'Sin asignar' }];
+    const hasUnassigned = appointments.some(c => !c.id_veterinario);
+    const sinAsignar = { id_veterinario: 'sin-asignar', nombre: 'Sin asignar' };
+    const rows = source.length ? (hasUnassigned ? [...source, sinAsignar] : source) : [sinAsignar];
     if (vetFilter && !personal) return rows.filter(v => v.id_veterinario === vetFilter);
     return rows;
-  }, [personal, user?.codUsuario, vetFilter, vets]);
+  }, [personal, user?.codUsuario, vetFilter, vets, appointments]);
 
   const openNew = (slot?: { date: string; hour: number; vet?: string }) => {
     const start = slot ? new Date(`${slot.date}T${String(slot.hour).padStart(2, '0')}:00:00`) : new Date();
@@ -192,51 +195,81 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
     </div>
   );
 
-  const renderScheduler = () => {
-    const template = `minmax(142px, 1.15fr) repeat(${hours.length}, minmax(38px, 1fr))`;
+  const cellCitasFor = (vet: AgendaVeterinario, hour: number) => filtered.filter(c => {
+    const d = new Date(c.fecha_inicio);
+    const sameDate = d.toISOString().slice(0, 10) === date;
+    const sameVet = vet.id_veterinario === 'sin-asignar' ? !c.id_veterinario : String(c.id_veterinario) === String(vet.id_veterinario);
+    return sameDate && sameVet && d.getHours() === hour;
+  });
+
+  const renderSlotButton = (vet: AgendaVeterinario, hour: number) => {
+    const cellCitas = cellCitasFor(vet, hour);
+    const visible = cellCitas.slice(0, 2);
     return (
-      <>
-        <div className="lg:hidden">{renderAgendaList()}</div>
-        <div className="hidden min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm lg:block">
-          <div className="grid border-b border-slate-100 bg-slate-50/80" style={{ gridTemplateColumns: template }}>
-            <div className="p-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Equipo</div>
-            {hours.map(h => <div key={h} className="border-l border-slate-100 px-1 py-2.5 text-center text-[11px] font-semibold text-slate-500">{hourLabel(h)}</div>)}
+      <button onClick={() => openNew({ date, hour, vet: vet.id_veterinario })} className="min-h-[84px] overflow-hidden border-l border-slate-100 bg-white p-1 text-left transition-colors hover:bg-indigo-50/70">
+        {visible.map(c => (
+          <div key={c.id_cita} className={`mb-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight shadow-sm ${statusTone[c.estado] || statusTone.Programada}`}>
+            <b className="block truncate">{formatTime(c.fecha_inicio)}</b>
+            <span className="block truncate">{c.pacienteNombre || c.motivo || 'Reserva'}</span>
           </div>
-          {schedulerVets.map(vet => (
-            <div key={vet.id_veterinario} className="grid min-h-[84px] border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: template }}>
-              <div className="flex min-w-0 items-center gap-2 bg-white p-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><UserRound size={17} /></div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-800">{vet.nombre}</p>
-                  <p className="truncate text-[11px] text-slate-400">{vet.sucursalNombre || 'Agenda clínica'}</p>
-                </div>
-              </div>
-              {hours.map(hour => {
-                const cellCitas = filtered.filter(c => {
-                  const d = new Date(c.fecha_inicio);
-                  const sameDate = d.toISOString().slice(0, 10) === date;
-                  const sameVet = vet.id_veterinario === 'sin-asignar' ? !c.id_veterinario : String(c.id_veterinario) === String(vet.id_veterinario);
-                  return sameDate && sameVet && d.getHours() === hour;
-                });
-                const visible = cellCitas.slice(0, 2);
-                return (
-                  <button key={hour} onClick={() => openNew({ date, hour, vet: vet.id_veterinario })} className="min-h-[84px] overflow-hidden border-l border-slate-100 bg-white p-1 text-left transition-colors hover:bg-indigo-50/70">
-                    {visible.map(c => (
-                      <div key={c.id_cita} className={`mb-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight shadow-sm ${statusTone[c.estado] || statusTone.Programada}`}>
-                        <b className="block truncate">{formatTime(c.fecha_inicio)}</b>
-                        <span className="block truncate">{c.pacienteNombre || c.motivo || 'Reserva'}</span>
-                      </div>
-                    ))}
-                    {cellCitas.length > visible.length && <span className="text-[10px] font-semibold text-indigo-500">+{cellCitas.length - visible.length}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </>
+        ))}
+        {cellCitas.length > visible.length && <span className="text-[10px] font-semibold text-indigo-500">+{cellCitas.length - visible.length}</span>}
+      </button>
     );
   };
+
+  const renderVetHeader = (vet: AgendaVeterinario) => (
+    <div className="flex min-w-0 items-center gap-2 bg-white p-2.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><UserRound size={17} /></div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-800">{vet.nombre}</p>
+        <p className="truncate text-[11px] text-slate-400">{vet.sucursalNombre || 'Agenda clínica'}</p>
+      </div>
+    </div>
+  );
+
+  const renderSchedulerRows = () => {
+    const template = `minmax(142px, 1.15fr) repeat(${hours.length}, minmax(38px, 1fr))`;
+    return (
+      <div className="hidden min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm lg:block">
+        <div className="grid border-b border-slate-100 bg-slate-50/80" style={{ gridTemplateColumns: template }}>
+          <div className="p-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Equipo</div>
+          {hours.map(h => <div key={h} className="border-l border-slate-100 px-1 py-2.5 text-center text-[11px] font-semibold text-slate-500">{hourLabel(h)}</div>)}
+        </div>
+        {schedulerVets.map(vet => (
+          <div key={vet.id_veterinario} className="grid min-h-[84px] border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: template }}>
+            {renderVetHeader(vet)}
+            {hours.map(hour => <React.Fragment key={hour}>{renderSlotButton(vet, hour)}</React.Fragment>)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderSchedulerColumns = () => {
+    const template = `minmax(70px, 90px) repeat(${schedulerVets.length}, minmax(130px, 1fr))`;
+    return (
+      <div className="hidden min-w-0 overflow-x-auto rounded-3xl border border-slate-100 bg-white shadow-sm lg:block">
+        <div className="grid border-b border-slate-100 bg-slate-50/80" style={{ gridTemplateColumns: template }}>
+          <div className="p-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Hora</div>
+          {schedulerVets.map(vet => <div key={vet.id_veterinario} className="border-l border-slate-100">{renderVetHeader(vet)}</div>)}
+        </div>
+        {hours.map(hour => (
+          <div key={hour} className="grid min-h-[84px] border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: template }}>
+            <div className="flex items-center bg-white p-2.5 text-[11px] font-semibold text-slate-500">{hourLabel(hour)}</div>
+            {schedulerVets.map(vet => <React.Fragment key={vet.id_veterinario}>{renderSlotButton(vet, hour)}</React.Fragment>)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderScheduler = () => (
+    <>
+      <div className="lg:hidden">{renderAgendaList()}</div>
+      {orientation === 'equipo-filas' ? renderSchedulerRows() : renderSchedulerColumns()}
+    </>
+  );
 
   const renderAgendaList = () => (
     <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
@@ -303,6 +336,15 @@ export function AgendaBoard({ personal = false }: AgendaBoardProps) {
                     <button key={v} onClick={() => setView(v)} className={`px-4 py-2 text-sm font-medium ${view === v ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500'}`}>{v}</button>
                   ))}
                 </div>
+                {(view === 'Programador' || view === 'Dia') && (
+                  <button
+                    onClick={() => setOrientation(o => o === 'equipo-filas' ? 'equipo-columnas' : 'equipo-filas')}
+                    title={orientation === 'equipo-filas' ? 'Ver equipo en columnas' : 'Ver equipo en filas'}
+                    className="hidden rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 lg:inline-flex"
+                  >
+                    {orientation === 'equipo-filas' ? <Columns3 size={18} /> : <Rows3 size={18} />}
+                  </button>
+                )}
                 <button onClick={load} className="rounded-xl border border-slate-200 p-2 text-slate-500"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
               </div>
             </div>

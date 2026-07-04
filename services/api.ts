@@ -408,6 +408,11 @@ export const QuoteService = {
     request<CotizacionResumen[]>(`/cotizaciones?desde=${desde}&hasta=${hasta}${estado ? `&estado=${estado}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   updateEstado: (id: string, estado: string) =>
     request(`/cotizaciones/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
+  agregarItemsVisita: (idPaciente: number, identidadCliente: string | undefined, detalles: Partial<DetalleVenta>[], observaciones?: string) =>
+    request<{ codigo: string; codCotizacion?: string; total: number; creado: boolean }>('/cotizaciones/visita', {
+      method: 'POST',
+      body: JSON.stringify({ idPaciente, identidadCliente, detalles, observaciones }),
+    }),
 };
 
 

@@ -101,7 +101,6 @@ export function fieldsFor(tipo: ConsultorioTipo): FieldDef[] {
     ],
     desparasitacion: [
       { key: 'tipo', label: 'Tipo', type: 'select', options: ['Interna', 'Externa', 'Mixta'] },
-      { key: 'producto', label: 'Producto' },
       { key: 'dosis', label: 'Dosis' },
       { key: 'ultima_desparasitacion', label: 'Última desparasitación', type: 'date' },
       { key: 'proximo_control', label: 'Próximo control', type: 'date' },
