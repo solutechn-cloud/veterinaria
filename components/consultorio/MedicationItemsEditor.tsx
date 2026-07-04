@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Pill, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Pill, Plus, Search, Trash2, PackageSearch, PencilLine } from 'lucide-react';
 import { MedicamentosService } from '../../services/api';
 import { Medicamento, PresentacionVenta } from '../../types';
 
@@ -18,16 +18,26 @@ export type MedicationItem = {
 type MedicationItemsEditorProps = {
   value?: MedicationItem[];
   onChange: (value: MedicationItem[]) => void;
+  cobroPendiente?: boolean;
+  onCobroPendienteChange?: (value: boolean) => void;
 };
 
 const nombreProducto = (p: Medicamento) => p.nombre_comercial || p.nombre_generico || p.codigo;
-const money = (value?: number) => Number(value || 0).toLocaleString('es-HN', { style: 'currency', currency: 'HNL' });
+const money = (value?: number) => `L. ${Number(value || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const newId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsEditorProps) {
-  const rows = value.length ? value : [newMedicationRow()];
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
+
+export function MedicationItemsEditor({ value = [], onChange, cobroPendiente, onCobroPendienteChange }: MedicationItemsEditorProps) {
+  const items = value;
   const [productos, setProductos] = useState<Medicamento[]>([]);
   const [presCache, setPresCache] = useState<Record<string, PresentacionVenta[]>>({});
-  const [openRow, setOpenRow] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Siempre apunta a la lista más reciente, para appends seguros tras un await.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   useEffect(() => {
     let alive = true;
@@ -37,55 +47,32 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
     return () => { alive = false; };
   }, []);
 
-  const updateRow = (id: string, patch: Partial<MedicationItem>) => {
-    onChange(rows.map(row => row.id === id ? { ...row, ...patch } : row));
-  };
+  // Precarga presentaciones de productos ya seleccionados (modo edición).
+  useEffect(() => {
+    items.forEach(it => { if (it.id_medicamento && !presCache[it.id_medicamento]) void loadPres(it.id_medicamento); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
-  const loadPres = async (codigo?: string) => {
+  // Cerrar el dropdown al hacer click fuera.
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const loadPres = async (codigo?: string): Promise<PresentacionVenta[]> => {
     if (!codigo) return [];
     if (presCache[codigo]) return presCache[codigo];
     try {
       const list = await MedicamentosService.getPresentaciones(codigo);
       setPresCache(prev => ({ ...prev, [codigo]: list || [] }));
       return list || [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
-  useEffect(() => {
-    rows.forEach(row => { if (row.id_medicamento) void loadPres(row.id_medicamento); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  const addRow = () => onChange([...rows, newMedicationRow()]);
-  const removeRow = (id: string) => onChange(rows.length === 1 ? [newMedicationRow()] : rows.filter(row => row.id !== id));
-
-  const selectPresentation = (rowId: string, presentaciones: PresentacionVenta[], idValue: string) => {
-    const selected = presentaciones.find(p => String(p.id_presentacion) === idValue);
-    updateRow(rowId, {
-      id_presentacion: selected?.id_presentacion,
-      presentacion: selected?.nombre || '',
-      precioVenta: selected ? Number(selected.precio_venta || 0) : undefined,
-    });
-  };
-
-  const selectProducto = async (rowId: string, p: Medicamento) => {
-    const presentaciones = await loadPres(p.codigo);
-    const vendibles = presentaciones.filter(item => item.activo !== false && item.es_unidad_venta !== false);
-    const first = vendibles[0] || presentaciones[0];
-    updateRow(rowId, {
-      medicamento: nombreProducto(p),
-      id_medicamento: p.codigo,
-      id_presentacion: first?.id_presentacion,
-      presentacion: first?.nombre || '',
-      precioVenta: first ? Number(first.precio_venta || 0) : undefined,
-      tipoIsv: p.tipo_isv || 'exento',
-    });
-    setOpenRow(null);
-  };
-
-  const sugerencias = (query = '') => {
+  const sugerencias = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = q
       ? productos.filter(p =>
@@ -94,155 +81,248 @@ export function MedicationItemsEditor({ value = [], onChange }: MedicationItemsE
           (p.codigo || '').toLowerCase().includes(q))
       : productos;
     return base.slice(0, 8);
+  }, [productos, query]);
+
+  const patchItem = (id: string, patch: Partial<MedicationItem>) =>
+    onChange(items.map(it => (it.id === id ? { ...it, ...patch } : it)));
+
+  const removeItem = (id: string) => onChange(items.filter(it => it.id !== id));
+
+  const addProducto = async (p: Medicamento) => {
+    setQuery('');
+    setOpen(false);
+    // Cargar presentación + precio ANTES de agregar, para insertar el item ya completo.
+    const pres = await loadPres(p.codigo);
+    const vendibles = pres.filter(x => x.activo !== false && x.es_unidad_venta !== false);
+    const first = vendibles[0] || pres[0];
+    const item: MedicationItem = {
+      id: newId(),
+      medicamento: nombreProducto(p),
+      id_medicamento: p.codigo,
+      id_presentacion: first?.id_presentacion,
+      presentacion: first?.nombre || '',
+      precioVenta: first ? Number(first.precio_venta || 0) : undefined,
+      cantidad: 1,
+      tipoIsv: p.tipo_isv || 'exento',
+    };
+    onChange([...itemsRef.current, item]);
   };
 
-  const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200';
+  const addManual = () => {
+    const nombre = query.trim();
+    if (!nombre) return;
+    onChange([...itemsRef.current, { id: newId(), medicamento: nombre, cantidad: 1, tipoIsv: 'exento' }]);
+    setQuery('');
+    setOpen(false);
+  };
+
+  // Agrega una línea vacía y editable para un medicamento que no está en inventario.
+  const addEmptyManual = () => {
+    onChange([...itemsRef.current, { id: newId(), medicamento: '', cantidad: 1, tipoIsv: 'exento' }]);
+    setOpen(false);
+  };
+
+  const selectPresentacion = (item: MedicationItem, idValue: string) => {
+    const pres = (item.id_medicamento ? presCache[item.id_medicamento] : []) || [];
+    const selected = pres.find(p => String(p.id_presentacion) === idValue);
+    patchItem(item.id, {
+      id_presentacion: selected?.id_presentacion,
+      presentacion: selected?.nombre || '',
+      precioVenta: selected ? Number(selected.precio_venta || 0) : item.precioVenta,
+    });
+  };
+
+  const total = items.reduce((s, it) => s + Number(it.precioVenta || 0) * Number(it.cantidad || 0), 0);
 
   return (
-    <div className="md:col-span-2 rounded-2xl border border-violet-200 bg-violet-50/20 p-3">
-      <div className="mb-3 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-violet-700">
-          <Pill size={17} />
-          <span>Medicamentos recetados</span>
+    <div className="md:col-span-2 rounded-2xl border border-violet-200 bg-violet-50/30 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-violet-700">
+        <Pill size={17} />
+        <span>Medicamentos recetados</span>
+        {items.length > 0 && (
+          <span className="ml-auto rounded-full bg-violet-600 px-2 py-0.5 text-xs font-bold text-white">{items.length}</span>
+        )}
+      </div>
+
+      {/* Cobro pendiente al inicio de la sección de medicamentos */}
+      {onCobroPendienteChange && (
+        <label className="mb-3 flex items-start gap-3 rounded-xl border border-indigo-100 bg-white p-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={!!cobroPendiente}
+            onChange={e => onCobroPendienteChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span>
+            <span className="block font-semibold text-slate-800">Preparar cobro pendiente en recepción</span>
+            <span className="text-xs text-slate-500">Los medicamentos del inventario quedarán en una cotización para que caja los cobre al tutor.</span>
+          </span>
+        </label>
+      )}
+
+      {/* Buscador tipo carrito */}
+      <div className="relative" ref={boxRef}>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100">
+          <Search size={17} className="shrink-0 text-slate-400" />
+          <input
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder="Buscar por nombre comercial, genérico o código..."
+            className="w-full bg-transparent text-sm outline-none"
+            autoComplete="off"
+          />
+          {query && (
+            <button type="button" onMouseDown={e => { e.preventDefault(); addManual(); }} className="shrink-0 whitespace-nowrap rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+              + Manual
+            </button>
+          )}
         </div>
-      </div>
-      <div className="space-y-4">
-        {rows.map(row => {
-          const opciones = sugerencias(row.medicamento);
-          const presentaciones = row.id_medicamento ? (presCache[row.id_medicamento] || []) : [];
-          const selectedPresentation = presentaciones.find(p => p.id_presentacion === row.id_presentacion);
-          return (
-            <article key={row.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-indigo-700">
-                  <Pill size={17} />
-                  <span>Medicamento</span>
-                </div>
-                <button type="button" onClick={() => removeRow(row.id)} className="inline-flex items-center gap-1 text-xs font-medium text-rose-500 hover:text-rose-600">
-                  <Trash2 size={14} /> Eliminar
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_90px_120px]">
-                <FieldShell label="Medicamento">
-                  <div className="relative">
-                    <input
-                      value={row.medicamento || ''}
-                      onChange={event => {
-                        updateRow(row.id, {
-                          medicamento: event.target.value,
-                          id_medicamento: undefined,
-                          id_presentacion: undefined,
-                          presentacion: '',
-                          precioVenta: undefined,
-                        });
-                        setOpenRow(row.id);
-                      }}
-                      onFocus={() => setOpenRow(row.id)}
-                      onBlur={() => setTimeout(() => setOpenRow(prev => (prev === row.id ? null : prev)), 150)}
-                      placeholder="Buscar por nombre o codigo, o escribir..."
-                      className={inputCls}
-                      autoComplete="off"
-                    />
-                    {openRow === row.id && opciones.length > 0 && (
-                      <ul className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                        {opciones.map(p => (
-                          <li key={p.codigo}>
-                            <button
-                              type="button"
-                              onMouseDown={event => { event.preventDefault(); void selectProducto(row.id, p); }}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-indigo-50"
-                            >
-                              <span className="truncate text-slate-700">{nombreProducto(p)}</span>
-                              <span className="shrink-0 text-xs font-medium text-slate-400">{p.codigo}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+
+        {open && sugerencias.length > 0 && (
+          <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+            {sugerencias.map(p => (
+              <li key={p.codigo}>
+                <button
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); void addProducto(p); }}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-indigo-50"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-500"><Pill size={15} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-800">{nombreProducto(p)}</span>
+                    {p.nombre_comercial && p.nombre_generico && (
+                      <span className="block truncate text-xs text-slate-400">{p.nombre_generico}</span>
                     )}
-                  </div>
-                </FieldShell>
-                <FieldShell label="Presentacion">
-                  {presentaciones.length > 0 ? (
-                    <select
-                      value={row.id_presentacion || ''}
-                      onChange={event => selectPresentation(row.id, presentaciones, event.target.value)}
-                      className={inputCls}
-                    >
-                      <option value="">Seleccione presentacion</option>
-                      {presentaciones.filter(p => p.activo !== false).map(p => (
-                        <option key={p.id_presentacion} value={p.id_presentacion}>
-                          {p.nombre} - {money(Number(p.precio_venta || 0))}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={row.presentacion || ''}
-                      onChange={event => updateRow(row.id, { presentacion: event.target.value })}
-                      placeholder="Tableta, jarabe, ampolla..."
-                      className={inputCls}
-                      autoComplete="off"
-                    />
-                  )}
-                </FieldShell>
-                <FieldShell label="Cantidad">
-                  <input
-                    type="number"
-                    min="1"
-                    value={row.cantidad || ''}
-                    onChange={event => updateRow(row.id, { cantidad: event.target.value ? Number(event.target.value) : undefined })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Precio">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.precioVenta ?? ''}
-                    onChange={event => updateRow(row.id, { precioVenta: event.target.value ? Number(event.target.value) : undefined })}
-                    placeholder="0.00"
-                    className={inputCls}
-                  />
-                </FieldShell>
-              </div>
-              {selectedPresentation && (
-                <p className="mt-2 text-xs text-slate-400">
-                  Esta presentacion quedara lista para una cotizacion pendiente en recepcion.
-                </p>
-              )}
-              <div className="mt-4">
-                <FieldShell label="Frecuencia / indicaciones">
-                  <textarea
-                    value={row.frecuencia || ''}
-                    onChange={event => updateRow(row.id, { frecuencia: event.target.value })}
-                    placeholder="Ej. 1 tableta cada 12 horas por 7 dias, via oral"
-                    className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200"
-                  />
-                </FieldShell>
-              </div>
-            </article>
-          );
-        })}
+                  </span>
+                  <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{p.codigo}</span>
+                  <Plus size={15} className="shrink-0 text-indigo-400" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {open && query.trim() && sugerencias.length === 0 && (
+          <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-xl">
+            <p className="text-slate-500">Sin coincidencias en inventario.</p>
+            <button type="button" onMouseDown={e => { e.preventDefault(); addManual(); }} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500">
+              <PencilLine size={13} /> Agregar "{query.trim()}" manual
+            </button>
+          </div>
+        )}
       </div>
-      <button type="button" onClick={addRow} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 py-3 text-sm font-medium text-indigo-600 hover:bg-indigo-50">
-        <Plus size={17} /> Agregar medicamento
+
+      <button type="button" onClick={addEmptyManual} className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+        <PencilLine size={13} /> Agregar medicamento manual (fuera de inventario)
       </button>
+
+      {/* Lista / carrito */}
+      {items.length === 0 ? (
+        <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/60 py-8 text-center">
+          <PackageSearch size={26} className="mb-2 text-slate-300" />
+          <p className="text-sm font-medium text-slate-500">Busca un medicamento arriba y agrégalo a la receta.</p>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {items.map((item, idx) => {
+            const pres = (item.id_medicamento ? presCache[item.id_medicamento] : []) || [];
+            const subtotal = Number(item.precioVenta || 0) * Number(item.cantidad || 0);
+            return (
+              <article key={item.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-600">{idx + 1}</span>
+                    <div className="min-w-0">
+                      <input
+                        value={item.medicamento || ''}
+                        onChange={e => patchItem(item.id, { medicamento: e.target.value })}
+                        className="w-full truncate border-none p-0 text-sm font-semibold text-slate-800 outline-none"
+                      />
+                      {item.id_medicamento && <span className="text-[11px] text-slate-400">Cód: {item.id_medicamento}</span>}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => removeItem(item.id)} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600">
+                    <Trash2 size={14} /> Quitar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.5fr_80px_110px]">
+                  <label className="block text-xs font-medium text-slate-500">
+                    Presentación
+                    {pres.length > 0 ? (
+                      <select
+                        value={item.id_presentacion || ''}
+                        onChange={e => selectPresentacion(item, e.target.value)}
+                        className={`${inputCls} mt-1`}
+                      >
+                        <option value="">Seleccione…</option>
+                        {pres.filter(p => p.activo !== false).map(p => (
+                          <option key={p.id_presentacion} value={p.id_presentacion}>
+                            {p.nombre} — {money(Number(p.precio_venta || 0))}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={item.presentacion || ''}
+                        onChange={e => patchItem(item.id, { presentacion: e.target.value })}
+                        placeholder="Tableta, jarabe…"
+                        className={`${inputCls} mt-1`}
+                        autoComplete="off"
+                      />
+                    )}
+                  </label>
+                  <label className="block text-xs font-medium text-slate-500">
+                    Cantidad
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.cantidad ?? ''}
+                      onChange={e => patchItem(item.id, { cantidad: e.target.value ? Number(e.target.value) : undefined })}
+                      className={`${inputCls} mt-1`}
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-slate-500">
+                    Precio unit.
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.precioVenta ?? ''}
+                      onChange={e => patchItem(item.id, { precioVenta: e.target.value ? Number(e.target.value) : undefined })}
+                      placeholder="0.00"
+                      className={`${inputCls} mt-1`}
+                    />
+                  </label>
+                </div>
+
+                <label className="mt-3 block text-xs font-medium text-slate-500">
+                  Frecuencia / indicaciones
+                  <textarea
+                    value={item.frecuencia || ''}
+                    onChange={e => patchItem(item.id, { frecuencia: e.target.value })}
+                    placeholder="Ej. 1 tableta cada 12 horas por 7 días, vía oral"
+                    className={`${inputCls} mt-1 min-h-[60px]`}
+                  />
+                </label>
+
+                {subtotal > 0 && (
+                  <div className="mt-2 text-right text-xs text-slate-500">
+                    Subtotal: <span className="font-bold text-slate-700">{money(subtotal)}</span>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+
+          {total > 0 && (
+            <div className="flex items-center justify-between rounded-xl bg-slate-900 px-4 py-3 text-white">
+              <span className="text-sm font-medium text-slate-300">Total estimado</span>
+              <span className="text-lg font-bold">{money(total)}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  );
-}
-
-function newMedicationRow(): MedicationItem {
-  return { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, cantidad: 1 };
-}
-
-function FieldShell({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block text-sm font-normal text-indigo-900/70">
-      <span className="mb-2 flex items-center justify-between gap-3">
-        <span>{label}</span>
-      </span>
-      {children}
-    </label>
   );
 }

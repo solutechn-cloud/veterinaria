@@ -221,8 +221,25 @@ function mountRoutes() {
     if (process.env.NODE_ENV === 'production') {
         app.get('*.map', (req, res) => res.status(404).end());
     }
-    app.use(express.static(path.join(__dirname, 'build')));
-    app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'build', 'index.html')));
+    // El service worker (sw.js), su registro y el HTML de arranque deben
+    // revalidarse SIEMPRE para que un nuevo deploy se detecte y la PWA no
+    // quede servida desde caché con módulos viejos. Los assets con hash en el
+    // nombre (immutable) sí se cachean agresivamente.
+    const NO_STORE = /(?:sw\.js|registerSW\.js|workbox-[^\\/]+\.js|manifest\.webmanifest|index\.html)$/;
+    const HASHED_ASSET = /-[A-Za-z0-9_]{8,}\.(?:js|css|woff2?|png|svg|jpe?g|gif|webp)$/i;
+    app.use(express.static(path.join(__dirname, 'build'), {
+        setHeaders: (res, filePath) => {
+            if (NO_STORE.test(filePath)) {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            } else if (HASHED_ASSET.test(filePath)) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+        },
+    }));
+    app.get('*', (req, res) => {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.sendFile(path.join(__dirname, 'build', 'index.html'));
+    });
 
 }
 

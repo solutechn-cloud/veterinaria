@@ -82,7 +82,7 @@ router.get('/dashboard/admin', requireAny(ADMIN_DASHBOARD_PERMS), async (req, re
             return res.status(400).json({ error: 'Año inválido' });
         }
 
-        const [ventasHoy, costosHoy, trend, valuation, boxes, lowStock] = await Promise.all([
+        const [ventasHoy, costosHoy, trend, valuation, boxes, lowStock, pacientesRes, especiesRes, serviciosRes] = await Promise.all([
             pool.query(`
                 SELECT COUNT(*)::int AS "numFacturas",
                        COALESCE(SUM(total), 0) AS "totalVentas",
@@ -147,6 +147,27 @@ router.get('/dashboard/admin', requireAny(ADMIN_DASHBOARD_PERMS), async (req, re
                 ORDER BY COALESCE(SUM(l.cantidad_actual), 0) ASC
                 LIMIT 10
             `, [req.tenantId]),
+            // Resumen clínico: mascotas registradas y propietarios vinculados.
+            pool.query(`
+                SELECT COUNT(*)::int AS "totalPacientes",
+                       COUNT(DISTINCT id_tutor)::int AS "totalPropietarios"
+                FROM pacientes WHERE tenant_id = $1
+            `, [req.tenantId]),
+            // Distribución de mascotas por especie.
+            pool.query(`
+                SELECT COALESCE(NULLIF(TRIM(especie), ''), 'Otros') AS especie,
+                       COUNT(*)::int AS total
+                FROM pacientes WHERE tenant_id = $1
+                GROUP BY 1 ORDER BY total DESC LIMIT 6
+            `, [req.tenantId]),
+            // Totales por servicio (eventos clínicos del año en curso).
+            pool.query(`
+                SELECT tipo, COUNT(*)::int AS total
+                FROM paciente_eventos_clinicos
+                WHERE tenant_id = $1 AND estado <> 'Anulado'
+                  AND fecha_evento >= date_trunc('year', CURRENT_DATE)
+                GROUP BY tipo ORDER BY total DESC
+            `, [req.tenantId]),
         ]);
 
         const sales = ventasHoy.rows[0] || {};
@@ -166,6 +187,12 @@ router.get('/dashboard/admin', requireAny(ADMIN_DASHBOARD_PERMS), async (req, re
                 medicamentosConStock: Number(valuationRow.medicamentosConStock || 0),
                 cajasActivas: boxes.rows.filter(b => b.estadoArqueo === 'Activo').length,
             },
+            clinica: {
+                totalPacientes: Number(pacientesRes.rows[0]?.totalPacientes || 0),
+                totalPropietarios: Number(pacientesRes.rows[0]?.totalPropietarios || 0),
+            },
+            especies: especiesRes.rows,
+            serviceBreakdown: serviciosRes.rows,
             salesTrend: trend.rows,
             boxes: boxes.rows,
             lowStock: lowStock.rows,

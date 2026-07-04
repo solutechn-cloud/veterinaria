@@ -8,7 +8,12 @@ export default defineConfig({
     tailwindcss(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // "prompt": el SW nuevo queda en espera y la app muestra un banner
+      // "Nueva version disponible"; se aplica solo cuando el usuario confirma.
+      registerType: 'prompt',
+      // El registro lo maneja el hook useRegisterSW (components/PwaUpdatePrompt),
+      // por eso no auto-inyectamos el script de registro.
+      injectRegister: false,
       includeAssets: [
         'icons/icon-192.png',
         'icons/icon-512.png',
@@ -19,11 +24,11 @@ export default defineConfig({
         'favicon-16.png'
       ],
       manifest: {
-        name: 'SmartCloud ERP',
-        short_name: 'SmartCloud',
-        description: 'Sistema ERP multi-tenant para gestion de clinicas veterinarias',
-        theme_color: '#4f46e5',
-        background_color: '#4f46e5',
+        name: 'VetiCloud',
+        short_name: 'VetiCloud',
+        description: 'VetiCloud - Gestion veterinaria en la nube',
+        theme_color: '#4a90c2',
+        background_color: '#ffffff',
         display: 'standalone',
         scope: '/',
         start_url: '/',
@@ -58,7 +63,14 @@ export default defineConfig({
       workbox: {
         // Pre-cachear todos los assets estaticos
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}'],
+        // El logo fuente no se referencia en runtime; sigue disponible en
+        // /veticloud.png pero no se precachea para no inflar la instalacion.
+        globIgnores: ['**/veticloud.png'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // En modo "prompt" el SW nuevo NO hace skipWaiting automatico: espera a
+        // que el usuario confirme desde el banner. Al activarse, limpia las
+        // cachES obsoletas para no seguir sirviendo modulos viejos.
+        cleanupOutdatedCaches: true,
         // /api/* is intentionally excluded from service-worker caching — the app
         // manages its own tenant-scoped offline cache via IndexedDB (offlineDB).
         // Caching authenticated API responses in the SW would leak tenant data

@@ -1,11 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { AIService, ClientService } from '../services/api';
-import { Cliente } from '../types';
+import { AIService, ClientService, PacientesService } from '../services/api';
+import { Cliente, Paciente } from '../types';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { useAuth } from '../context/AuthContext';
-import { Bot, Search, PlusCircle, Users, Edit2, Trash2, X, RefreshCw, Mail, Phone, MapPin, UserCheck } from 'lucide-react';
+import { Bot, Search, PlusCircle, Users, Edit2, Trash2, X, RefreshCw, Mail, Phone, MapPin, UserCheck, PawPrint, Plus, ArrowRight, ArrowLeft, Check } from 'lucide-react';
 import Swal from 'sweetalert2';
+import { PatientFields } from '../components/PatientFields';
+
+const emptyPatient = (): Partial<Paciente> => ({ especie: 'Canino', estado: 'Activo' });
 
 const Clients: React.FC = () => {
   const { hasPlanFeature } = useAuth();
@@ -18,6 +21,12 @@ const Clients: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<Partial<Cliente>>({});
+
+  // Wizard: paso 1 = tutor, paso 2..N = una mascota completa por paso.
+  const [step, setStep] = useState<number>(1);
+  const [createdTutor, setCreatedTutor] = useState<{ identidad: string; nombre: string } | null>(null);
+  const [pets, setPets] = useState<Partial<Paciente>[]>([emptyPatient()]);
+  const [savingPets, setSavingPets] = useState(false);
 
   // AI State
   const [clientAI, setClientAI] = useState<{[key: string]: any}>({});
@@ -63,13 +72,47 @@ const Clients: React.FC = () => {
   const openNewModal = () => {
     setIsEditing(false);
     setForm({ tipo_identificacion: 'identidad', sin_correo: false });
+    setStep(1);
+    setCreatedTutor(null);
+    setPets([emptyPatient()]);
     setShowModal(true);
   };
 
   const openEditModal = (client: Cliente) => {
     setIsEditing(true);
     setForm({ ...client, tipo_identificacion: client.tipo_identificacion || (String(client.identidad || '').startsWith('TEL_') ? 'telefono' : 'identidad') });
+    setStep(1);
     setShowModal(true);
+  };
+
+  // La mascota actual corresponde al paso (step 2 = mascota indice 0).
+  const petIndex = step - 2;
+  const updatePet = (patch: Partial<Paciente>) => setPets(prev => prev.map((p, idx) => (idx === petIndex ? { ...p, ...patch } : p)));
+  const addPetStep = () => {
+    const newIndex = pets.length;
+    setPets(prev => [...prev, emptyPatient()]);
+    setStep(newIndex + 2);
+  };
+  const finishWizard = () => { setShowModal(false); setStep(1); loadClients(); };
+
+  const savePets = async () => {
+    if (!createdTutor) return;
+    const validos = pets.filter(p => (p.nombre || '').trim());
+    if (!validos.length) { finishWizard(); return; }
+    setSavingPets(true);
+    try {
+      for (const p of validos) {
+        await PacientesService.create({ ...p, id_tutor: createdTutor.identidad, estado: p.estado || 'Activo' } as any);
+      }
+      setShowModal(false);
+      setStep(1);
+      Swal.fire({ icon: 'success', title: `${validos.length} mascota(s) registrada(s)`, timer: 1600, showConfirmButton: false });
+      loadClients();
+    } catch (e: any) {
+      Swal.fire('Error', e.message || 'No se pudieron registrar las mascotas', 'error');
+    } finally {
+      setSavingPets(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,17 +134,23 @@ const Clients: React.FC = () => {
       };
       if (isEditing) {
         await ClientService.update(form.identidad!, payload);
+        setShowModal(false);
+        Swal.fire({ icon: 'success', title: 'Tutor Actualizado', timer: 1500, showConfirmButton: false });
+        loadClients();
+      } else if (createdTutor) {
+        // Volvimos al paso 1 a corregir el tutor ya creado -> actualizar.
+        await ClientService.update(createdTutor.identidad, payload);
+        setCreatedTutor({ identidad: createdTutor.identidad, nombre: form.nombre || createdTutor.nombre });
+        setStep(2);
+        loadClients();
       } else {
-        await ClientService.create(payload as Cliente);
+        const created = await ClientService.create(payload as Cliente);
+        const tutorId = (created && (created as any).identidad) || payload.identidad || '';
+        setCreatedTutor({ identidad: String(tutorId), nombre: form.nombre || 'Tutor' });
+        setPets([emptyPatient()]);
+        setStep(2);
+        loadClients();
       }
-      setShowModal(false);
-      Swal.fire({
-        icon: 'success',
-        title: isEditing ? 'Tutor Actualizado' : 'Tutor Registrado',
-        timer: 1500,
-        showConfirmButton: false
-      });
-      loadClients();
     } catch (error: any) {
       Swal.fire('Error', error.message, 'error');
     }
@@ -260,14 +309,24 @@ const Clients: React.FC = () => {
       {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl animate-fade-in overflow-hidden">
-            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100">
-              <h3 className="text-xl font-bold text-slate-800">
-                {isEditing ? 'Editar Tutor' : 'Registro de Tutor'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
+          <div className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl animate-fade-in max-h-[92vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 bg-white flex justify-between items-center px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-bold text-slate-800">
+                  {isEditing ? 'Editar Tutor' : step === 1 ? 'Registro de Tutor' : `Registro de Mascota ${step - 1} de ${pets.length}`}
+                </h3>
+                {!isEditing && (
+                  <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold">
+                    <span className={`px-2.5 py-1 rounded-full ${step === 1 ? 'bg-indigo-600 text-white' : 'bg-emerald-100 text-emerald-700'}`}>1. Tutor</span>
+                    <ArrowRight size={13} className="text-slate-300" />
+                    <span className={`px-2.5 py-1 rounded-full ${step >= 2 ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-400'}`}>2. Mascotas</span>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => { setShowModal(false); setStep(1); }} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
             </div>
 
+            {step === 1 && (
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -354,11 +413,42 @@ const Clients: React.FC = () => {
               </div>
 
 
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200">Cancelar</button>
-                <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20">{isEditing ? 'Actualizar' : 'Guardar'}</button>
+              <div className="sticky bottom-0 bg-white pt-4 pb-1 flex gap-3">
+                <button type="button" onClick={() => { setShowModal(false); setStep(1); }} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200">Cancelar</button>
+                <button type="submit" className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20">
+                  {isEditing ? 'Actualizar' : createdTutor ? <>Guardar y continuar <ArrowRight size={18} /></> : <>Siguiente: mascotas <ArrowRight size={18} /></>}
+                </button>
               </div>
             </form>
+            )}
+
+            {step >= 2 && !isEditing && (
+              <div className="p-6 space-y-5">
+                <div className="rounded-xl bg-teal-50 border border-teal-100 p-3 text-sm text-teal-800 flex items-center gap-2">
+                  <PawPrint size={16} className="text-teal-600 shrink-0" />
+                  <span>Tutor <b>{createdTutor?.nombre}</b> registrado — registrando <b>mascota {step - 1} de {pets.length}</b>.</span>
+                </div>
+
+                <PatientFields value={pets[petIndex] || {}} onChange={updatePet} />
+
+                <div className="sticky bottom-0 bg-white flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4 pb-1">
+                  <button type="button" onClick={() => setStep(step - 1)} className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-100 font-semibold text-slate-600 hover:bg-slate-200">
+                    <ArrowLeft size={18} /> {step === 2 ? 'Editar tutor' : 'Mascota anterior'}
+                  </button>
+                  {step < pets.length + 1 && (
+                    <button type="button" onClick={() => setStep(step + 1)} className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-white border border-slate-200 font-semibold text-slate-600 hover:bg-slate-50">
+                      Siguiente <ArrowRight size={18} />
+                    </button>
+                  )}
+                  <button type="button" onClick={addPetStep} className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-teal-200 font-bold text-teal-600 hover:bg-teal-50">
+                    <Plus size={16} /> Otra mascota
+                  </button>
+                  <button type="button" onClick={savePets} disabled={savingPets} className="ml-auto inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-teal-600 font-semibold text-white hover:bg-teal-700 disabled:opacity-60 shadow-lg shadow-teal-600/20">
+                    <Check size={18} /> {savingPets ? 'Guardando...' : `Guardar mascotas (${pets.filter(p => (p.nombre || '').trim()).length})`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
