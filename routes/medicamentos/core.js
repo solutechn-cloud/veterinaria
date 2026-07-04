@@ -175,7 +175,7 @@ function registerRoutes(router) {
     // GET /api/medicamentos — list with filters
     router.get('/medicamentos', authenticateToken, async (req, res) => {
         try {
-            const { q, id_categoria, tipo_isv, requiere_receta, es_controlado, activo, estado_catalogo, id_sucursal } = req.query;
+            const { q, id_categoria, tipo_isv, requiere_receta, es_controlado, activo, estado_catalogo, id_sucursal, limit, offset } = req.query;
             const sucursalId = id_sucursal || req.user.id_sucursal || null;
             const params = [req.tenantId];
             let where = `WHERE m.tenant_id = $1`;
@@ -205,6 +205,16 @@ function registerRoutes(router) {
             const estadoWhere = estado_catalogo
                 ? 'WHERE "estadoCatalogo" = $' + (params.push(estado_catalogo), params.length)
                 : '';
+
+            let limitOffset = '';
+            if (limit !== undefined) {
+                params.push(Math.max(1, Number(limit) || 25));
+                limitOffset += ` LIMIT $${params.length}`;
+            }
+            if (offset !== undefined) {
+                params.push(Math.max(0, Number(offset) || 0));
+                limitOffset += ` OFFSET $${params.length}`;
+            }
 
             const result = await pool.query(`
                 WITH lotes_resumen AS (
@@ -297,6 +307,7 @@ function registerRoutes(router) {
                 SELECT * FROM catalogo
                 ${estadoWhere}
                 ORDER BY nombre_generico
+                ${limitOffset}
             `, params);
 
             const rows = await Promise.all(result.rows.map(async (row) => {

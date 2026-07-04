@@ -1112,7 +1112,7 @@ import type {
 } from '../types';
 
 export const MedicamentosService = {
-  getAll: (params?: { q?: string; id_categoria?: number; tipo_isv?: string; requiere_receta?: boolean; es_controlado?: boolean; estado_catalogo?: string; id_sucursal?: number | null }) => {
+  getAll: (params?: { q?: string; id_categoria?: number; tipo_isv?: string; requiere_receta?: boolean; es_controlado?: boolean; estado_catalogo?: string; id_sucursal?: number | null; limit?: number; offset?: number }) => {
     const paramsWithSucursal = { id_sucursal: getCurrentSucursalId(), ...(params || {}) };
     const qs = '?' + new URLSearchParams(Object.entries(paramsWithSucursal).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])).toString();
     return request<Medicamento[]>(`/medicamentos${qs}`);
