@@ -690,7 +690,7 @@ function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, 
   const fields = fieldsFor(form.tipo);
   const docTemplateId = form.tipo === 'documento' ? CLINICAL_DOC_LABEL_TO_ID[form.payload.tipo_documento] : undefined;
   const visibleFields = form.tipo === 'vacuna' ? [] : form.tipo === 'laboratorio' ? fields.filter(field => field.key === 'diagnostico')
-    : docTemplateId ? fields.filter(field => field.key === 'tipo_documento' || field.key === 'archivo_documento')
+    : form.tipo === 'documento' ? fields.filter(field => field.key !== 'tipo_documento' && (docTemplateId ? field.key === 'archivo_documento' : true))
     : fields;
   const hasFileField = form.tipo === 'vacuna' || form.tipo === 'laboratorio' || visibleFields.some(field => field.type === 'file');
   const fieldByKey = (key: string) => fields.find(f => f.key === key);
@@ -755,6 +755,17 @@ function EventModal({ form, patient, editing, legacyConsulta, setForm, onClose, 
                 onChange={value => updatePayload('productos', value)}
                 cobroPendiente={!!form.payload.generar_cotizacion}
                 onCobroPendienteChange={v => updatePayload('generar_cotizacion', v)}
+              />
+            )}
+            {form.tipo === 'documento' && fieldByKey('tipo_documento') && (
+              <Field
+                field={fieldByKey('tipo_documento')!}
+                value={form.payload.tipo_documento || ''}
+                onChange={v => updatePayload('tipo_documento', v)}
+                patientId={patient.id_paciente}
+                tipo={form.tipo}
+                attachments={form.adjuntos}
+                onAttachmentsChange={updateAttachments}
               />
             )}
             {form.tipo === 'documento' && (
@@ -911,7 +922,10 @@ function DocumentTemplateBlock({ patient, payload, onChange }: {
       {templateId === 'alta_voluntaria' && (
         <>
           <Label label="Médico veterinario">
-            <input value={payload.medico_nombre || ''} onChange={e => onChange('medico_nombre', e.target.value)} className={INPUT_CLASS} />
+            <ProfessionalSelect
+              value={payload.medico_nombre ? { nombre: payload.medico_nombre } : null}
+              onChange={profesional => onChange('medico_nombre', profesional.nombre || '')}
+            />
           </Label>
           <Label label="Diagnóstico">
             <input value={payload.diagnostico || ''} onChange={e => onChange('diagnostico', e.target.value)} className={INPUT_CLASS} />
