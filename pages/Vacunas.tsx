@@ -47,12 +47,16 @@ export default function Vacunas() {
   const [form, setForm] = useState<VaccineForm>(initialForm());
 
   const load = async () => {
-    const [v, r] = await Promise.all([
-      VacunasService.getAplicadas(),
-      RecordatoriosService.getAll({ tipo: 'vacuna_proxima' }),
-    ]);
-    setVaccines(v || []);
-    setReminders(r || []);
+    try {
+      const [v, r] = await Promise.all([
+        VacunasService.getAplicadas(),
+        RecordatoriosService.getAll({ tipo: 'vacuna_proxima' }),
+      ]);
+      setVaccines(v || []);
+      setReminders(r || []);
+    } catch (err: any) {
+      Swal.fire('Error', err?.message || 'No se pudieron cargar las vacunas', 'error');
+    }
   };
 
   useEffect(() => { void load(); }, []);
