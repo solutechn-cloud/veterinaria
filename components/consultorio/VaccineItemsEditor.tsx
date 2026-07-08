@@ -42,7 +42,9 @@ export function VaccineItemsEditor({ value = [], onChange }: VaccineItemsEditorP
 
   useEffect(() => {
     let alive = true;
-    MedicamentosService.getAll({ estado_catalogo: 'Listo para venta' } as any)
+    // Para APLICAR una vacuna no se exige que este "Lista para venta": se cargan
+    // todos los productos activos y se prioriza el filtro de vacunas mas abajo.
+    MedicamentosService.getAll({} as any)
       .then(list => { if (alive) setProductos(list || []); })
       .catch(() => {});
     return () => { alive = false; };
@@ -75,7 +77,12 @@ export function VaccineItemsEditor({ value = [], onChange }: VaccineItemsEditorP
     }
   };
 
-  const productosVacunas = useMemo(() => productos.filter(isVaccineProduct), [productos]);
+  // Prioriza vacunas (tipo_producto = 'vacuna'); si el tenant no las etiqueta asi,
+  // cae a todos los productos para que igual se pueda encontrar la vacuna.
+  const productosVacunas = useMemo(() => {
+    const vac = productos.filter(isVaccineProduct);
+    return vac.length ? vac : productos;
+  }, [productos]);
 
   const sugerencias = useMemo(() => {
     const q = query.trim().toLowerCase();
