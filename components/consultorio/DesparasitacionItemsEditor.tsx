@@ -45,8 +45,10 @@ export function DesparasitacionItemsEditor({ value = [], onChange, cobroPendient
 
   useEffect(() => {
     let alive = true;
-    MedicamentosService.getAll({ estado_catalogo: 'Listo para venta' } as any)
-      .then(list => { if (alive) setProductos((list || []).filter(isDewormingProduct)); })
+    // Para APLICAR un antiparasitario no se exige que este "Listo para venta":
+    // se cargan todos los productos activos y se prioriza el filtro mas abajo.
+    MedicamentosService.getAll({} as any)
+      .then(list => { if (alive) setProductos(list || []); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -72,16 +74,23 @@ export function DesparasitacionItemsEditor({ value = [], onChange, cobroPendient
     } catch { return []; }
   };
 
+  // Prioriza antiparasitarios; si el tenant no los etiqueta asi, cae a todos los
+  // productos para que igual se puedan encontrar y aplicar.
+  const productosDeworming = useMemo(() => {
+    const dew = productos.filter(isDewormingProduct);
+    return dew.length ? dew : productos;
+  }, [productos]);
+
   const sugerencias = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = q
-      ? productos.filter(p =>
+      ? productosDeworming.filter(p =>
           (p.nombre_comercial || '').toLowerCase().includes(q) ||
           (p.nombre_generico || '').toLowerCase().includes(q) ||
           (p.codigo || '').toLowerCase().includes(q))
-      : productos;
+      : productosDeworming;
     return base.slice(0, 8);
-  }, [productos, query]);
+  }, [productosDeworming, query]);
 
   const patchItem = (id: string, patch: Partial<DesparasitacionItem>) =>
     onChange(items.map(it => (it.id === id ? { ...it, ...patch } : it)));
