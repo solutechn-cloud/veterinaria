@@ -21,13 +21,25 @@ services:
         generateValue: true
       - key: SAAS_SUPER_SECRET
         generateValue: true
+      # Clave de "Acceso de emergencia" del panel administrativo SaaS.
+      # Render la genera; leela en el tab Environment del servicio para iniciar sesion.
+      - key: SAAS_ADMIN_SECRET
+        generateValue: true
+      # Debe incluir el origen del panel admin: https://erpveterinaria-admin.onrender.com
       - key: ALLOWED_ORIGINS
         sync: false
+
+  # Panel administrativo del SaaS (super-admin para gestionar veterinarias).
   - type: static
     name: erpveterinaria-admin
     rootDir: apps/Erpveterinaria-admin
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
+      # URL del backend (sin barra final, sin /api). El cliente agrega /api/saas/...
       - key: VITE_API_URL
-        sync: false
+        value: https://erpveterinaria.onrender.com
