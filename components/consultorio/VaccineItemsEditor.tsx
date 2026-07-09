@@ -23,7 +23,7 @@ type VaccineItemsEditorProps = {
 
 const compactInputCls = 'rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100';
 const newId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const nombreProducto = (p: Medicamento) => p.nombre_comercial || p.nombre_generico || p.codigo;
+const nombreProducto = (p: Medicamento) => p.nombre_generico || p.nombre_comercial || p.codigo;
 const money = (value?: number) => `L. ${Number(value || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function isVaccineProduct(product: Medicamento) {
@@ -192,7 +192,10 @@ export function VaccineItemsEditor({ value = [], onChange }: VaccineItemsEditorP
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-600"><Syringe size={15} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-slate-800">{nombreProducto(product)}</span>
-                    <span className="block truncate text-xs text-slate-400">{[product.laboratorio, product.concentracion].filter(Boolean).join(' - ') || product.nombre_generico}</span>
+                    <span className="block truncate text-xs text-slate-400">{[
+                      product.nombre_comercial && product.nombre_comercial !== product.nombre_generico ? product.nombre_comercial : null,
+                      product.laboratorio, product.concentracion,
+                    ].filter(Boolean).join(' · ')}</span>
                   </span>
                   <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{product.codigo}</span>
                   <Plus size={15} className="shrink-0 text-teal-500" />

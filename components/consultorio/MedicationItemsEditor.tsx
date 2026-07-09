@@ -22,7 +22,7 @@ type MedicationItemsEditorProps = {
   onCobroPendienteChange?: (value: boolean) => void;
 };
 
-const nombreProducto = (p: Medicamento) => p.nombre_comercial || p.nombre_generico || p.codigo;
+const nombreProducto = (p: Medicamento) => p.nombre_generico || p.nombre_comercial || p.codigo;
 const money = (value?: number) => `L. ${Number(value || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const newId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -193,8 +193,8 @@ export function MedicationItemsEditor({ value = [], onChange, cobroPendiente, on
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-500"><Pill size={15} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-slate-800">{nombreProducto(p)}</span>
-                    {p.nombre_comercial && p.nombre_generico && (
-                      <span className="block truncate text-xs text-slate-400">{p.nombre_generico}</span>
+                    {p.nombre_comercial && p.nombre_comercial !== p.nombre_generico && (
+                      <span className="block truncate text-xs text-slate-400">{p.nombre_comercial}</span>
                     )}
                   </span>
                   <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{p.codigo}</span>
