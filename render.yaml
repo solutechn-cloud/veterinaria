@@ -30,7 +30,10 @@ services:
         sync: false
 
   # Panel administrativo del SaaS (super-admin para gestionar veterinarias).
-  - type: static
+  # En el Blueprint de Render un sitio estatico es type: web + runtime: static
+  # (no existe type: static).
+  - type: web
+    runtime: static
     name: erpveterinaria-admin
     rootDir: apps/Erpveterinaria-admin
     buildCommand: npm ci && npm run build
@@ -42,6 +45,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
-      # URL del backend (sin barra final, sin /api). El cliente agrega /api/saas/...
+      # URL del backend en produccion (sin barra final, sin /api).
+      # El cliente agrega /api/saas/... El backend debe incluir el origen de
+      # este panel en ALLOWED_ORIGINS.
       - key: VITE_API_URL
-        value: https://erpveterinaria.onrender.com
+        value: https://veterinaria.solutechonduras.com
