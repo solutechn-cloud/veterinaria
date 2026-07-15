@@ -129,7 +129,6 @@ function registerRoutes(router) {
                 ${serviceWhere}
                 GROUP BY id_servicio, nombre, categoria, tipo_isv, descripcion, precio, codigo
                 ORDER BY nombre
-                LIMIT 100
             `, serviceParams);
 
             const rows = [...result.rows.map(r => ({ ...r, tipoProducto: r.tipoProducto || 'MEDICAMENTO' })), ...services.rows];
