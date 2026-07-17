@@ -475,6 +475,27 @@ export const ConfigService = {
   update: (data: any) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
 };
 
+export interface CaiRecord {
+  id: number;
+  cai: string;
+  rangoInicial: string;
+  rangoFinal: string;
+  fechaLimite: string;
+  correlativoActual: number;
+  estado: 'vigente' | 'agotado' | 'vencido';
+  documentosTotales: number | null;
+  documentosRestantes: number | null;
+  fechaRegistro: string;
+  registradoPor: string | null;
+  agotadoEn: string | null;
+}
+
+export const CaiService = {
+  list: () => request<CaiRecord[]>('/admin/cai'),
+  create: (data: { cai: string; rangoInicial: string; rangoFinal: string; fechaLimite: string; proximoNumero?: number | string }) =>
+    request<CaiRecord>('/admin/cai', { method: 'POST', body: JSON.stringify(data) }),
+};
+
 export interface AutomationEvent {
   key: string;
   label: string;

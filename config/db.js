@@ -413,17 +413,26 @@ async function generateNextId(table, column, prefix, client = pool) {
  * Genera el siguiente número de factura fiscal (correlativo CAI), separado del
  * codVenta interno. Formato: <prefijo de rangoInicial>-<correlativo 8 dígitos>,
  * ej. 000-001-01-00000021. El prefijo (sucursal-puntoemision-tipodoc) sale de
- * los primeros 3 grupos de "Rango Inicial" configurado en Empresa.
+ * los primeros 3 grupos de "Rango Inicial" del CAI en uso.
+ *
+ * El CAI en uso es el más antiguo con estado 'vigente' en cai_facturacion.
+ * Antes de emitir se valida que no haya vencido (fechalimite) ni agotado su
+ * rango (rangofinal); al detectarlo se marca esa fila como 'vencido'/'agotado'
+ * y se reintenta con el siguiente CAI vigente registrado.
  *
  * Usa pg_advisory_xact_lock + FOR UPDATE para serializar concurrencia: dos
  * ventas simultáneas nunca deben recibir el mismo número fiscal.
  *
- * Devuelve null si la empresa no tiene rangoInicial configurado (CAI pendiente),
- * en cuyo lugar la factura simplemente no lleva número fiscal aún.
+ * Devuelve null si el tenant nunca ha registrado un CAI (caso de empresa
+ * nueva que aún no factura fiscalmente), en cuyo caso la factura simplemente
+ * no lleva número fiscal todavía. Si el tenant ya tuvo CAI pero el último
+ * registrado se agotó o venció sin que haya otro vigente detrás, lanza un
+ * error 400 (CAI_NO_DISPONIBLE) — a diferencia del caso "nunca configurado",
+ * aquí sí se bloquea la emisión para no facturar fuera del rango autorizado.
  */
 async function generateFacturaCorrelativo(tenantId, client = pool) {
     if (!tenantId) return null;
-    const lockId = _advisoryLockId('FACTNUM', 'configuracion', tenantId);
+    const lockId = _advisoryLockId('FACTNUM', 'cai_facturacion', tenantId);
 
     const usingPool = client === pool;
     let txClient = client;
@@ -435,34 +444,78 @@ async function generateFacturaCorrelativo(tenantId, client = pool) {
     try {
         await txClient.query('SELECT pg_advisory_xact_lock($1)', [lockId]);
 
-        const result = await txClient.query(
-            `SELECT rangoinicial, factura_correlativo_actual, fechalimite
-             FROM configuracion WHERE tenant_id = $1 FOR UPDATE`,
+        const totalResult = await txClient.query(
+            `SELECT COUNT(*)::int AS total FROM cai_facturacion WHERE tenant_id = $1`,
             [tenantId]
         );
-        const row = result.rows[0];
-        const parts = (row?.rangoinicial || '').trim().split('-');
-        if (parts.length < 4) {
+        const tenantHasCai = totalResult.rows[0].total > 0;
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const result = await txClient.query(
+                `SELECT id, rangoinicial, rangofinal, correlativo_actual, fechalimite
+                 FROM cai_facturacion
+                 WHERE tenant_id = $1 AND estado = 'vigente'
+                 ORDER BY fecha_registro ASC
+                 LIMIT 1
+                 FOR UPDATE`,
+                [tenantId]
+            );
+            const row = result.rows[0];
+
+            if (!row) {
+                if (usingPool) await txClient.query('COMMIT');
+                if (tenantHasCai) {
+                    const err = new Error('No hay un CAI vigente registrado para facturación fiscal (el anterior se agotó o venció). Registre un nuevo CAI en Configuración → Facturación antes de continuar.');
+                    err.statusCode = 400;
+                    err.code = 'CAI_NO_DISPONIBLE';
+                    throw err;
+                }
+                return null;
+            }
+
+            const parts = (row.rangoinicial || '').trim().split('-');
+            if (parts.length < 4) {
+                if (usingPool) await txClient.query('COMMIT');
+                return null;
+            }
+
+            if (row.fechalimite && new Date(row.fechalimite) < new Date(new Date().toDateString())) {
+                await txClient.query(
+                    `UPDATE cai_facturacion SET estado = 'vencido', agotado_en = NOW() WHERE id = $1`,
+                    [row.id]
+                );
+                continue;
+            }
+
+            const finalParts = (row.rangofinal || '').trim().split('-');
+            const rangoFinalNum = finalParts.length >= 4 && /^\d+$/.test(finalParts[3]) ? Number(finalParts[3]) : null;
+            const numero = Number(row.correlativo_actual) || 1;
+
+            if (rangoFinalNum !== null && numero > rangoFinalNum) {
+                await txClient.query(
+                    `UPDATE cai_facturacion SET estado = 'agotado', agotado_en = NOW() WHERE id = $1`,
+                    [row.id]
+                );
+                continue;
+            }
+
+            const prefix = parts.slice(0, 3).join('-');
+            const numeroFactura = `${prefix}-${String(numero).padStart(8, '0')}`;
+            const seAgota = rangoFinalNum !== null && (numero + 1) > rangoFinalNum;
+
+            await txClient.query(
+                `UPDATE cai_facturacion
+                 SET correlativo_actual = $1,
+                     estado = CASE WHEN $3 THEN 'agotado' ELSE estado END,
+                     agotado_en = CASE WHEN $3 THEN NOW() ELSE agotado_en END
+                 WHERE id = $2`,
+                [numero + 1, row.id, seAgota]
+            );
+
             if (usingPool) await txClient.query('COMMIT');
-            return null;
+            return numeroFactura;
         }
-        if (row.fechalimite && new Date(row.fechalimite) < new Date(new Date().toDateString())) {
-            const err = new Error('El CAI autorizado ha vencido (fecha límite de emisión superada). Solicite y registre nueva información de facturación (CAI) antes de continuar.');
-            err.statusCode = 400;
-            err.code = 'CAI_EXPIRED';
-            throw err;
-        }
-        const prefix  = parts.slice(0, 3).join('-');
-        const numero  = Number(row.factura_correlativo_actual) || 1;
-        const numeroFactura = `${prefix}-${String(numero).padStart(8, '0')}`;
-
-        await txClient.query(
-            `UPDATE configuracion SET factura_correlativo_actual = $1 WHERE tenant_id = $2`,
-            [numero + 1, tenantId]
-        );
-
-        if (usingPool) await txClient.query('COMMIT');
-        return numeroFactura;
     } catch (err) {
         if (usingPool) await txClient.query('ROLLBACK').catch(() => {});
         throw err;

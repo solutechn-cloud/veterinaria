@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useEffect, useRef } from 'react';
-import { ConfigService, AIService, AIQuotaStatus, AutomationService, AutomationEvent, AutomationRecipient, BackupJob } from '../services/api';
+import { ConfigService, CaiService, CaiRecord, AIService, AIQuotaStatus, AutomationService, AutomationEvent, AutomationRecipient, BackupJob } from '../services/api';
 import { EmpresaConfig } from '../types';
 import { Settings, Save, Building2, FileText, AlertCircle, ImageIcon, X, Camera, CheckCircle2, ShieldAlert, Bell, Cloud, Palette, Sparkles, RefreshCw, Mail, Users, Clock, DatabaseBackup, Plus, Trash2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
@@ -49,11 +49,52 @@ const CompanyConfig: React.FC = () => {
   const [newRecipient, setNewRecipient] = useState({ nombre: '', email: '', tipo: 'persona' as 'persona' | 'grupo' });
   const [automationLoading, setAutomationLoading] = useState(false);
 
+  const [caiList, setCaiList] = useState<CaiRecord[]>([]);
+  const [caiLoading, setCaiLoading] = useState(false);
+  const [caiModalOpen, setCaiModalOpen] = useState(false);
+  const [caiSaving, setCaiSaving] = useState(false);
+  const [newCai, setNewCai] = useState({ cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '', proximoNumero: '' });
+
   useEffect(() => {
     loadConfig();
     loadQuota();
     loadAutomation();
+    loadCai();
   }, []);
+
+  const loadCai = async () => {
+    setCaiLoading(true);
+    try {
+      const data = await CaiService.list();
+      setCaiList(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCaiLoading(false);
+    }
+  };
+
+  const caiVigente = caiList.filter(c => c.estado === 'vigente')
+    .reduce<CaiRecord | null>((oldest, c) => (!oldest || new Date(c.fechaRegistro) < new Date(oldest.fechaRegistro)) ? c : oldest, null);
+
+  const handleCreateCai = async () => {
+    if (!newCai.cai.trim() || !newCai.rangoInicial.trim() || !newCai.rangoFinal.trim() || !newCai.fechaLimite) {
+      Swal.fire('Datos incompletos', 'Completa el CAI, ambos rangos y la fecha límite.', 'warning');
+      return;
+    }
+    setCaiSaving(true);
+    try {
+      await CaiService.create(newCai);
+      setNewCai({ cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '', proximoNumero: '' });
+      setCaiModalOpen(false);
+      await loadCai();
+      Swal.fire({ icon: 'success', title: 'CAI registrado', timer: 1500, showConfirmButton: false });
+    } catch (error: any) {
+      Swal.fire('Error', error.message, 'error');
+    } finally {
+      setCaiSaving(false);
+    }
+  };
 
   const loadAutomation = async () => {
     setAutomationLoading(true);
@@ -279,56 +320,172 @@ const CompanyConfig: React.FC = () => {
             <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2 border-b border-slate-100 pb-2">
                 <FileText className="text-indigo-600"/> Normativa de Facturación (SAR)
             </h3>
-            
-            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-800 text-sm mb-4 flex gap-2">
-                <AlertCircle size={18} className="shrink-0"/>
-                Estos datos aparecerán impresos en la factura. Asegúrate que coincidan con tu resolución vigente.
-            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de Autorización)</label>
-                    <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
-                        value={config.cai} onChange={e => setConfig({...config, cai: e.target.value})} placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX" />
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Rango Inicial</label>
-                    <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
-                        value={config.rangoInicial} onChange={e => setConfig({...config, rangoInicial: e.target.value})} placeholder="000-001-01-00000001" />
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Rango Final</label>
-                    <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
-                        value={config.rangoFinal} onChange={e => setConfig({...config, rangoFinal: e.target.value})} placeholder="000-001-01-00002000" />
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha Límite de Emisión</label>
-                    <input type="date" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        value={config.fechaLimite} onChange={e => setConfig({...config, fechaLimite: e.target.value})} />
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Próximo Número de Factura</label>
-                    <input type="number" min="1" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        value={config.facturaCorrelativoActual ?? 1} onChange={e => setConfig({...config, facturaCorrelativoActual: Number(e.target.value)})} />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                        {config.rangoInicial.split('-').length >= 4
-                            ? `Próxima factura: ${config.rangoInicial.split('-').slice(0, 3).join('-')}-${String(config.facturaCorrelativoActual ?? 1).padStart(8, '0')}`
-                            : 'Completa el Rango Inicial para ver el número completo.'}
-                        {' '}Si tu negocio ya venía facturando manualmente, pon aquí el siguiente número que le corresponde (ej. si vas por la 20, pon 21).
-                    </p>
-                </div>
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Porcentaje ISV (%)</label>
-                    <input type="number" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                    <input type="number" required className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                         value={config.isv} onChange={e => setConfig({...config, isv: Number(e.target.value)})} />
                 </div>
                 <div className="md:col-span-2">
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Mensaje / Leyenda Final</label>
-                    <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                    <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                         value={config.mensajeFinal} onChange={e => setConfig({...config, mensajeFinal: e.target.value})} />
                 </div>
             </div>
         </div>
+
+        {/* SECCION CAI: LISTADO DE CAI VIGENTES */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3 mb-4">
+                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <FileText className="text-indigo-600"/> CAI de Facturación
+                </h3>
+                <button type="button" onClick={() => setCaiModalOpen(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all shrink-0">
+                    <Plus size={16}/> Registrar nuevo CAI
+                </button>
+            </div>
+
+            {caiLoading ? (
+                <p className="text-sm text-slate-400">Cargando CAI...</p>
+            ) : caiVigente ? (
+                (() => {
+                    const restantes = caiVigente.documentosRestantes ?? 0;
+                    const totales = caiVigente.documentosTotales ?? 0;
+                    const pctRestante = totales > 0 ? (restantes / totales) * 100 : 100;
+                    const diasLimite = Math.ceil((new Date(caiVigente.fechaLimite).getTime() - Date.now()) / 86400000);
+                    const alerta = pctRestante <= 10 || diasLimite <= 30;
+                    return (
+                        <div className={`p-4 rounded-xl border mb-4 ${alerta ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-100'}`}>
+                            <div className="flex items-start gap-2 mb-3">
+                                <AlertCircle size={18} className={`shrink-0 ${alerta ? 'text-amber-600' : 'text-blue-600'}`}/>
+                                <div className="min-w-0">
+                                    <p className={`text-sm font-bold ${alerta ? 'text-amber-800' : 'text-blue-800'}`}>CAI vigente: <span className="font-mono">{caiVigente.cai}</span></p>
+                                    <p className="text-xs text-slate-500 mt-0.5">Rango {caiVigente.rangoInicial} — {caiVigente.rangoFinal} · Vence {caiVigente.fechaLimite}</p>
+                                </div>
+                            </div>
+                            {totales > 0 && (
+                                <>
+                                    <div className="w-full h-2.5 rounded-full bg-white/70 overflow-hidden">
+                                        <div className={`h-full rounded-full ${pctRestante <= 10 ? 'bg-red-500' : pctRestante <= 25 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                            style={{ width: `${Math.max(2, pctRestante)}%` }}/>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">{restantes} de {totales} documentos restantes</p>
+                                </>
+                            )}
+                            {alerta && (
+                                <p className="text-xs font-semibold mt-2 text-amber-800">
+                                    {pctRestante <= 10 ? 'Quedan pocos documentos disponibles. ' : ''}
+                                    {diasLimite <= 30 ? `Vence en ${diasLimite} día(s). ` : ''}
+                                    Registra el próximo CAI para no interrumpir la facturación.
+                                </p>
+                            )}
+                        </div>
+                    );
+                })()
+            ) : (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                    <ShieldAlert size={18} className="text-red-500 shrink-0 mt-0.5"/>
+                    <div>
+                        <p className="text-sm font-bold text-red-700">No hay un CAI vigente registrado</p>
+                        <p className="text-xs text-red-600 mt-0.5">Las facturas fiscales no se podrán emitir hasta registrar un nuevo CAI. Las facturas internas (sin CAI) no se ven afectadas.</p>
+                    </div>
+                </div>
+            )}
+
+            {caiList.length > 0 && (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="text-left text-xs font-bold text-slate-500 uppercase border-b border-slate-100">
+                                <th className="py-2 pr-3">CAI</th>
+                                <th className="py-2 pr-3">Rango</th>
+                                <th className="py-2 pr-3">Fecha Límite</th>
+                                <th className="py-2 pr-3">Estado</th>
+                                <th className="py-2 pr-3">Documentos usados</th>
+                                <th className="py-2 pr-3">Registrado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {caiList.map(c => (
+                                <tr key={c.id} className="border-b border-slate-50">
+                                    <td className="py-2 pr-3 font-mono text-xs">{c.cai}</td>
+                                    <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{c.rangoInicial} — {c.rangoFinal}</td>
+                                    <td className="py-2 pr-3 whitespace-nowrap">{c.fechaLimite}</td>
+                                    <td className="py-2 pr-3">
+                                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                            c.estado === 'vigente' ? 'bg-emerald-100 text-emerald-700' :
+                                            c.estado === 'agotado' ? 'bg-slate-200 text-slate-600' :
+                                            'bg-red-100 text-red-700'}`}>
+                                            {c.estado === 'vigente' ? 'Vigente' : c.estado === 'agotado' ? 'Agotado' : 'Vencido'}
+                                        </span>
+                                    </td>
+                                    <td className="py-2 pr-3 whitespace-nowrap">
+                                        {c.documentosTotales != null ? `${c.documentosTotales - (c.documentosRestantes ?? 0)} / ${c.documentosTotales}` : '—'}
+                                    </td>
+                                    <td className="py-2 pr-3 text-xs text-slate-500 whitespace-nowrap">{String(c.fechaRegistro).slice(0, 10)} {c.registradoPor ? `· ${c.registradoPor}` : ''}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+
+        {caiModalOpen && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !caiSaving && setCaiModalOpen(false)}>
+                <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-lg text-slate-800">Registrar nuevo CAI</h3>
+                        <button type="button" onClick={() => setCaiModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    </div>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">CAI (Clave de Autorización)</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                value={newCai.cai} onChange={e => setNewCai({...newCai, cai: e.target.value})} placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX" />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Rango Inicial</label>
+                                <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                    value={newCai.rangoInicial} onChange={e => setNewCai({...newCai, rangoInicial: e.target.value})} placeholder="000-001-01-00000001" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Rango Final</label>
+                                <input className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                    value={newCai.rangoFinal} onChange={e => setNewCai({...newCai, rangoFinal: e.target.value})} placeholder="000-001-01-00002000" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Fecha Límite de Emisión</label>
+                            <input type="date" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                value={newCai.fechaLimite} onChange={e => setNewCai({...newCai, fechaLimite: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Próximo Número a Facturar</label>
+                            <input type="number" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                value={newCai.proximoNumero} onChange={e => setNewCai({...newCai, proximoNumero: e.target.value})}
+                                placeholder={newCai.rangoInicial.split('-').length >= 4 ? newCai.rangoInicial.split('-')[3].replace(/^0+(?=\d)/, '') : 'Número inicial del rango'} />
+                            <p className="text-[11px] text-slate-400 mt-1">
+                                Déjalo vacío para arrancar en el número inicial del rango. Si el negocio ya facturó parte de este CAI en físico
+                                antes de migrar al sistema (ej. CAI autoriza hasta el 50, ya se hicieron 20 en papel), pon aquí el siguiente
+                                número que le corresponde (ej. 21) para que el sistema continúe la numeración sin repetir documentos.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-5">
+                        <button type="button" onClick={() => setCaiModalOpen(false)} disabled={caiSaving}
+                            className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-50 font-medium text-sm">Cancelar</button>
+                        <button type="button" onClick={handleCreateCai} disabled={caiSaving}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold text-sm disabled:opacity-60">
+                            {caiSaving ? 'Guardando...' : 'Registrar CAI'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* PERMISOS DE CÁMARA */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
