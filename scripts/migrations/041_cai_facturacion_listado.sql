@@ -47,6 +47,14 @@ $do$;
 -- Backfill: migra el CAI único que cada tenant tenía en `configuracion`
 -- hacia el listado, calculando su estado real (vigente/agotado/vencido)
 -- para que la numeración fiscal continúe sin reingreso manual.
+--
+-- Necesita bypass de RLS: tanto `configuracion` como `cai_facturacion` están
+-- protegidas por tenant_isolation (023_enable_rls.sql) con FORCE ROW LEVEL
+-- SECURITY, así que sin esto el SELECT solo vería las filas del tenant de la
+-- sesión (ninguno, en una migración) y el INSERT...SELECT insertaría 0 filas
+-- sin error (mismo patrón usado en 026_seed_catalogos_inventario.sql).
+SELECT set_config('app.bypass_rls', 'true', false);
+
 INSERT INTO cai_facturacion (tenant_id, cai, rangoinicial, rangofinal, fechalimite, correlativo_actual, estado, fecha_registro, registrado_por)
 SELECT
     c.tenant_id,
@@ -72,3 +80,5 @@ WHERE c.tenant_id IS NOT NULL
   AND NOT EXISTS (
       SELECT 1 FROM cai_facturacion cf WHERE cf.tenant_id = c.tenant_id AND cf.cai = c.cai
   );
+
+SELECT set_config('app.bypass_rls', '', false);
