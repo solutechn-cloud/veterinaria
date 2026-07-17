@@ -252,6 +252,91 @@ router.put('/config', authenticateToken, requireAdmin, express.json({ limit: '10
     } catch(e) { handleDbError(res, e); }
 });
 
+// --- LISTADO DE CAI VIGENTES (cai_facturacion) ---
+const mapCaiRow = (row) => {
+    const finalParts = String(row.rangofinal || '').trim().split('-');
+    const inicialParts = String(row.rangoinicial || '').trim().split('-');
+    const rangoFinalNum = finalParts.length >= 4 && /^\d+$/.test(finalParts[3]) ? Number(finalParts[3]) : null;
+    const rangoInicialNum = inicialParts.length >= 4 && /^\d+$/.test(inicialParts[3]) ? Number(inicialParts[3]) : null;
+    const correlativoActual = Number(row.correlativo_actual) || 1;
+    return {
+        id: row.id,
+        cai: row.cai,
+        rangoInicial: row.rangoinicial,
+        rangoFinal: row.rangofinal,
+        fechaLimite: formatDateInput(row.fechalimite),
+        correlativoActual,
+        estado: row.estado,
+        documentosTotales: rangoFinalNum !== null && rangoInicialNum !== null ? (rangoFinalNum - rangoInicialNum + 1) : null,
+        documentosRestantes: rangoFinalNum !== null ? Math.max(0, rangoFinalNum - correlativoActual + 1) : null,
+        fechaRegistro: row.fecha_registro,
+        registradoPor: row.registrado_por,
+        agotadoEn: row.agotado_en,
+    };
+};
+
+router.get('/admin/cai', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const r = await tenantQuery(
+            req.tenantId,
+            `SELECT * FROM cai_facturacion WHERE tenant_id = $1 ORDER BY fecha_registro DESC`,
+            [req.tenantId]
+        );
+        res.json(r.rows.map(mapCaiRow));
+    } catch (e) { handleDbError(res, e); }
+});
+
+router.post('/admin/cai', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { cai, rangoInicial, rangoFinal, fechaLimite, proximoNumero } = req.body || {};
+
+        if (!cai || !String(cai).trim()) return res.status(400).json({ error: 'El CAI es obligatorio' });
+        if (!fechaLimite) return res.status(400).json({ error: 'La fecha límite es obligatoria' });
+
+        const inicialParts = String(rangoInicial || '').trim().split('-');
+        const finalParts = String(rangoFinal || '').trim().split('-');
+        if (inicialParts.length !== 4 || !/^\d+$/.test(inicialParts[3])) {
+            return res.status(400).json({ error: 'Rango Inicial inválido. Formato esperado: NNN-NNN-NN-NNNNNNNN' });
+        }
+        if (finalParts.length !== 4 || !/^\d+$/.test(finalParts[3])) {
+            return res.status(400).json({ error: 'Rango Final inválido. Formato esperado: NNN-NNN-NN-NNNNNNNN' });
+        }
+        if (inicialParts.slice(0, 3).join('-') !== finalParts.slice(0, 3).join('-')) {
+            return res.status(400).json({ error: 'El Rango Inicial y el Rango Final deben tener el mismo prefijo (sucursal-punto de emisión-tipo de documento)' });
+        }
+        const inicialNum = Number(inicialParts[3]);
+        const finalNum = Number(finalParts[3]);
+        if (finalNum < inicialNum) {
+            return res.status(400).json({ error: 'El Rango Final no puede ser menor que el Rango Inicial' });
+        }
+        const fechaLimiteDate = new Date(fechaLimite);
+        if (Number.isNaN(fechaLimiteDate.getTime()) || fechaLimiteDate < new Date(new Date().toDateString())) {
+            return res.status(400).json({ error: 'La Fecha Límite debe ser una fecha futura' });
+        }
+
+        // Permite arrancar más adelante del inicio del rango: si la empresa ya emitió
+        // documentos en físico bajo este mismo CAI antes de migrar al sistema (ej. CAI
+        // autoriza 1-50, ya se hicieron 20 en papel), el sistema debe continuar en 21,
+        // no reiniciar en 1. Por defecto arranca en el número inicial del rango.
+        let correlativoInicial = inicialNum;
+        if (proximoNumero !== undefined && proximoNumero !== null && proximoNumero !== '') {
+            const n = Number(proximoNumero);
+            if (!Number.isInteger(n) || n < inicialNum || n > finalNum) {
+                return res.status(400).json({ error: `El próximo número a facturar debe estar entre ${inicialNum} y ${finalNum}` });
+            }
+            correlativoInicial = n;
+        }
+
+        const result = await pool.query(
+            `INSERT INTO cai_facturacion (tenant_id, cai, rangoinicial, rangofinal, fechalimite, correlativo_actual, estado, registrado_por, activado_en)
+             VALUES ($1, $2, $3, $4, $5, $6, 'vigente', $7, NOW())
+             RETURNING *`,
+            [req.tenantId, String(cai).trim(), rangoInicial, rangoFinal, fechaLimite, correlativoInicial, req.user?.usuario || null]
+        );
+        res.status(201).json(mapCaiRow(result.rows[0]));
+    } catch (e) { handleDbError(res, e); }
+});
+
 router.get('/admin/automation/events', authenticateToken, requireAdmin, async (req, res) => {
     res.json(automationService.getEventCatalog());
 });
