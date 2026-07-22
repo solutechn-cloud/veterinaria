@@ -38,7 +38,7 @@ FROM LATERAL (
               AND split_part(cf.rangofinal, '-', 4)::BIGINT
     ORDER BY cf.fecha_registro ASC
     LIMIT 1
-) m ON TRUE
+) m
 WHERE v.numero_factura IS NOT NULL
   AND v.cai IS NULL;
 
