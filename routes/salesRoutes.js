@@ -211,6 +211,8 @@ router.get('/ventas/:id', authenticateToken, async (req, res) => {
                 v.identidadCliente as "identidadCliente", v.total, v.estado,
                 v.tipoCompra as "tipoCompra", v.isv, v.descuento,
                 v.monto_prima as "montoPrima", v.monto_financiamiento as "montoFinanciado",
+                v.cai, v.cai_rango_inicial as "rangoInicial", v.cai_rango_final as "rangoFinal",
+                v.cai_fecha_limite as "fechaLimite",
                 c.nombre as "nombreCliente", c.apellido as "apellidoCliente",
                 c.direccion as "direccionCliente",
                 COALESCE(e.nombre || ' ' || e.apellido, u.usuario) as "nombreVendedor"
@@ -625,9 +627,13 @@ router.post('/ventas', authenticateToken, async (req, res) => {
 
         const hndTime = getLocalTimestamp();
         const codVenta = await generateNextId('ventas', 'codVenta', 'FACT', client);
-        const numeroFactura = tipoDocumentoVenta === 'factura_fiscal'
+        // Captura el CAI realmente usado para numerar esta venta (no el "actual" de
+        // Configuración) para que la factura impresa siempre muestre el CAI que la
+        // autorizó, incluso si luego se registra o rota a un CAI distinto.
+        const caiAsignado = tipoDocumentoVenta === 'factura_fiscal'
             ? await generateFacturaCorrelativo(req.tenantId, client)
             : null;
+        const numeroFactura = caiAsignado ? caiAsignado.numeroFactura : null;
         const numeroNoFiscal = tipoDocumentoVenta !== 'factura_fiscal'
             ? await generateNoFiscalCorrelativo(req.tenantId, client)
             : null;
@@ -635,10 +641,11 @@ router.post('/ventas', authenticateToken, async (req, res) => {
         // Insert parent ventas row first so detalleventa FK constraint is satisfied
         await client.query(
             `INSERT INTO ventas
-             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id, numero_factura, tipo_documento, numero_no_fiscal)
-             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+             (codVenta, fecha, codVendedor, identidadCliente, total, estado, tipoCompra, isv, descuento, monto_prima, monto_financiamiento, idCaja, tenant_id, client_mutation_id, numero_factura, tipo_documento, numero_no_fiscal, cai, cai_rango_inicial, cai_rango_final, cai_fecha_limite)
+             VALUES ($1,$2,$3,$4,$5,'Completada',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
             [codVenta, hndTime, codUsuario, identidadCliente, total,
-             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null, numeroFactura, tipoDocumentoVenta, numeroNoFiscal]
+             tipoCompra, isv || 0, descuento || 0, montoPrima || 0, montoFinanciado || 0, idCajaActual, req.tenantId, clientMutationId || null, numeroFactura, tipoDocumentoVenta, numeroNoFiscal,
+             caiAsignado ? caiAsignado.cai : null, caiAsignado ? caiAsignado.rangoInicial : null, caiAsignado ? caiAsignado.rangoFinal : null, caiAsignado ? caiAsignado.fechaLimite : null]
         );
 
         for (const item of detalles) {

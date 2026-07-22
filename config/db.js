@@ -453,7 +453,7 @@ async function generateFacturaCorrelativo(tenantId, client = pool) {
         // eslint-disable-next-line no-constant-condition
         while (true) {
             const result = await txClient.query(
-                `SELECT id, rangoinicial, rangofinal, correlativo_actual, fechalimite
+                `SELECT id, cai, rangoinicial, rangofinal, correlativo_actual, fechalimite
                  FROM cai_facturacion
                  WHERE tenant_id = $1 AND estado = 'vigente'
                  ORDER BY fecha_registro ASC
@@ -514,7 +514,13 @@ async function generateFacturaCorrelativo(tenantId, client = pool) {
             );
 
             if (usingPool) await txClient.query('COMMIT');
-            return numeroFactura;
+            return {
+                numeroFactura,
+                cai: row.cai,
+                rangoInicial: row.rangoinicial,
+                rangoFinal: row.rangofinal,
+                fechaLimite: row.fechalimite,
+            };
         }
     } catch (err) {
         if (usingPool) await txClient.query('ROLLBACK').catch(() => {});

@@ -55,8 +55,20 @@ function buildCommercialDocumentContext(
 ): PrintDataContext {
   const labels = documentLabels(tipoDocumento);
   const numero = venta.numeroFactura || venta.numeroDocumento || venta.codVenta || venta.codigo || '';
+  // El CAI usado para numerar esta venta queda guardado en la propia venta
+  // (ver generateFacturaCorrelativo / INSERT INTO ventas en salesRoutes.js).
+  // Se prioriza ese snapshot sobre el CAI "actual" de Configuración, que
+  // puede haber rotado desde que se emitió esta factura. Ventas emitidas
+  // antes de que existiera el snapshot (sin venta.cai) caen al valor de
+  // empresa como antes.
   const empresaImpresion = labels.esFiscal
-    ? empresa
+    ? {
+        ...empresa,
+        cai: venta.cai || empresa.cai,
+        rangoInicial: venta.rangoInicial || empresa.rangoInicial,
+        rangoFinal: venta.rangoFinal || empresa.rangoFinal,
+        fechaLimite: venta.fechaLimite || empresa.fechaLimite,
+      }
     : { ...empresa, cai: '', rangoInicial: '', rangoFinal: '', fechaLimite: '' };
 
   return {

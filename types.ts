@@ -161,9 +161,13 @@ export interface Venta {
   montoPrima?: number;
   montoFinanciado?: number;
   detalles?: DetalleVenta[];
-  nombreVendedor?: string; 
+  nombreVendedor?: string;
   direccionCliente?: string;
   estado_pago_financiera?: string;
+  cai?: string;
+  rangoInicial?: string;
+  rangoFinal?: string;
+  fechaLimite?: string;
 }
 
 export interface VentaPayload {
